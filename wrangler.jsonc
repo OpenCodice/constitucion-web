@@ -1,0 +1,56 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "constitucion-web",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-01-01",
+
+  // Dominio de marca. La zona constitucion.app ya está en Cloudflare;
+  // custom_domain crea el registro DNS + certificado automáticamente.
+  "routes": [{ "pattern": "constitucion.app", "custom_domain": true }],
+
+  // El frontend compilado (vite build → ./dist) se sirve desde el edge.
+  // not_found_handling=single-page-application: cualquier ruta desconocida
+  // devuelve index.html (la SPA enruta del lado del cliente).
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+
+  // Índice vectorial (1536 dims = text-embedding-3-small, cosine).
+  // Crear una vez:  npx wrangler vectorize create constitucion-pasajes --dimensions=1536 --metric=cosine
+  "vectorize": [{ "binding": "VECTORIZE", "index_name": "constitucion-pasajes" }],
+
+  // Pasajes completos (fuente confiable de las citas). Reemplaza el id real:
+  // npx wrangler kv namespace create PASAJES
+  "kv_namespaces": [
+    {
+      "binding": "PASAJES",
+      "id": "42187ce9a8ec4aa5aaa056ae4ccadf91",
+      "preview_id": "c1c4623e304d4d349bfed19fb2fe9099"
+    }
+  ],
+
+  // PDF oficial versionado (para el visor con resaltado). Servido en /pdf/cpeum.pdf.
+  "r2_buckets": [{ "binding": "PDF", "bucket_name": "constitucion-pdf" }],
+
+  "observability": { "enabled": true },
+
+  // Rate limiting por IP con Durable Object (confiable y exacto, vs el binding
+  // nativo beta que no enforza). SQLite-backed → compatible con plan free.
+  "durable_objects": {
+    "bindings": [{ "name": "RATE_LIMITER", "class_name": "RateLimiter" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RateLimiter"] }],
+
+  // Variables NO secretas. La OPENAI_API_KEY va como secret:
+  //   npx wrangler secret put OPENAI_API_KEY
+  // Para enrutar por AI Gateway (caché + rate limit), apunta OPENAI_BASE a tu gateway:
+  //   https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/openai
+  "vars": {
+    // Vía AI Gateway: caché de respuestas + cap global + analítica de costo.
+    "OPENAI_BASE": "https://gateway.ai.cloudflare.com/v1/2467a7066cf9e9e9b88d3032080c3c33/constitucion/openai",
+    "EMBED_MODEL": "text-embedding-3-small",
+    "CHAT_MODEL": "gpt-4o-mini"
+  }
+}
