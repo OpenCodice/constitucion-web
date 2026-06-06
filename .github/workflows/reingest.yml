@@ -9,6 +9,7 @@ name: Reingestar índice (Vectorize + KV)
 # Secrets requeridos en ESTE repo (constitucion-web):
 #   OPENAI_API_KEY         embeddings
 #   CLOUDFLARE_API_TOKEN   permisos: Vectorize (edit) + Workers KV Storage (edit)
+#                          + Workers R2 Storage (edit)
 #   CLOUDFLARE_ACCOUNT_ID  id de la cuenta
 
 on:
@@ -42,8 +43,6 @@ jobs:
         with:
           repository: danielcardeenas/constitucion-mexicana
           path: constitucion-mexicana
-          # Si el repo de datos es privado, añade un PAT:
-          # token: ${{ secrets.DATOS_REPO_TOKEN }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -62,3 +61,10 @@ jobs:
 
       - name: Subir pasajes a KV
         run: npm run upload:kv
+
+      - name: Subir el PDF fuente a R2
+        # El PDF viaja en el mismo commit que las coordenadas → siempre el par exacto.
+        run: |
+          npx wrangler r2 object put constitucion-pdf/cpeum.pdf \
+            --file ./constitucion-mexicana/fuente/CPEUM.pdf \
+            --content-type application/pdf
