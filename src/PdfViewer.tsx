@@ -5,7 +5,8 @@ import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 // Este módulo (con pdf.js, ~pesado) se carga BAJO DEMANDA vía import() dinámico
-// desde app.tsx, para no inflar el bundle inicial.
+// desde app.tsx, para no inflar el bundle inicial. Renderiza el CUERPO del panel
+// lateral (sin backdrop): llena el contenedor que le da el padre.
 
 export interface Rect {
   page: number;
@@ -43,6 +44,9 @@ export function PdfViewer({ cita, coordenadas, onClose }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setError(false);
+    setRects([]);
     (async () => {
       try {
         const doc = await pdfjsLib.getDocument({ url: "/pdf/cpeum.pdf" }).promise;
@@ -50,7 +54,7 @@ export function PdfViewer({ cita, coordenadas, onClose }: Props) {
         if (cancelled) return;
 
         const base = page.getViewport({ scale: 1 });
-        const targetW = Math.min(820, (scrollRef.current?.clientWidth ?? 820) - 32);
+        const targetW = Math.max(280, (scrollRef.current?.clientWidth ?? 820) - 32);
         const scale = targetW / base.width;
         const viewport = page.getViewport({ scale });
 
@@ -74,7 +78,7 @@ export function PdfViewer({ cita, coordenadas, onClose }: Props) {
         setRects(css);
         setLoading(false);
         if (css[0] && scrollRef.current) {
-          scrollRef.current.scrollTop = Math.max(0, css[0].top - 140);
+          scrollRef.current.scrollTop = Math.max(0, css[0].top - 120);
         }
       } catch {
         if (!cancelled) {
@@ -86,57 +90,53 @@ export function PdfViewer({ cita, coordenadas, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [coordenadas.pagina]);
+  }, [coordenadas.pagina, cita]);
 
   return (
-    <div
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
-    >
-      <div
-        class="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-xl bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div class="flex items-center justify-between border-b border-stone-200 px-4 py-3">
-          <div>
-            <div class="text-sm font-semibold text-emerald-800">{cita}</div>
-            <div class="text-xs text-stone-400">PDF oficial del DOF · página {coordenadas.pagina}</div>
+    <div class="flex h-full flex-col bg-white">
+      <div class="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-3">
+        <div class="min-w-0">
+          <div class="truncate text-sm font-semibold text-stone-800">{cita}</div>
+          <div class="text-xs text-stone-400">
+            PDF oficial del DOF · página {coordenadas.pagina}
           </div>
-          <button
-            onClick={onClose}
-            class="rounded-md px-2 py-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
-            aria-label="Cerrar"
-          >
-            ✕
-          </button>
         </div>
+        <button
+          onClick={onClose}
+          class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+          aria-label="Cerrar visor de PDF"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+      </div>
 
-        <div ref={scrollRef} class="overflow-auto bg-stone-100 p-4">
-          {loading && (
-            <div class="py-24 text-center text-sm text-stone-400">Cargando PDF…</div>
-          )}
-          {error && (
-            <div class="py-24 text-center text-sm text-red-600">
-              No se pudo cargar el PDF.
-            </div>
-          )}
-          <div class="relative mx-auto w-max" style={{ display: error ? "none" : "block" }}>
-            <canvas ref={canvasRef} class="block bg-white shadow" />
-            {rects.map((r, i) => (
-              <div
-                key={i}
-                class="pointer-events-none absolute rounded-[2px]"
-                style={{
-                  left: `${r.left}px`,
-                  top: `${r.top}px`,
-                  width: `${r.width}px`,
-                  height: `${r.height}px`,
-                  background: "rgba(250, 204, 21, 0.4)",
-                  mixBlendMode: "multiply",
-                }}
-              />
-            ))}
+      <div ref={scrollRef} class="scroll-thin grow overflow-auto bg-stone-100 p-4">
+        {loading && (
+          <div class="py-24 text-center text-sm text-stone-400">Cargando PDF…</div>
+        )}
+        {error && (
+          <div class="py-24 text-center text-sm text-red-600">
+            No se pudo cargar el PDF.
           </div>
+        )}
+        <div class="relative mx-auto w-max" style={{ display: error ? "none" : "block" }}>
+          <canvas ref={canvasRef} class="block rounded-sm bg-white shadow-md" />
+          {rects.map((r, i) => (
+            <div
+              key={i}
+              class="pointer-events-none absolute rounded-[2px]"
+              style={{
+                left: `${r.left}px`,
+                top: `${r.top}px`,
+                width: `${r.width}px`,
+                height: `${r.height}px`,
+                background: "rgba(250, 204, 21, 0.4)",
+                mixBlendMode: "multiply",
+              }}
+            />
+          ))}
         </div>
       </div>
     </div>

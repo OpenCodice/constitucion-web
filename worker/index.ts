@@ -1,6 +1,6 @@
 import type { Env } from "./types";
 import { retrieve } from "./retrieve";
-import { buildMessages, buildCitas, parseCitaIds, MARK } from "./answer";
+import { buildMessages, buildCitas, parseCitaIds, sanitizeHistory, buildRetrievalQuery, MARK } from "./answer";
 import { buscar } from "./search";
 import { openapiSpec } from "./openapi";
 import { handleMcp } from "./mcp";
@@ -84,7 +84,7 @@ async function handleBuscar(request: Request, env: Env): Promise<Response> {
 }
 
 async function handlePreguntar(request: Request, env: Env): Promise<Response> {
-  let body: { pregunta?: string; k?: number; as_of?: string };
+  let body: { pregunta?: string; k?: number; as_of?: string; historial?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -95,8 +95,10 @@ async function handlePreguntar(request: Request, env: Env): Promise<Response> {
   if (!pregunta) return Response.json({ error: "falta 'pregunta'" }, { status: 400 });
   const k = Math.min(Math.max(Number(body.k) || 6, 1), 12);
   const asOf = body.as_of ? String(body.as_of) : null;
+  const historial = sanitizeHistory(body.historial);
 
-  const hits = await retrieve(env, pregunta, k, asOf);
+  // Para seguimientos cortos, la query de recuperación incorpora el contexto previo.
+  const hits = await retrieve(env, buildRetrievalQuery(pregunta, historial), k, asOf);
 
   // Respuesta en NDJSON: una línea JSON por evento.
   //   {"t":"hits","v":[...]}   pasajes recuperados (para mostrar fuentes al instante)
@@ -133,7 +135,7 @@ async function handlePreguntar(request: Request, env: Env): Promise<Response> {
             model: env.CHAT_MODEL ?? "gpt-4o-mini",
             max_tokens: 700,
             stream: true,
-            messages: buildMessages(pregunta, hits),
+            messages: buildMessages(pregunta, hits, historial),
           }),
         });
         if (!r.ok || !r.body) {

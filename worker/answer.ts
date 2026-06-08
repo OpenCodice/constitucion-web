@@ -15,11 +15,48 @@ export const MARK = "##CITAS##";
 
 export const SYSTEM =
   "Eres un asistente que responde preguntas sobre la Constitución mexicana " +
-  "USANDO EXCLUSIVAMENTE los pasajes que se te proporcionan. No uses " +
-  "conocimiento externo. Si los pasajes no contienen la respuesta, dilo " +
-  "claramente. Responde en español, de forma breve y clara.";
+  "USANDO EXCLUSIVAMENTE los pasajes que se te proporcionan en el último mensaje. " +
+  "No uses conocimiento externo. Si los pasajes no contienen la respuesta, dilo " +
+  "claramente. Responde en español, de forma breve y clara. Mantienes una " +
+  "conversación: puedes usar los mensajes anteriores para entender preguntas de " +
+  "seguimiento, pero fundamenta cada respuesta solo en los pasajes del último mensaje.";
 
-export function buildMessages(question: string, hits: Hit[]) {
+/** Un turno previo de la conversación (sin pasajes; solo contexto). */
+export interface Turn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/**
+ * Limpia el historial que envía el cliente: solo turnos válidos, sin el marcador
+ * de citas en las respuestas del asistente, acotado en longitud y número de turnos
+ * para no inflar el contexto del LLM.
+ */
+export function sanitizeHistory(raw: unknown, maxTurns = 6): Turn[] {
+  if (!Array.isArray(raw)) return [];
+  const out: Turn[] = [];
+  for (const t of raw) {
+    const role = (t as { role?: unknown })?.role;
+    const content = (t as { content?: unknown })?.content;
+    if ((role !== "user" && role !== "assistant") || typeof content !== "string") continue;
+    const clean = content.split(MARK)[0].trim().slice(0, 2000);
+    if (clean) out.push({ role, content: clean });
+  }
+  return out.slice(-maxTurns);
+}
+
+/**
+ * Query para recuperar pasajes. En seguimientos cortos ("¿y para extranjeros?")
+ * la pregunta por sí sola no recupera bien, así que se le antepone la última
+ * pregunta del usuario como contexto.
+ */
+export function buildRetrievalQuery(question: string, history: Turn[]): string {
+  if (question.length >= 60) return question;
+  const prevUser = [...history].reverse().find((t) => t.role === "user")?.content;
+  return prevUser ? `${prevUser}\n${question}` : question;
+}
+
+export function buildMessages(question: string, hits: Hit[], history: Turn[] = []) {
   const pasajes = hits.map((h) => `[${h.id}] (${h.cita})\n${h.texto}`).join("\n\n");
   const user =
     `PASAJES:\n${pasajes}\n\n` +
@@ -31,6 +68,7 @@ export function buildMessages(question: string, hits: Hit[]) {
     `Incluye en el arreglo únicamente ids que aparezcan en los PASAJES de arriba.`;
   return [
     { role: "system", content: SYSTEM },
+    ...history,
     { role: "user", content: user },
   ];
 }
