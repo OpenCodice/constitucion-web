@@ -114,8 +114,6 @@ export function PdfViewer({ cita, coordenadas, pdfUrl, onClose }: Props) {
           const textDiv = textMap.current.get(n);
           if (textDiv) {
             textDiv.replaceChildren();
-            textDiv.style.width = `${Math.floor(viewport.width)}px`;
-            textDiv.style.height = `${Math.floor(viewport.height)}px`;
             // pdf.js v6 escala los spans con --total-scale-factor (no --scale-factor).
             textDiv.style.setProperty("--total-scale-factor", String(cssScale));
             textDiv.style.setProperty("--scale-factor", String(cssScale));
@@ -129,6 +127,11 @@ export function PdfViewer({ cita, coordenadas, pdfUrl, onClose }: Props) {
             } catch {
               /* sin selección en esta página, pero el PDF sigue visible */
             }
+            // pdf.js deja inline width/height (a veces width:0 → spans recortados y
+            // no seleccionables). Los limpiamos para que mande el CSS inset:0 y el
+            // contenedor cubra exactamente el canvas.
+            textDiv.style.removeProperty("width");
+            textDiv.style.removeProperty("height");
           }
 
           rmap[n] = coordenadas.rects
@@ -185,7 +188,7 @@ export function PdfViewer({ cita, coordenadas, pdfUrl, onClose }: Props) {
           que pone pdf.js. Sin estas reglas los spans quedan a escala incorrecta y
           el texto seleccionable no coincide con el visible. */}
       <style>{`
-        .pdf-textLayer { position: absolute; top: 0; left: 0; overflow: clip; opacity: 1;
+        .pdf-textLayer { position: absolute; inset: 0; overflow: clip; opacity: 1;
           line-height: 1; text-align: initial; text-size-adjust: none;
           forced-color-adjust: none; transform-origin: 0 0; z-index: 1;
           --min-font-size: 1;
@@ -262,34 +265,36 @@ export function PdfViewer({ cita, coordenadas, pdfUrl, onClose }: Props) {
         )}
         <div class="mx-auto w-max space-y-3" style={{ display: error ? "none" : "block" }}>
           {pages.map((n) => (
-            <div key={n} data-page={n} class="relative mx-auto w-max">
-              <canvas
-                ref={(el) => {
-                  if (el) canvasMap.current.set(n, el as HTMLCanvasElement);
-                }}
-                class="block rounded-sm bg-white shadow-md"
-              />
-              <div
-                class="pdf-textLayer"
-                ref={(el) => {
-                  if (el) textMap.current.set(n, el as HTMLDivElement);
-                }}
-              />
-              {(rectsByPage[n] ?? []).map((r, i) => (
+            <div key={n} class="mx-auto w-max">
+              <div data-page={n} class="relative w-max">
+                <canvas
+                  ref={(el) => {
+                    if (el) canvasMap.current.set(n, el as HTMLCanvasElement);
+                  }}
+                  class="block rounded-sm bg-white shadow-md"
+                />
                 <div
-                  key={i}
-                  class="pointer-events-none absolute rounded-[2px]"
-                  style={{
-                    left: `${r.left}px`,
-                    top: `${r.top}px`,
-                    width: `${r.width}px`,
-                    height: `${r.height}px`,
-                    background: "rgba(250, 204, 21, 0.4)",
-                    mixBlendMode: "multiply",
-                    zIndex: 2,
+                  class="pdf-textLayer"
+                  ref={(el) => {
+                    if (el) textMap.current.set(n, el as HTMLDivElement);
                   }}
                 />
-              ))}
+                {(rectsByPage[n] ?? []).map((r, i) => (
+                  <div
+                    key={i}
+                    class="pointer-events-none absolute rounded-[2px]"
+                    style={{
+                      left: `${r.left}px`,
+                      top: `${r.top}px`,
+                      width: `${r.width}px`,
+                      height: `${r.height}px`,
+                      background: "rgba(250, 204, 21, 0.4)",
+                      mixBlendMode: "multiply",
+                      zIndex: 2,
+                    }}
+                  />
+                ))}
+              </div>
               {pages.length > 1 && (
                 <div class="pt-1 text-center text-[11px] text-stone-400">página {n}</div>
               )}
