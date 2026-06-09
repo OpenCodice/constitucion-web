@@ -26,6 +26,9 @@ export interface Pasaje {
   vigente_hasta: string | null;
   archivo_texto: string;
   url_fuente: string;
+  fuente?: string; // nombre de la fuente oficial (DOF / periódico o gaceta estatal)
+  version?: string | null; // fecha del PDF vigente del que se extrajo (YYYY-MM-DD)
+  reformas?: string[]; // fechas de reforma de este pasaje (puede venir vacío)
   coordenadas: Coordenadas | null;
   [k: string]: unknown;
 }

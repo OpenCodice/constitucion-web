@@ -90,7 +90,16 @@ export interface Cita {
   vigente_hasta: string | null;
   archivo: string;
   pdf: string; // url al PDF oficial (DOF o periódico oficial del estado)
+  fuente: string | null; // nombre de la fuente oficial
+  version: string | null; // fecha del PDF vigente usado (YYYY-MM-DD)
+  ultima_reforma: string | null; // última reforma de este pasaje, si la trae
   coordenadas: Coordenadas | null; // página + rects para el visor con resaltado
+}
+
+/** Última fecha (ISO) de una lista de reformas, o null si viene vacía. */
+function ultimaReforma(reformas: string[] | undefined): string | null {
+  if (!reformas || reformas.length === 0) return null;
+  return reformas.reduce((a, b) => (a > b ? a : b));
 }
 
 /** Sólo se aceptan ids realmente recuperados (anti-alucinación de citas). */
@@ -112,6 +121,9 @@ export function buildCitas(hits: Hit[], ids: string[]): Cita[] {
       vigente_hasta: h.vigente_hasta,
       archivo: h.archivo_texto,
       pdf: h.url_fuente,
+      fuente: h.fuente ?? null,
+      version: h.version ?? null,
+      ultima_reforma: ultimaReforma(h.reformas),
       coordenadas: h.coordenadas ?? null,
     });
   }

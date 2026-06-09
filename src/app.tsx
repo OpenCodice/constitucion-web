@@ -16,6 +16,9 @@ interface Cita {
   vigente_hasta: string | null;
   archivo: string;
   pdf: string;
+  fuente: string | null;
+  version: string | null;
+  ultima_reforma: string | null;
   coordenadas: Coordenadas | null;
 }
 
@@ -25,6 +28,14 @@ const AMBITO_LABEL: Record<string, string> = {
   cdmx: "CDMX",
   jalisco: "Jalisco",
   "estado-de-mexico": "Edoméx",
+};
+
+// Escudo por jurisdicción (estatales del portal de la Cámara de Diputados;
+// federal = Escudo Nacional). Sirven en /escudos/ desde public/.
+const AMBITO_ESCUDO: Record<string, string> = {
+  federal: "/escudos/federal.png",
+  jalisco: "/escudos/jal.jpg",
+  cdmx: "/escudos/df.jpg",
 };
 function ambitoLabel(a: string): string {
   return AMBITO_LABEL[a] ?? a.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -399,13 +410,17 @@ function AmbitoBadge({ ambito }: { ambito: string }) {
   const cls = esFederal
     ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
     : "bg-amber-50 text-amber-700 ring-amber-600/20";
+  const escudo = AMBITO_ESCUDO[ambito];
   return (
     <span
       class={
-        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset " +
+        "inline-flex shrink-0 items-center gap-1 rounded-full py-0.5 pl-0.5 pr-2 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset " +
         cls
       }
     >
+      {escudo && (
+        <img src={escudo} alt="" loading="lazy" class="h-4 w-4 rounded-full object-contain" />
+      )}
       {ambitoLabel(ambito)}
     </span>
   );
@@ -422,6 +437,13 @@ function CitaCard({ c, onPdf }: { c: Cita; onPdf: () => void }) {
         <span class="shrink-0 text-xs text-stone-400">{vigenciaLabel(c)}</span>
       </div>
       <p class="mt-1.5 line-clamp-3 text-sm leading-relaxed text-stone-600">{c.texto}</p>
+      {(c.fuente || c.version) && (
+        <p class="mt-2 truncate text-[11px] text-stone-400" title={c.fuente ?? ""}>
+          {c.fuente}
+          {c.version && <> · PDF vigente al {c.version}</>}
+          {c.ultima_reforma && <> · última reforma {c.ultima_reforma}</>}
+        </p>
+      )}
       <div class="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
         {c.coordenadas && (
           <button
