@@ -15,7 +15,7 @@
     "ingest": "node scripts/ingest.mjs",
     "index:metadata": "wrangler vectorize create-metadata-index constitucion-pasajes --property-name ambito --type string",
     "upload:vectors": "wrangler vectorize upsert constitucion-pasajes --file ./.data/vectors.ndjson",
-    "upload:kv": "wrangler kv bulk put ./.data/kv-pasajes.json --binding PASAJES --preview false",
+    "upload:kv": "wrangler kv bulk put ./.data/kv-pasajes.json --binding PASAJES --preview false --remote",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json"
   },
   "devDependencies": {
