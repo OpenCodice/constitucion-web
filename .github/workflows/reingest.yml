@@ -44,6 +44,12 @@ jobs:
           repository: OpenCodice/constitucion-mexicana
           path: constitucion-mexicana
 
+      - name: Checkout de los datos estatales (leyes-estatales)
+        uses: actions/checkout@v5
+        with:
+          repository: OpenCodice/leyes-estatales
+          path: leyes-estatales
+
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
@@ -54,7 +60,11 @@ jobs:
         run: npm ci
 
       - name: Generar embeddings (datos → .data/)
-        run: npm run ingest -- ./constitucion-mexicana
+        run: |
+          npm run ingest -- \
+            ./constitucion-mexicana \
+            ./leyes-estatales/jalisco/constitucion \
+            ./leyes-estatales/cdmx/constitucion
 
       - name: Subir vectores a Vectorize (upsert)
         run: npm run upload:vectors
@@ -62,9 +72,16 @@ jobs:
       - name: Subir pasajes a KV
         run: npm run upload:kv
 
-      - name: Subir el PDF fuente a R2
+      - name: Subir los PDFs fuente a R2
         # El PDF viaja en el mismo commit que las coordenadas → siempre el par exacto.
+        # Keys: cpeum.pdf (federal) + {estado}.pdf, que el Worker sirve en /pdf/.
         run: |
           npx wrangler r2 object put constitucion-pdf/cpeum.pdf \
             --file ./constitucion-mexicana/fuente/CPEUM.pdf \
+            --content-type application/pdf
+          npx wrangler r2 object put constitucion-pdf/jalisco.pdf \
+            --file ./leyes-estatales/jalisco/constitucion/fuente/constitucion.pdf \
+            --content-type application/pdf
+          npx wrangler r2 object put constitucion-pdf/cdmx.pdf \
+            --file ./leyes-estatales/cdmx/constitucion/fuente/constitucion.pdf \
             --content-type application/pdf
