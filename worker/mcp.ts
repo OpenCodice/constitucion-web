@@ -9,6 +9,7 @@ import type { Env } from "./types";
 import { buscar } from "./search";
 import { CORS } from "./cors";
 import { isLimited } from "./ratelimit";
+import { scopeAuto, scopeExplicito } from "./ambito";
 
 const PROTOCOL_VERSION = "2025-06-18";
 const SERVER_INFO = { name: "constitucion-mx", version: "1.0.0" };
@@ -16,16 +17,26 @@ const SERVER_INFO = { name: "constitucion-mx", version: "1.0.0" };
 const TOOL = {
   name: "buscar_constitucion",
   description:
-    "Busca pasajes de la Constitución Política de los Estados Unidos Mexicanos " +
-    "relevantes a una pregunta. Devuelve pasajes citables (cita legal, ruta, texto " +
-    "vigente, archivo fuente). NO genera respuestas: usa los pasajes para responder " +
-    "y citar con precisión, sin inventar.",
+    "Busca pasajes de la Constitución mexicana —la federal (CPEUM) y las " +
+    "constituciones de los estados— relevantes a una pregunta. Por defecto " +
+    "responde con la federal y, si la pregunta menciona un estado, suma también " +
+    "el de ese estado (auto-fusión). Devuelve pasajes citables (jurisdicción, cita " +
+    "legal, ruta, texto vigente, archivo fuente). NO genera respuestas: usa los " +
+    "pasajes para responder y citar con precisión, sin inventar ni confundir " +
+    "jurisdicciones.",
   inputSchema: {
     type: "object",
     properties: {
       pregunta: { type: "string", description: "Pregunta o tema en lenguaje natural, en español." },
       k: { type: "integer", minimum: 1, maximum: 12, default: 6, description: "Pasajes a devolver." },
       as_of: { type: "string", description: "Fecha ISO YYYY-MM-DD para consulta histórica (opcional)." },
+      ambito: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Jurisdicciones a consultar (opcional). Ej.: [\"jalisco\"] o [\"federal\",\"cdmx\"]. " +
+          "Si se omite, se infiere de la pregunta (la federal siempre se incluye).",
+      },
     },
     required: ["pregunta"],
   },
@@ -99,8 +110,9 @@ export async function handleMcp(request: Request, env: Env): Promise<Response> {
       }
       const k = Math.min(Math.max(Number(args.k) || 6, 1), 12);
       const asOf = args.as_of ? String(args.as_of) : null;
+      const ambitos = scopeExplicito(args.ambito) ?? scopeAuto(pregunta);
       try {
-        const pasajes = await buscar(env, pregunta, k, asOf);
+        const pasajes = await buscar(env, pregunta, k, asOf, ambitos);
         return rpcResult(id, {
           content: [{ type: "text", text: JSON.stringify({ pregunta, pasajes }, null, 2) }],
           structuredContent: { pregunta, pasajes },

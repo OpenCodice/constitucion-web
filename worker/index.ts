@@ -6,6 +6,7 @@ import { openapiSpec } from "./openapi";
 import { handleMcp } from "./mcp";
 import { CORS } from "./cors";
 import { checkLimit } from "./ratelimit";
+import { scopeAuto, scopeExplicito } from "./ambito";
 
 export { RateLimiter } from "./ratelimiter-do";
 
@@ -35,9 +36,11 @@ export default {
     if (url.pathname === "/mcp") {
       return handleMcp(request, env);
     }
-    // PDF oficial versionado (para el visor con resaltado).
-    if (url.pathname === "/pdf/cpeum.pdf") {
-      return servePdf(env);
+    // PDF oficial versionado por jurisdicción (para el visor con resaltado).
+    // /pdf/cpeum.pdf (federal), /pdf/jalisco.pdf, /pdf/cdmx.pdf, …
+    const pdfMatch = url.pathname.match(/^\/pdf\/([a-z0-9-]+\.pdf)$/);
+    if (pdfMatch) {
+      return servePdf(env, pdfMatch[1]);
     }
     if (url.pathname.startsWith("/api/")) {
       return new Response("Not found", { status: 404 });
@@ -48,8 +51,8 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-async function servePdf(env: Env): Promise<Response> {
-  const object = await env.PDF.get("cpeum.pdf");
+async function servePdf(env: Env, key: string): Promise<Response> {
+  const object = await env.PDF.get(key);
   if (!object) return new Response("PDF no encontrado", { status: 404 });
   const headers = new Headers();
   headers.set("content-type", "application/pdf");
@@ -59,7 +62,7 @@ async function servePdf(env: Env): Promise<Response> {
 }
 
 async function handleBuscar(request: Request, env: Env): Promise<Response> {
-  let body: { pregunta?: string; k?: number; as_of?: string };
+  let body: { pregunta?: string; k?: number; as_of?: string; ambito?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -71,10 +74,12 @@ async function handleBuscar(request: Request, env: Env): Promise<Response> {
   }
   const k = Math.min(Math.max(Number(body.k) || 6, 1), 12);
   const asOf = body.as_of ? String(body.as_of) : null;
+  // Ámbito explícito si lo mandan; si no, auto-fusión por lo que mencione la pregunta.
+  const ambitos = scopeExplicito(body.ambito) ?? scopeAuto(pregunta);
 
   try {
-    const pasajes = await buscar(env, pregunta, k, asOf);
-    return Response.json({ pregunta, pasajes }, { headers: CORS });
+    const pasajes = await buscar(env, pregunta, k, asOf, ambitos);
+    return Response.json({ pregunta, ambito: ambitos, pasajes }, { headers: CORS });
   } catch (e) {
     return Response.json(
       { error: e instanceof Error ? e.message : "error de recuperación" },
@@ -84,7 +89,7 @@ async function handleBuscar(request: Request, env: Env): Promise<Response> {
 }
 
 async function handlePreguntar(request: Request, env: Env): Promise<Response> {
-  let body: { pregunta?: string; k?: number; as_of?: string; historial?: unknown };
+  let body: { pregunta?: string; k?: number; as_of?: string; historial?: unknown; ambito?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -97,8 +102,13 @@ async function handlePreguntar(request: Request, env: Env): Promise<Response> {
   const asOf = body.as_of ? String(body.as_of) : null;
   const historial = sanitizeHistory(body.historial);
 
+  // Auto-fusión natural: el estado se infiere de la pregunta + el historial
+  // (para seguimientos como "¿y en Jalisco?"). Ámbito explícito tiene prioridad.
+  const ambitos =
+    scopeExplicito(body.ambito) ?? scopeAuto(pregunta, ...historial.map((t) => t.content));
+
   // Para seguimientos cortos, la query de recuperación incorpora el contexto previo.
-  const hits = await retrieve(env, buildRetrievalQuery(pregunta, historial), k, asOf);
+  const hits = await retrieve(env, buildRetrievalQuery(pregunta, historial), k, asOf, ambitos);
 
   // Respuesta en NDJSON: una línea JSON por evento.
   //   {"t":"hits","v":[...]}   pasajes recuperados (para mostrar fuentes al instante)
@@ -121,7 +131,7 @@ async function handlePreguntar(request: Request, env: Env): Promise<Response> {
 
         send({
           t: "hits",
-          v: hits.map((h) => ({ id: h.id, cita: h.cita, score: h._score })),
+          v: hits.map((h) => ({ id: h.id, ambito: h.ambito, cita: h.cita, score: h._score })),
         });
 
         const base = env.OPENAI_BASE ?? "https://api.openai.com/v1";

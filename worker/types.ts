@@ -17,6 +17,7 @@ export interface Coordenadas {
 // Mismo shape que metadata/pasajes.jsonl en constitucion-mexicana.
 export interface Pasaje {
   id: string;
+  ambito: string; // jurisdicción: "federal", "jalisco", "cdmx", … (partición del corpus)
   cita: string;
   ruta: string;
   texto: string;
@@ -37,6 +38,7 @@ export interface Env {
   OPENAI_BASE?: string;
   EMBED_MODEL?: string;
   CHAT_MODEL?: string;
+  AMBITO_FILTER?: string; // "1" activa el filtro por jurisdicción (tras crear índice + re-ingestar)
   RATE_LIMITER: DurableObjectNamespace; // rate limiting por IP
   PDF: R2Bucket; // PDF oficial versionado
 }

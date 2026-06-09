@@ -7,9 +7,11 @@ export function openapiSpec(origin: string) {
       title: "Constitución Mexicana — búsqueda de pasajes",
       version: "1.0.0",
       description:
-        "Busca pasajes citables de la Constitución Política de los Estados Unidos " +
-        "Mexicanos (texto vigente). Devuelve pasajes con su cita legal y vigencia; " +
-        "no genera respuestas. Úsalos para responder y citar con precisión.",
+        "Busca pasajes citables de la Constitución mexicana: la federal (CPEUM) y " +
+        "las constituciones de los estados (texto vigente). Por defecto usa la " +
+        "federal y suma el estado que mencione la pregunta. Devuelve pasajes con su " +
+        "jurisdicción, cita legal y vigencia; no genera respuestas. Úsalos para " +
+        "responder y citar con precisión.",
     },
     servers: [{ url: origin }],
     paths: {
@@ -61,6 +63,13 @@ export function openapiSpec(origin: string) {
               description:
                 "Fecha ISO (YYYY-MM-DD) para consulta histórica. Omitir = texto vigente hoy.",
             },
+            ambito: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "Jurisdicciones a consultar (p. ej. [\"jalisco\"]). Omitir = se infiere " +
+                "de la pregunta; la federal siempre se incluye.",
+            },
           },
         },
         BuscarResponse: {
@@ -76,7 +85,8 @@ export function openapiSpec(origin: string) {
         Pasaje: {
           type: "object",
           properties: {
-            id: { type: "string", description: "Identificador del pasaje (p. ej. 005.p1)." },
+            id: { type: "string", description: "Identificador del pasaje (p. ej. 005.p1, jal:042.p3)." },
+            ambito: { type: "string", description: "Jurisdicción: federal, jalisco, cdmx, …" },
             cita: { type: "string", description: "Cita legal formal. Úsala textual." },
             ruta: { type: "string", description: "Ubicación legible del pasaje." },
             texto: { type: "string", description: "Texto del pasaje (fuente de la cita)." },

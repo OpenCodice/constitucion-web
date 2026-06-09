@@ -66,6 +66,39 @@ cd ../constitucion-web && npm run ingest && npm run upload:vectors && npm run up
 Esto se puede automatizar con un GitHub Action en `constitucion-mexicana` que
 dispare la ingestión tras cada commit a `main`.
 
+## Auto-fusión federal + estatal
+
+El RAG responde **federal + tu estado en una sola respuesta**. Los pasajes de
+las constituciones estatales viven en
+[`leyes-estatales`](https://github.com/OpenCodice/leyes-estatales) (un dir por
+estado) y entran al **mismo** índice Vectorize, etiquetados con su jurisdicción
+(`ambito`: `federal`, `jalisco`, `cdmx`, …). La query filtra por `ambito` para
+no mezclar leyes de estados distintos. El estado se infiere de la pregunta (por
+nombre o gentilicio); sin selector obligatorio. La federal siempre se incluye.
+
+Activación (el **orden importa**: el índice de metadata solo aplica a vectores
+insertados *después* de crearlo):
+
+```bash
+# 1. Crear el índice de metadata sobre `ambito` (una vez)
+npm run index:metadata
+# 2. Re-ingestar TODO el corpus (federal + estados) para que lleve `ambito`
+OPENAI_API_KEY=sk-... npm run ingest \
+  ../constitucion-mexicana \
+  ../leyes-estatales/jalisco/constitucion \
+  ../leyes-estatales/cdmx/constitucion
+npm run upload:vectors
+npm run upload:kv
+# 3. Activar el filtro y desplegar
+#    pon  "AMBITO_FILTER": "1"  en wrangler.jsonc (vars)
+npm run deploy
+```
+
+Hasta que `AMBITO_FILTER` sea `"1"` el filtro está apagado y el Worker se
+comporta como antes (seguro desplegar el código sin haber migrado los datos).
+La API/MCP aceptan además `ambito` explícito (p. ej. `["jalisco"]`) que tiene
+prioridad sobre la inferencia.
+
 ## Notas de costo / operación
 
 - Ingestión: ~$0.01 una vez (1353 embeddings); se repite solo al reindexar.

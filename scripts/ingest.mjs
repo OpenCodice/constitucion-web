@@ -8,14 +8,27 @@
 // artículo (igual que _search_text en rag/corpus.py): el enriquecimiento mejora
 // el recall pero NUNCA es fuente de cita (la cita sale de `texto`).
 //
+// Multi-corpus: federal + constituciones estatales en UN índice. Cada pasaje
+// lleva su `ambito` (jurisdicción) en la metadata del vector, para filtrar la
+// auto-fusión sin contaminación cruzada. Los ids estatales ya vienen
+// prefijados (jal:..., cmx:...); los federales no, para no romper compat.
+//
 // Uso:
-//   OPENAI_API_KEY=sk-... node scripts/ingest.mjs [ruta-al-repo-de-datos]
-//   (default: ../constitucion-mexicana)
+//   OPENAI_API_KEY=sk-... node scripts/ingest.mjs [ruta-de-datos ...]
+//   (default: federal + Jalisco + CDMX)
 
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-const DATA_REPO = process.argv[2] ?? "../constitucion-mexicana";
+// Corpus a indexar. Cada uno es un dir con metadata/pasajes.jsonl.
+const CORPORA = process.argv.slice(2);
+if (CORPORA.length === 0) {
+  CORPORA.push(
+    "../constitucion-mexicana",
+    "../leyes-estatales/jalisco/constitucion",
+    "../leyes-estatales/cdmx/constitucion",
+  );
+}
 const EMBED_MODEL = process.env.EMBED_MODEL ?? "text-embedding-3-small";
 const OPENAI_BASE = process.env.OPENAI_BASE ?? "https://api.openai.com/v1";
 const API_KEY = process.env.OPENAI_API_KEY;
@@ -28,8 +41,8 @@ if (!API_KEY) {
 }
 
 // --- cargar pasajes + enriquecimiento -------------------------------------- //
-function loadPasajes() {
-  const file = join(DATA_REPO, "metadata", "pasajes.jsonl");
+function loadPasajes(repo) {
+  const file = join(repo, "metadata", "pasajes.jsonl");
   if (!existsSync(file)) {
     console.error(`No existe ${file}. Corre el extractor primero.`);
     process.exit(1);
@@ -37,11 +50,13 @@ function loadPasajes() {
   return readFileSync(file, "utf-8")
     .split("\n")
     .filter((l) => l.trim())
-    .map((l) => JSON.parse(l));
+    .map((l) => JSON.parse(l))
+    // Federal histórico no trae `ambito`; por defecto es la federal.
+    .map((p) => ({ ...p, ambito: p.ambito ?? "federal" }));
 }
 
-function loadEnrichment() {
-  const dir = join(DATA_REPO, "metadata", "generado");
+function loadEnrichment(repo) {
+  const dir = join(repo, "metadata", "generado");
   const out = {};
   if (!existsSync(dir)) return out;
   for (const f of readdirSync(dir)) {
@@ -80,30 +95,37 @@ async function embedBatch(texts) {
 }
 
 // --- main ------------------------------------------------------------------- //
-const pasajes = loadPasajes();
-const enrich = loadEnrichment();
-console.log(`${pasajes.length} pasajes, ${Object.keys(enrich).length} artículos enriquecidos.`);
-
 const vectorLines = [];
 const kvPairs = [];
 
-for (let i = 0; i < pasajes.length; i += BATCH) {
-  const slice = pasajes.slice(i, i + BATCH);
-  const texts = slice.map((p) => searchText(p, enrich[p.clave_articulo]));
-  const vectors = await embedBatch(texts);
+for (const repo of CORPORA) {
+  const pasajes = loadPasajes(repo);
+  const enrich = loadEnrichment(repo);
+  const ambito = pasajes[0]?.ambito ?? "federal";
+  console.log(
+    `\n[${ambito}] ${repo}: ${pasajes.length} pasajes, ` +
+      `${Object.keys(enrich).length} artículos enriquecidos.`,
+  );
 
-  slice.forEach((p, j) => {
-    vectorLines.push(
-      JSON.stringify({
-        id: p.id,
-        values: vectors[j],
-        metadata: { clave_articulo: p.clave_articulo },
-      }),
-    );
-    // El registro completo va a KV: de aquí salen las citas verificables.
-    kvPairs.push({ key: p.id, value: JSON.stringify(p) });
-  });
-  console.log(`  embebidos ${Math.min(i + BATCH, pasajes.length)}/${pasajes.length}`);
+  for (let i = 0; i < pasajes.length; i += BATCH) {
+    const slice = pasajes.slice(i, i + BATCH);
+    const texts = slice.map((p) => searchText(p, enrich[p.clave_articulo]));
+    const vectors = await embedBatch(texts);
+
+    slice.forEach((p, j) => {
+      vectorLines.push(
+        JSON.stringify({
+          id: p.id,
+          values: vectors[j],
+          // `ambito` indexado → filtro de jurisdicción en la query (auto-fusión).
+          metadata: { ambito: p.ambito, clave_articulo: p.clave_articulo },
+        }),
+      );
+      // El registro completo va a KV: de aquí salen las citas verificables.
+      kvPairs.push({ key: p.id, value: JSON.stringify(p) });
+    });
+    console.log(`  embebidos ${Math.min(i + BATCH, pasajes.length)}/${pasajes.length}`);
+  }
 }
 
 if (!existsSync(OUT_DIR)) mkdirSync(OUT_DIR, { recursive: true });

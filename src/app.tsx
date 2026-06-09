@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { Coordenadas, PdfViewer as PdfViewerType } from "./PdfViewer";
 
-// Repo de datos en GitHub: cada cita enlaza a su artículo (texto oficial).
-const DATA_REPO = "https://github.com/danielcardeenas/constitucion-mexicana/blob/main";
+// Repos de datos en GitHub: cada cita enlaza a su artículo (texto oficial).
+// La federal vive en constitucion-mexicana; las estatales en leyes-estatales
+// bajo {estado}/constitucion/. El enlace se arma según la jurisdicción.
+const ORG = "https://github.com/OpenCodice";
 
 interface Cita {
   id: string;
+  ambito: string; // "federal", "jalisco", "cdmx", … (jurisdicción)
   cita: string;
   ruta: string;
   texto: string;
@@ -14,6 +17,30 @@ interface Cita {
   archivo: string;
   pdf: string;
   coordenadas: Coordenadas | null;
+}
+
+// Etiqueta legible de la jurisdicción para el badge de cada cita.
+const AMBITO_LABEL: Record<string, string> = {
+  federal: "Federal",
+  cdmx: "CDMX",
+  jalisco: "Jalisco",
+  "estado-de-mexico": "Edoméx",
+};
+function ambitoLabel(a: string): string {
+  return AMBITO_LABEL[a] ?? a.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// URL al texto oficial en GitHub, según la jurisdicción de la cita.
+function textoOficialUrl(c: Cita): string {
+  return c.ambito === "federal"
+    ? `${ORG}/constitucion-mexicana/blob/main/${c.archivo}`
+    : `${ORG}/leyes-estatales/blob/main/${c.ambito}/constitucion/${c.archivo}`;
+}
+
+// PDF oficial servido por el Worker desde R2, por jurisdicción. El visor lo usa
+// para mostrar el documento correcto (la federal o la del estado).
+function pdfUrlFor(ambito: string): string {
+  return ambito === "federal" ? "/pdf/cpeum.pdf" : `/pdf/${ambito}.pdf`;
 }
 
 interface Msg {
@@ -26,9 +53,9 @@ interface Msg {
 
 const EJEMPLOS = [
   "¿Necesito título para ejercer mi profesión?",
-  "¿Está permitido el matrimonio igualitario?",
+  "¿Qué dice la constitución de Jalisco sobre el municipio?",
   "¿Qué derechos tengo si me detienen?",
-  "¿Puedo tener doble nacionalidad?",
+  "¿Cómo se gobierna la Ciudad de México?",
 ];
 
 function vigenciaLabel(c: Cita): string {
@@ -54,7 +81,7 @@ export function App() {
 
   // Visor PDF (panel lateral): se carga bajo demanda (pdf.js es pesado).
   const [PdfViewer, setPdfViewer] = useState<typeof PdfViewerType | null>(null);
-  const [pdfProps, setPdfProps] = useState<{ cita: string; coordenadas: Coordenadas } | null>(null);
+  const [pdfProps, setPdfProps] = useState<{ cita: string; coordenadas: Coordenadas; pdfUrl: string } | null>(null);
   const [pdfOpen, setPdfOpen] = useState(false);
 
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -83,7 +110,7 @@ export function App() {
       const mod = await import("./PdfViewer");
       setPdfViewer(() => mod.PdfViewer);
     }
-    setPdfProps({ cita: c.cita, coordenadas: c.coordenadas });
+    setPdfProps({ cita: c.cita, coordenadas: c.coordenadas, pdfUrl: pdfUrlFor(c.ambito) });
     setPdfOpen(true);
   }
 
@@ -213,9 +240,9 @@ export function App() {
                 ¿Qué quieres saber de la Constitución?
               </h1>
               <p class="mt-2 max-w-md text-sm text-stone-500">
-                Pregunta en lenguaje natural y recibe respuestas con{" "}
-                <strong class="font-semibold text-stone-700">citas verificables</strong> al texto
-                vigente.
+                Pregunta en lenguaje natural sobre la Constitución{" "}
+                <strong class="font-semibold text-stone-700">federal o la de tu estado</strong> y
+                recibe respuestas con citas verificables al texto vigente.
               </p>
               <div class="mt-7 flex w-full max-w-xl flex-wrap justify-center gap-2">
                 {EJEMPLOS.map((ej) => (
@@ -330,7 +357,7 @@ export function App() {
             </form>
             <p class="mt-2 px-1 text-center text-[11px] text-stone-400">
               Respuestas generadas por IA a partir de los pasajes citados. El texto oficial es el del
-              Diario Oficial de la Federación.
+              Diario Oficial de la Federación o del periódico oficial de cada estado.
             </p>
           </div>
         </div>
@@ -357,6 +384,7 @@ export function App() {
           <PdfViewer
             cita={pdfProps.cita}
             coordenadas={pdfProps.coordenadas}
+            pdfUrl={pdfProps.pdfUrl}
             onClose={cerrarPdf}
           />
         )}
@@ -365,11 +393,32 @@ export function App() {
   );
 }
 
+function AmbitoBadge({ ambito }: { ambito: string }) {
+  // Federal y estatal con colores distintos para no confundir jurisdicciones.
+  const esFederal = ambito === "federal";
+  const cls = esFederal
+    ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
+    : "bg-amber-50 text-amber-700 ring-amber-600/20";
+  return (
+    <span
+      class={
+        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset " +
+        cls
+      }
+    >
+      {ambitoLabel(ambito)}
+    </span>
+  );
+}
+
 function CitaCard({ c, onPdf }: { c: Cita; onPdf: () => void }) {
   return (
     <div class="rounded-xl border border-stone-200 bg-white p-3.5 shadow-sm transition hover:border-stone-300">
-      <div class="flex items-baseline justify-between gap-3">
-        <span class="text-sm font-semibold text-emerald-800">{c.cita}</span>
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex min-w-0 items-center gap-2">
+          <AmbitoBadge ambito={c.ambito} />
+          <span class="truncate text-sm font-semibold text-emerald-800">{c.cita}</span>
+        </div>
         <span class="shrink-0 text-xs text-stone-400">{vigenciaLabel(c)}</span>
       </div>
       <p class="mt-1.5 line-clamp-3 text-sm leading-relaxed text-stone-600">{c.texto}</p>
@@ -387,7 +436,7 @@ function CitaCard({ c, onPdf }: { c: Cita; onPdf: () => void }) {
           </button>
         )}
         <a
-          href={`${DATA_REPO}/${c.archivo}`}
+          href={textoOficialUrl(c)}
           target="_blank"
           rel="noreferrer"
           class="text-stone-400 underline-offset-2 hover:text-emerald-700 hover:underline"
@@ -401,7 +450,7 @@ function CitaCard({ c, onPdf }: { c: Cita; onPdf: () => void }) {
             rel="noreferrer"
             class="text-stone-400 underline-offset-2 hover:text-emerald-700 hover:underline"
           >
-            PDF del DOF ↗
+            {c.ambito === "federal" ? "PDF del DOF ↗" : "PDF oficial ↗"}
           </a>
         )}
       </div>

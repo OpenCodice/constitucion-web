@@ -1,5 +1,6 @@
 import type { Hit } from "./retrieve";
 import type { Coordenadas } from "./types";
+import { nombreAmbito } from "./ambito";
 
 /**
  * Port de rag/answer.py — patrón anti-alucinación.
@@ -14,8 +15,12 @@ import type { Coordenadas } from "./types";
 export const MARK = "##CITAS##";
 
 export const SYSTEM =
-  "Eres un asistente que responde preguntas sobre la Constitución mexicana " +
+  "Eres un asistente que responde preguntas sobre la Constitución mexicana, " +
+  "tanto la federal (CPEUM) como las constituciones de los estados, " +
   "USANDO EXCLUSIVAMENTE los pasajes que se te proporcionan en el último mensaje. " +
+  "Cada pasaje indica su jurisdicción entre corchetes (p. ej. 'Constitución federal' " +
+  "o 'Jalisco'). Cuando una respuesta mezcle ámbitos, di explícitamente qué " +
+  "corresponde a la federal y qué al estado, y no confundas una jurisdicción con otra. " +
   "No uses conocimiento externo. Si los pasajes no contienen la respuesta, dilo " +
   "claramente. Responde en español, de forma breve y clara. Mantienes una " +
   "conversación: puedes usar los mensajes anteriores para entender preguntas de " +
@@ -57,7 +62,9 @@ export function buildRetrievalQuery(question: string, history: Turn[]): string {
 }
 
 export function buildMessages(question: string, hits: Hit[], history: Turn[] = []) {
-  const pasajes = hits.map((h) => `[${h.id}] (${h.cita})\n${h.texto}`).join("\n\n");
+  const pasajes = hits
+    .map((h) => `[${h.id}] [${nombreAmbito(h.ambito)}] (${h.cita})\n${h.texto}`)
+    .join("\n\n");
   const user =
     `PASAJES:\n${pasajes}\n\n` +
     `PREGUNTA: ${question}\n\n` +
@@ -75,13 +82,14 @@ export function buildMessages(question: string, hits: Hit[], history: Turn[] = [
 
 export interface Cita {
   id: string;
+  ambito: string; // jurisdicción, para mostrar "Federal" / "Jalisco" en la fuente
   cita: string;
   ruta: string;
   texto: string;
   vigente_desde: string | null;
   vigente_hasta: string | null;
   archivo: string;
-  pdf: string; // url al PDF oficial del DOF
+  pdf: string; // url al PDF oficial (DOF o periódico oficial del estado)
   coordenadas: Coordenadas | null; // página + rects para el visor con resaltado
 }
 
@@ -96,6 +104,7 @@ export function buildCitas(hits: Hit[], ids: string[]): Cita[] {
     seen.add(id);
     out.push({
       id: h.id,
+      ambito: h.ambito,
       cita: h.cita,
       ruta: h.ruta,
       texto: h.texto,

@@ -37,12 +37,22 @@ export async function retrieve(
   pregunta: string,
   k: number,
   asOf: string | null,
+  ambitos: string[] | null = null,
 ): Promise<Hit[]> {
   const vec = await embed(env, pregunta);
-  const res = await env.VECTORIZE.query(vec, {
+  // Auto-fusión: filtra por jurisdicción en Vectorize (requiere índice de
+  // metadata sobre `ambito`; ver README). Una sola query rankea federal +
+  // estado en un top-k unificado, sin contaminación cruzada.
+  const opts: VectorizeQueryOptions = {
     topK: Math.min(k * 4, 100),
     returnMetadata: "none",
-  });
+  };
+  // Solo filtra cuando el índice de metadata existe y el corpus está re-ingestado
+  // (flag AMBITO_FILTER=1). Así desplegar el código antes de migrar no rompe nada.
+  if (env.AMBITO_FILTER === "1" && ambitos && ambitos.length) {
+    opts.filter = { ambito: { $in: ambitos } };
+  }
+  const res = await env.VECTORIZE.query(vec, opts);
 
   const scoreById = new Map(res.matches.map((m) => [m.id, m.score]));
   const records = await Promise.all(

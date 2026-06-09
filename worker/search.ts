@@ -5,6 +5,7 @@ import { retrieve } from "./retrieve";
 // Es la "fuente confiable": el LLM que llama redacta y cita a partir de esto.
 export interface PasajeResultado {
   id: string;
+  ambito: string; // jurisdicción: "federal", "jalisco", … (para no confundir leyes)
   cita: string;
   ruta: string;
   texto: string;
@@ -22,10 +23,12 @@ export async function buscar(
   pregunta: string,
   k: number,
   asOf: string | null,
+  ambitos: string[] | null = null,
 ): Promise<PasajeResultado[]> {
-  const hits = await retrieve(env, pregunta, k, asOf);
+  const hits = await retrieve(env, pregunta, k, asOf, ambitos);
   return hits.map((h) => ({
     id: h.id,
+    ambito: h.ambito,
     cita: h.cita,
     ruta: h.ruta,
     texto: h.texto,
