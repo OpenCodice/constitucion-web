@@ -50,8 +50,12 @@ function textoOficialUrl(c: Cita): string {
 
 // PDF oficial servido por el Worker desde R2, por jurisdicción. El visor lo usa
 // para mostrar el documento correcto (la federal o la del estado).
-function pdfUrlFor(ambito: string): string {
-  return ambito === "federal" ? "/pdf/cpeum.pdf" : `/pdf/${ambito}.pdf`;
+// El PDF se sirve en URL fija con cache largo. La `version` (fecha del PDF) va
+// como cache-buster: al cambiar el PDF (reforma), la URL cambia y el navegador
+// trae el archivo fresco, evitando resaltar coordenadas nuevas sobre un PDF viejo.
+function pdfUrlFor(ambito: string, version: string | null): string {
+  const file = ambito === "federal" ? "cpeum.pdf" : `${ambito}.pdf`;
+  return version ? `/pdf/${file}?v=${version}` : `/pdf/${file}`;
 }
 
 interface Msg {
@@ -121,7 +125,7 @@ export function App() {
       const mod = await import("./PdfViewer");
       setPdfViewer(() => mod.PdfViewer);
     }
-    setPdfProps({ cita: c.cita, coordenadas: c.coordenadas, pdfUrl: pdfUrlFor(c.ambito) });
+    setPdfProps({ cita: c.cita, coordenadas: c.coordenadas, pdfUrl: pdfUrlFor(c.ambito, c.version) });
     setPdfOpen(true);
   }
 
