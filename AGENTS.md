@@ -19,7 +19,7 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     detalles técnicos: por documento, su última reforma, cuántas reformas anota,
     una fila de cuadros por año y si tiene una actualización en revisión (un PR
     abierto que lo toca o `revision_pendiente`). Su color es verde y ámbar; en
-    `/estado` el único color es el rojo de las fallas.
+    `/estado`, verde para las corridas correctas y rojo para las fallas.
   - `scripts/estado.mjs` → `/estado` («Estado del sistema»), técnica: resumen
     por repo, barras de las últimas corridas de cada `vigilar*.yml`, cuadrícula
     de cambios por día y PR abiertos.

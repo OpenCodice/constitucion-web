@@ -158,8 +158,8 @@ function seccionCorpus({ estatales, federales }) {
 <p>Las listas completas, con el motivo de cada exclusión, están en <a href="/leyes">Qué leyes hay</a>.</p>`;
 }
 
-// Tipo de barra por resultado. La falla es la única en color y además más alta,
-// para que no dependa solo del color.
+// Tipo de barra por resultado. La falla, en rojo, además es más alta, para que
+// no se distinga de la correcta (verde) solo por el color.
 function claseCorrida(c) {
   if (c.status !== "completed") return "b-curso";
   if (["failure", "timed_out", "startup_failure"].includes(c.conclusion)) return "b-falla";
@@ -371,16 +371,18 @@ ${avisos.join("\n")}`;
 }
 
 const ESTILO = `
-/* Colores de los visuales. El rojo es el único color de la página y solo
-   marca lo que pide atención. */
+/* Colores de los visuales. Las corridas correctas usan el mismo verde de
+   /leyes; el rojo marca solo lo que pide atención. */
 :root {
   --barra: #7a7a7a;
+  --verde: #3f8757;
   --rojo: #b42318;
   --n0: #ececec; --n1: #c6c6c6; --n2: #969696; --n3: #5c5c5c; --n4: #111111;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --barra: #8c8c8c;
+    --verde: #5fae78;
     --rojo: #e0605a;
     --n0: #1d1d1d; --n1: #3c3c3c; --n2: #6a6a6a; --n3: #a6a6a6; --n4: #f2f2f2;
   }
@@ -393,6 +395,7 @@ const ESTILO = `
 .barras { display: grid; grid-template-columns: repeat(${CORRIDAS}, 1fr); gap: 2px; height: 2.2rem; margin: 0; padding: 0; list-style: none; }
 .barras li { display: flex; align-items: flex-end; margin: 0; min-width: 0; }
 .barra { display: block; width: 100%; height: 60%; border-radius: 1px; background: var(--barra); }
+.barra.b-ok { background: var(--verde); }
 .barra.b-falla { height: 100%; background: var(--rojo); }
 .barra.b-omitida { background: transparent; box-shadow: inset 0 0 0 1px var(--tenue); }
 .barra.b-curso { background: repeating-linear-gradient(135deg, var(--barra) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--barra); }
