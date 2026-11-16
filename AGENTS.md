@@ -23,6 +23,9 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   - `scripts/estado.mjs` → `/estado` («Estado del sistema»), técnica: resumen
     por repo, barras de las últimas corridas de cada `vigilar*.yml`, cuadrícula
     de cambios por día y PR abiertos.
+  - La situación de cada constitución estatal (vigilada, en preparación o
+    fuera, con su motivo) sale de `estados.json` de `constitucion-extractor`:
+    `/leyes` muestra el motivo de las que faltan y `/estado`, una tabla de las 32.
   - `scripts/lib/` — lectura de datos y formato compartidos.
 - `wrangler.jsonc` — Worker con assets. Las migraciones `v1` y `v2` son el alta
   y la baja de un Durable Object anterior; no se pueden quitar de la lista.

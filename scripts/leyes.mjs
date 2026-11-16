@@ -247,9 +247,9 @@ function resumen({ cpeum, estatales, federales, fiscal, excluidas, faltanFederal
 
   if (estatales) {
     items.push(
-      `<li><a href="#estados">Constituciones de los estados</a>: tenemos ${numero(estatales.length)} de 32 (${lista(
-        estatales.map((e) => esc(e.entidad)),
-      )}). Las demás todavía no.</li>`,
+      `<li><a href="#estados">Constituciones de los estados</a>: tenemos ${numero(estatales.length)} de 32${
+        estatales.length <= 6 ? ` (${lista(estatales.map((e) => esc(e.entidad)))})` : ""
+      }.${estatales.length < 32 ? " Las demás todavía no." : ""}</li>`,
     );
   } else items.push('<li><a href="#estados">Constituciones de los estados</a>: no pudimos consultarlas en este momento.</li>');
 
@@ -299,11 +299,19 @@ function comoLeer(hasta) {
 
 function seccionEstados(docs, estatales, hasta) {
   if (!docs) return `<h2 id="estados">Constituciones de los estados</h2>\n${sinDatos("las constituciones estatales")}`;
-  const tenemos = new Set(estatales.datos.filter((e) => e.articulos != null).map((e) => e.clave));
-  const faltan = ESTADOS.filter(([clave]) => !tenemos.has(clave)).map(([, nombre]) => nombre);
+  const sinTexto = estatales.datos.filter((e) => e.articulos == null);
+  const fuera = sinTexto.filter((e) => e.situacion === "fuera" && e.motivo);
+  const preparando = sinTexto.filter((e) => !fuera.includes(e));
+  const motivos = fuera.length
+    ? `<p>Por ahora no podemos publicar la de:</p>
+<ul class="tenue">
+${fuera.map((e) => `  <li><strong>${esc(e.nombre)}</strong>: ${esc(e.motivo)}</li>`).join("\n")}
+</ul>`
+    : "";
   return `<h2 id="estados">Constituciones de los estados</h2>
 ${listaDocumentos(docs, hasta)}
-${faltan.length ? `<p class="tenue">Todavía no tenemos la de ${lista(faltan)}.</p>` : ""}`;
+${preparando.length ? `<p class="tenue">Estamos preparando la de ${lista(preparando.map((e) => esc(e.nombre)))}.</p>` : ""}
+${motivos}`;
 }
 
 function seccionFederales(docs, federales, hasta) {

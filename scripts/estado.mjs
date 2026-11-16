@@ -130,12 +130,45 @@ function seccionCorpus({ estatales, federales }) {
   const partes = [];
   if (estatales.ok) {
     const pub = estatales.datos.filter((e) => e.articulos != null);
-    const faltan = estatales.datos.length - pub.length;
+    const cuenta = (s) => estatales.datos.filter((e) => e.articulos == null && e.situacion === s).length;
+    const fuera = cuenta("fuera");
+    const preparando = estatales.datos.length - pub.length - fuera;
+    // Publicada en el repo de datos pero aún sin vigilancia automática: el
+    // registro del extractor no la marca como lista.
+    const SITUACION = {
+      vigilada: "Vigilada cada semana",
+      en_preparacion: "En preparación",
+      fuera: "Fuera",
+    };
+    const filas = estatales.datos.map((e) => [
+      esc(e.nombre),
+      e.articulos != null
+        ? e.situacion === "vigilada" || e.situacion == null
+          ? "Publicada"
+          : "Publicada, sin vigilancia"
+        : esc(SITUACION[e.situacion] ?? "Sin publicar"),
+      e.articulos != null ? numero(e.articulos) : "—",
+      e.articulos != null ? dia(e.version) : "—",
+      e.motivo && e.articulos == null ? esc(e.motivo) : "",
+    ]);
     partes.push(`<p>
-  <strong>Constituciones estatales:</strong> ${lista(pub.map((e) => esc(e.nombre))) || "ninguna"}, en
-  <code>{estado}/constitucion/</code> de ${enlaceRepo(REPOS.estatales)}.
-  ${faltan > 0 ? `Faltan ${plural(faltan, "entidad", "entidades")}, sin fecha comprometida.` : ""}
-</p>`);
+  <strong>Constituciones estatales:</strong> ${numero(pub.length)} de 32 publicadas en
+  <code>{estado}/constitucion/</code> de ${enlaceRepo(REPOS.estatales)};
+  ${numero(preparando)} en preparación y ${numero(fuera)} fuera por ahora. La situación de cada
+  una sale de <code>estados.json</code> del extractor.
+</p>
+${tabla({
+  id: "t-estados",
+  titulo: "Constituciones estatales",
+  columnas: [
+    { titulo: "Entidad" },
+    { titulo: "Situación" },
+    { titulo: "Artículos", num: true },
+    { titulo: "Texto vigente" },
+    { titulo: "Motivo" },
+  ],
+  filas,
+})}`);
   }
   if (federales.ok) {
     const docs = federales.datos;

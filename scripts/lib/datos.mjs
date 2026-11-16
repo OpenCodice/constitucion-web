@@ -16,6 +16,9 @@ import {
   sumarDias,
 } from "./comun.mjs";
 
+// El registro de estados vive con el código que los extrae.
+const EXTRACTOR_ESTATAL = "constitucion-extractor";
+
 // Corridas por vigilancia en la barra de estado y semanas en la cuadrícula de
 // cambios. Cada despliegue gasta una petición por cosa y repo, no por corrida.
 export const CORRIDAS = 40;
@@ -67,8 +70,24 @@ async function leerEstatales() {
       }
     }),
   );
+  // Situación de cada entidad según el registro del extractor (vigilada, en
+  // preparación o fuera con su motivo). Si no responde, las páginas solo
+  // distinguen publicadas y no publicadas.
+  let registro = {};
+  try {
+    const r = await crudo(EXTRACTOR_ESTATAL, "estados.json");
+    if (Array.isArray(r)) registro = Object.fromEntries(r.map((e) => [e.estado, e]));
+  } catch {
+    registro = {};
+  }
   const conocidos = new Set(ESTADOS.map(([c]) => c));
-  const filas = ESTADOS.map(([clave, nombre]) => ({ clave, nombre, ...publicados[clave] }));
+  const filas = ESTADOS.map(([clave, nombre]) => ({
+    clave,
+    nombre,
+    situacion: registro[clave]?.situacion ?? null,
+    motivo: registro[clave]?.motivo ?? null,
+    ...publicados[clave],
+  }));
   for (const c of Object.keys(publicados)) {
     if (!conocidos.has(c)) filas.push({ clave: c, nombre: c, ...publicados[c] });
   }
