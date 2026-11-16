@@ -1,8 +1,9 @@
 name: Deploy a producción
 
 # Despliega el sitio estático (public/) y su Worker mínimo en cada push a main.
-# También cada hora, para que /estado (que se genera aquí desde los repos de
-# datos) se mantenga al día sin necesidad de commits.
+# También cada tres horas, para que /estado (que se genera aquí desde los repos
+# de datos) se mantenga al día sin commits; no más seguido porque el repo es
+# privado y cada corrida consume minutos de Actions.
 #
 # Secrets requeridos (en este repo):
 #   CLOUDFLARE_API_TOKEN   permisos "Edit Cloudflare Workers"
@@ -13,7 +14,7 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
-    - cron: "23 * * * *"
+    - cron: "23 */3 * * *"
 
 concurrency:
   group: deploy

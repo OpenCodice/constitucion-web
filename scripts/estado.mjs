@@ -17,6 +17,11 @@ const RAW = "https://raw.githubusercontent.com";
 const SALIDA = fileURLToPath(new URL("../public/estado.html", import.meta.url));
 const TIEMPO_MAX = 20_000;
 
+// Corridas por vigilancia en la barra de estado, y semanas en la cuadrícula de
+// cambios. Cada despliegue gasta una petición por cosa y repo, no por corrida.
+const CORRIDAS = 40;
+const SEMANAS = 26;
+
 // Documentos del índice de LeyesBiblio de la Cámara de Diputados. El índice no
 // responde desde todas partes y el generador no debe depender de él, así que
 // se usa este total conocido para calcular lo que falta por procesar.
@@ -71,7 +76,7 @@ const REPOS = {
 
 class ErrorFuente extends Error {}
 
-async function pedir(url, { api = false } = {}) {
+async function pedir(url, { api = false, cuerpo } = {}) {
   const cabeceras = { "User-Agent": "opencodice-estado" };
   if (api) {
     cabeceras.Accept = "application/vnd.github+json";
@@ -81,7 +86,11 @@ async function pedir(url, { api = false } = {}) {
   let ultimo;
   for (let intento = 0; intento < 2; intento++) {
     try {
-      const r = await fetch(url, { headers: cabeceras, signal: AbortSignal.timeout(TIEMPO_MAX) });
+      const r = await fetch(url, {
+        headers: cabeceras,
+        signal: AbortSignal.timeout(TIEMPO_MAX),
+        ...(cuerpo && { method: "POST", body: JSON.stringify(cuerpo) }),
+      });
       if (r.status === 404) return null;
       // Un token sin acceso a otro repo no debe dejar sin datos públicos.
       if ((r.status === 401 || r.status === 403) && cabeceras.Authorization) {
@@ -99,6 +108,12 @@ async function pedir(url, { api = false } = {}) {
 
 const crudo = (repo, ruta) => pedir(`${RAW}/${ORG}/${repo}/main/${ruta}`);
 const api = (ruta) => pedir(`${API}${ruta}`, { api: true });
+
+async function graphql(query, variables) {
+  const r = await pedir(`${API}/graphql`, { api: true, cuerpo: { query, variables } });
+  if (!r || r.errors) throw new ErrorFuente(r?.errors?.[0]?.message ?? "GraphQL sin respuesta");
+  return r.data;
+}
 
 // Ejecuta una lectura y convierte su falla en un valor que la página puede
 // mostrar, para que una fuente caída no tumbe a las demás.
@@ -155,8 +170,10 @@ async function leerVigilancia(repo) {
   const vigilar = workflows.filter((w) => /\/vigilar[^/]*\.ya?ml$/.test(w.path) && w.state === "active");
   return Promise.all(
     vigilar.map(async (w) => {
-      const { workflow_runs } = await api(`/repos/${ORG}/${repo}/actions/workflows/${w.id}/runs?per_page=1`);
-      return { repo, nombre: w.name, archivo: w.path.split("/").pop(), url: w.html_url, corrida: workflow_runs[0] };
+      const { workflow_runs } = await api(
+        `/repos/${ORG}/${repo}/actions/workflows/${w.id}/runs?per_page=${CORRIDAS}`,
+      );
+      return { repo, nombre: w.name, archivo: w.path.split("/").pop(), url: w.html_url, corridas: workflow_runs };
     }),
   );
 }
@@ -170,6 +187,47 @@ async function leerUltimoCommit(repo) {
   const commits = await api(`/repos/${ORG}/${repo}/commits?per_page=1`);
   const c = commits?.[0];
   return c ? { fecha: c.commit.committer.date, titulo: c.commit.message.split("\n")[0], url: c.html_url } : null;
+}
+
+// Commits de main desde `desde`, con cuántos archivos cambió cada uno. GraphQL
+// da esa cuenta en la misma consulta (REST pediría una petición por commit);
+// pide token, así que sin él se cae a REST y solo se cuentan commits.
+const HISTORIA = `query($owner: String!, $name: String!, $since: GitTimestamp!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    defaultBranchRef { target { ... on Commit {
+      history(first: 100, since: $since, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes { committedDate changedFilesIfAvailable }
+      }
+    } } }
+  }
+}`;
+const PAGINAS_MAX = 5;
+
+async function leerActividad(repo, desde) {
+  if (process.env.GITHUB_TOKEN) {
+    try {
+      const commits = [];
+      let after = null;
+      for (let i = 0; i < PAGINAS_MAX; i++) {
+        const d = await graphql(HISTORIA, { owner: ORG, name: repo, since: desde, after });
+        const h = d.repository.defaultBranchRef.target.history;
+        commits.push(...h.nodes.map((n) => ({ fecha: n.committedDate, archivos: n.changedFilesIfAvailable })));
+        if (!h.pageInfo.hasNextPage) break;
+        after = h.pageInfo.endCursor;
+      }
+      return { conArchivos: true, commits };
+    } catch {
+      // Sigue con REST.
+    }
+  }
+  const commits = [];
+  for (let pagina = 1; pagina <= PAGINAS_MAX; pagina++) {
+    const lote = await api(`/repos/${ORG}/${repo}/commits?since=${desde}&per_page=100&page=${pagina}`);
+    commits.push(...(lote ?? []).map((c) => ({ fecha: c.commit.committer.date, archivos: null })));
+    if (!lote || lote.length < 100) break;
+  }
+  return { conArchivos: false, commits };
 }
 
 // ------------------------------------------------------------------ formato
@@ -191,8 +249,8 @@ const momento = (iso) =>
     enMexico(iso, { dateStyle: "long", timeStyle: "short" }),
   )}</time>`;
 
-const momentoCorto = (iso) => {
-  const p = Object.fromEntries(
+const partesMexico = (iso) =>
+  Object.fromEntries(
     new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Mexico_City",
       hourCycle: "h23",
@@ -205,7 +263,18 @@ const momentoCorto = (iso) => {
       .formatToParts(new Date(iso))
       .map((x) => [x.type, x.value]),
   );
-  return `<time datetime="${esc(new Date(iso).toISOString())}">${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}</time>`;
+
+const textoCorto = (iso) => {
+  const p = partesMexico(iso);
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+};
+
+const momentoCorto = (iso) => `<time datetime="${esc(new Date(iso).toISOString())}">${textoCorto(iso)}</time>`;
+
+// Día del calendario en la Ciudad de México, como 'YYYY-MM-DD'.
+const diaMexico = (iso) => {
+  const p = partesMexico(iso);
+  return `${p.year}-${p.month}-${p.day}`;
 };
 
 const dia = (iso) => (iso ? `<span class="dato">${esc(iso)}</span>` : "—");
@@ -352,6 +421,59 @@ ${avisos.join("\n")}
 </p>`;
 }
 
+// Tipo de barra por resultado. La falla es la única en color y además más alta,
+// para que no dependa solo del color.
+function claseCorrida(c) {
+  if (c.status !== "completed") return "b-curso";
+  if (["failure", "timed_out", "startup_failure"].includes(c.conclusion)) return "b-falla";
+  if (c.conclusion === "success") return "b-ok";
+  return "b-omitida";
+}
+
+const LEYENDA_BARRAS = `<p class="leyenda" aria-hidden="true">
+  <span><span class="barra b-ok"></span> Correcta</span>
+  <span><span class="barra b-falla"></span> Falló</span>
+  <span><span class="barra b-omitida"></span> Cancelada u omitida</span>
+  <span><span class="barra b-curso"></span> En curso</span>
+</p>`;
+
+function filaVigilancia(w, varias) {
+  // La API las da de la más reciente a la más antigua.
+  const corridas = w.corridas.slice(0, CORRIDAS).reverse();
+  const nombre = `${enlaceRepo(w.repo, w.repo)}${varias ? ` <a class="tenue" href="${esc(w.url)}">${esc(w.archivo)}</a>` : ""}`;
+  if (!corridas.length) {
+    return `<div class="vigilancia"><p class="vig-nombre">${nombre}</p><p class="vig-resumen">Sin corridas.</p></div>`;
+  }
+  const cuenta = (clase) => corridas.filter((c) => claseCorrida(c) === clase).length;
+  const ok = cuenta("b-ok");
+  const ultima = corridas.at(-1);
+  const inicio = CORRIDAS - corridas.length + 1;
+  const barras = corridas
+    .map((c, i) => {
+      const fecha = c.run_started_at ?? c.created_at;
+      const texto = `${textoCorto(fecha)}: ${estadoCorrida(c)}, ${EVENTO[c.event] ?? c.event}`;
+      const pos = i === 0 && inicio > 1 ? ` style="grid-column-start: ${inicio}"` : "";
+      return `<li${pos}><a class="barra ${claseCorrida(c)}" href="${esc(c.html_url)}" title="${esc(texto)}" aria-label="${esc(texto)}"></a></li>`;
+    })
+    .join("");
+  const detalle = [
+    [cuenta("b-falla"), "fallida", "fallidas"],
+    [cuenta("b-omitida"), "cancelada u omitida", "canceladas u omitidas"],
+    [cuenta("b-curso"), "en curso", "en curso"],
+  ]
+    .filter(([n]) => n)
+    .map(([n, uno, varios]) => plural(n, uno, varios));
+  return `<div class="vigilancia">
+<p class="vig-nombre">${nombre}</p>
+<ol class="barras" aria-label="Últimas ${corridas.length} corridas de ${esc(w.archivo)}, de la más antigua a la más reciente">${barras}</ol>
+<p class="vig-resumen">${numero(ok)} de ${numero(corridas.length)} correctas${
+    detalle.length ? `<span class="oculto"> (${detalle.join(", ")})</span>` : ""
+  } · última: <a href="${esc(ultima.html_url)}">${esc(estadoCorrida(ultima).toLowerCase())}</a>, ${momentoCorto(
+    ultima.run_started_at ?? ultima.created_at,
+  )}</p>
+</div>`;
+}
+
 function seccionProgreso({ vigilancia, prs }) {
   const filasV = [];
   const avisos = [];
@@ -360,16 +482,7 @@ function seccionProgreso({ vigilancia, prs }) {
       avisos.push(fallo(`la vigilancia de ${ORG}/${repo}`, r));
       continue;
     }
-    for (const w of r.datos) {
-      const c = w.corrida;
-      filasV.push([
-        enlaceRepo(repo, repo),
-        `<a href="${esc(w.url)}">${esc(w.archivo)}</a>`,
-        c ? `<a href="${esc(c.html_url)}">${esc(estadoCorrida(c))}</a>` : "Sin corridas",
-        c ? momentoCorto(c.run_started_at ?? c.created_at) : "—",
-        c ? esc(EVENTO[c.event] ?? c.event) : "—",
-      ]);
-    }
+    for (const w of r.datos) filasV.push(filaVigilancia(w, r.datos.length > 1));
   }
 
   const filasP = [];
@@ -396,19 +509,8 @@ function seccionProgreso({ vigilancia, prs }) {
   oficiales y vuelve a extraer el texto. Si algo cambió, abre un pull request: se fusiona
   solo cuando la extracción quedó verificada y, si no, queda como borrador para revisión.
 </p>
-${tabla({
-  id: "t-vigilancia",
-  titulo: "Última corrida de cada vigilancia",
-  columnas: [
-    { titulo: "Repositorio" },
-    { titulo: "Workflow" },
-    { titulo: "Resultado" },
-    { titulo: "Inicio" },
-    { titulo: "Disparo" },
-  ],
-  filas: filasV,
-  vacio: "No se encontraron workflows de vigilancia.",
-})}
+<h3>Últimas corridas de cada vigilancia</h3>
+${filasV.length ? `${LEYENDA_BARRAS}\n${filasV.join("\n")}` : '<p class="tenue">No se encontraron workflows de vigilancia.</p>'}
 ${tabla({
   id: "t-prs",
   titulo: "Pull requests abiertos",
@@ -514,6 +616,120 @@ ${tabla({
 </p>`;
 }
 
+// Intensidad de cada día según archivos cambiados; los cortes son potencias de
+// diez porque una alta de leyes cambia miles de archivos y una reforma, unos
+// cuantos. Sin la cuenta de archivos se usan commits.
+const NIVELES_ARCHIVOS = [[1, "1 a 9"], [10, "10 a 99"], [100, "100 a 999"], [1000, "1,000 o más"]];
+const NIVELES_COMMITS = [[1, "1"], [2, "2"], [3, "3 o 4"], [5, "5 o más"]];
+const DIAS_SEMANA = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
+const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+const sumarDias = (dia, n) => new Date(Date.parse(`${dia}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+function inicioActividad(generada) {
+  const hoy = diaMexico(generada);
+  const semana = (new Date(`${hoy}T00:00:00Z`).getUTCDay() + 6) % 7;
+  return { hoy, inicio: sumarDias(hoy, -semana - (SEMANAS - 1) * 7) };
+}
+
+function seccionActividad(actividad, generada) {
+  const titulo = '<h2 id="actividad">Cambios en los datos</h2>';
+  const leidos = Object.entries(actividad).filter(([, r]) => r.ok);
+  const avisos = Object.entries(actividad)
+    .filter(([, r]) => !r.ok)
+    .map(([repo, r]) => fallo(`los commits de ${ORG}/${repo}`, r));
+  if (!leidos.length) return `${titulo}\n${avisos.join("\n")}`;
+
+  const conArchivos = leidos.every(([, r]) => r.datos.conArchivos);
+  const { hoy, inicio } = inicioActividad(generada);
+  const porDia = {};
+  for (const [, r] of leidos) {
+    for (const c of r.datos.commits) {
+      const d = diaMexico(c.fecha);
+      if (d < inicio || d > hoy) continue;
+      const v = (porDia[d] ??= { commits: 0, archivos: 0, incompleto: false });
+      v.commits++;
+      if (c.archivos == null) v.incompleto = true;
+      else v.archivos += c.archivos;
+    }
+  }
+  const niveles = conArchivos ? NIVELES_ARCHIVOS : NIVELES_COMMITS;
+  const nivel = (v) => {
+    if (!v?.commits) return 0;
+    const x = conArchivos ? v.archivos : v.commits;
+    return Math.max(1, niveles.filter(([corte]) => x >= corte).length);
+  };
+  const describir = (d, v) => {
+    const cuando = `${d} (${DIAS_SEMANA[(new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7]})`;
+    if (!v) return `${cuando}: sin cambios`;
+    const archivos = conArchivos ? `, ${numero(v.archivos)}${v.incompleto ? " o más" : ""} ${v.archivos === 1 ? "archivo" : "archivos"}` : "";
+    return `${cuando}: ${plural(v.commits, "commit", "commits")}${archivos}`;
+  };
+
+  // Etiqueta de mes en la primera semana de cada mes; se omite la de un mes
+  // que apenas asoma al inicio, para que no se encime con la siguiente.
+  const meses = [];
+  for (let semana = 0; semana < SEMANAS; semana++) {
+    const mes = Number(sumarDias(inicio, semana * 7).slice(5, 7)) - 1;
+    if (meses.at(-1)?.mes !== mes) meses.push({ semana, mes });
+  }
+  if (meses.length > 1 && meses[1].semana < 3) meses.shift();
+  const celdas = meses.map(
+    ({ semana, mes }) => `<span class="mes" style="grid-column: ${semana + 2}">${MESES[mes]}</span>`,
+  );
+  for (let semana = 0; semana < SEMANAS; semana++) {
+    const lunes = sumarDias(inicio, semana * 7);
+    for (let dia = 0; dia < 7; dia++) {
+      const d = sumarDias(lunes, dia);
+      if (d > hoy) break;
+      const v = porDia[d];
+      celdas.push(
+        `<span class="c n${nivel(v)}" style="grid-area: ${dia + 2} / ${semana + 2}" title="${esc(describir(d, v))}"></span>`,
+      );
+    }
+  }
+  for (const dia of [0, 2, 4]) {
+    celdas.push(`<span class="dia-sem" style="grid-row: ${dia + 2}">${DIAS_SEMANA[dia]}</span>`);
+  }
+
+  const dias = Object.entries(porDia);
+  const commits = dias.reduce((s, [, v]) => s + v.commits, 0);
+  const archivos = dias.reduce((s, [, v]) => s + v.archivos, 0);
+  const pico = dias.sort(([, a], [, b]) => (conArchivos ? b.archivos - a.archivos : b.commits - a.commits))[0];
+  const resumen =
+    `Del ${fechaLarga(inicio)} al ${fechaLarga(hoy)}: ${plural(commits, "commit", "commits")}` +
+    (conArchivos ? ` y ${plural(archivos, "archivo cambiado", "archivos cambiados")}` : "") +
+    ` en ${plural(dias.length, "día", "días")}` +
+    (pico ? `. El día con más cambios fue el ${fechaLarga(pico[0])} (${describir(pico[0], pico[1]).split(": ")[1]}).` : ".");
+  const unidad = conArchivos ? "archivos cambiados" : "commits";
+  const muestras = [
+    `<span><span class="c n0"></span> ninguno</span>`,
+    ...niveles.map(([, etiqueta], i) => `<span><span class="c n${i + 1}"></span> ${esc(etiqueta)}</span>`),
+  ].join(" ");
+
+  return `${titulo}
+<p>
+  Cada cuadro es un día de las últimas ${SEMANAS} semanas, en los cuatro repositorios de datos
+  juntos; las columnas son semanas y las filas, días. Cuenta los commits de <code>main</code>,
+  también los de mantenimiento de los propios repositorios.
+</p>
+<figure class="actividad">
+<div class="cuadricula" role="img" aria-label="${esc(`Cambios por día en los repositorios de datos. ${resumen}`)}">
+${celdas.join("\n")}
+</div>
+<figcaption>
+<p class="leyenda" aria-hidden="true"><span>${conArchivos ? "Archivos cambiados por día:" : "Commits por día:"}</span> ${muestras}</p>
+<p>${esc(resumen)}</p>
+${
+  conArchivos
+    ? `<p class="tenue">Los archivos incluyen el texto de los artículos y la metadata que se genera con él.</p>`
+    : `<p class="tenue">La API no dio la cuenta de archivos de cada commit, así que la intensidad cuenta ${unidad}.</p>`
+}
+</figcaption>
+</figure>
+${avisos.join("\n")}`;
+}
+
 const ESTILO = `
 main { max-width: 50rem; }
 .desplazable { overflow-x: auto; margin: 0 0 1.75em; }
@@ -528,6 +744,56 @@ tbody th { font-weight: 400; }
 td time, td .dato { white-space: nowrap; }
 .aviso { padding-left: 0.9em; border-left: 2px solid var(--texto); }
 .generada { color: var(--tenue); font-size: 0.85em; }
+h3 { margin: 2rem 0 0.8rem; font-size: 0.8em; font-weight: 600; }
+.oculto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Colores de los visuales. El rojo es el único color de la página y solo
+   marca lo que pide atención. */
+:root {
+  --barra: #7a7a7a;
+  --rojo: #b42318;
+  --n0: #ececec; --n1: #c6c6c6; --n2: #969696; --n3: #5c5c5c; --n4: #111111;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --barra: #8c8c8c;
+    --rojo: #e0605a;
+    --n0: #1d1d1d; --n1: #3c3c3c; --n2: #6a6a6a; --n3: #a6a6a6; --n4: #f2f2f2;
+  }
+}
+
+.leyenda { display: flex; flex-wrap: wrap; gap: 0.4em 1.2em; align-items: center; font-size: 0.8em; color: var(--tenue); }
+.leyenda > span { display: inline-flex; align-items: center; gap: 0.4em; white-space: nowrap; }
+
+.vigilancia { display: grid; grid-template-columns: 12rem 1fr; gap: 0.3rem 1rem; align-items: end; margin: 0 0 1rem; font-size: 0.85em; }
+.vig-nombre, .vig-resumen { margin: 0; }
+.vig-resumen { grid-column: 2; color: var(--tenue); font-size: 0.9em; }
+.barras { display: grid; grid-template-columns: repeat(${CORRIDAS}, 1fr); gap: 2px; height: 2.2rem; margin: 0; padding: 0; list-style: none; }
+.barras li { display: flex; align-items: flex-end; margin: 0; min-width: 0; }
+.barra { display: block; width: 100%; height: 60%; border-radius: 1px; background: var(--barra); }
+.barra.b-falla { height: 100%; background: var(--rojo); }
+.barra.b-omitida { background: transparent; box-shadow: inset 0 0 0 1px var(--tenue); }
+.barra.b-curso { background: repeating-linear-gradient(135deg, var(--barra) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--barra); }
+a.barra:hover, a.barra:focus-visible { outline: 2px solid var(--texto); outline-offset: 1px; }
+.leyenda .barra { display: inline-block; width: 0.55rem; height: 0.75rem; }
+.leyenda .barra.b-falla { height: 1.15rem; }
+@media (max-width: 36rem) {
+  .vigilancia { grid-template-columns: 1fr; }
+  .vig-resumen { grid-column: 1; }
+  .barras { gap: 1px; }
+}
+
+.actividad { margin: 0 0 1.5em; }
+.cuadricula { display: grid; grid-template-columns: 1.9rem repeat(${SEMANAS}, minmax(0, 1fr)); gap: 3px; max-width: 34rem; font-size: 0.7em; color: var(--tenue); }
+.cuadricula .c { aspect-ratio: 1; border-radius: 2px; }
+.mes { grid-row: 1; white-space: nowrap; line-height: 1.6; }
+.dia-sem { grid-column: 1; line-height: 1; align-self: center; }
+.c { display: inline-block; background: var(--n0); }
+.leyenda .c { width: 0.8rem; height: 0.8rem; border-radius: 2px; }
+.n1 { background: var(--n1); } .n2 { background: var(--n2); } .n3 { background: var(--n3); } .n4 { background: var(--n4); }
+.actividad figcaption { margin-top: 0.8em; font-size: 0.85em; }
+.actividad figcaption p { margin: 0 0 0.5em; }
+@media (max-width: 36rem) { .cuadricula { gap: 2px; } }
 `;
 
 function pagina(datos, generada) {
@@ -554,11 +820,13 @@ function pagina(datos, generada) {
         Qué hay publicado en los repositorios de datos y qué está en progreso. Las cifras se
         leen de los propios repositorios.
       </p>
-      <p class="generada">Generada el ${momento(generada)}. Se actualiza cada hora. Todas las horas son de la Ciudad de México.</p>
+      <p class="generada">Generada el ${momento(generada)}. Se actualiza cada tres horas. Todas las horas son de la Ciudad de México.</p>
 
 ${seccionResumen(datos)}
 
 ${seccionProgreso(datos)}
+
+${seccionActividad(datos.actividad, generada)}
 
 ${seccionEstatales(datos.estatales)}
 
@@ -585,7 +853,10 @@ async function porRepo(fn) {
 }
 
 const generada = new Date().toISOString();
-const [cpeum, estatales, fiscal, federales, vigilancia, prs, commits] = await Promise.all([
+const { inicio: inicioCuadricula } = inicioActividad(generada);
+// Un día de margen: el día se cuenta en hora de la Ciudad de México y la API filtra en UTC.
+const desde = `${sumarDias(inicioCuadricula, -1)}T00:00:00Z`;
+const [cpeum, estatales, fiscal, federales, vigilancia, prs, commits, actividad] = await Promise.all([
   intentar(leerCpeum),
   intentar(leerEstatales),
   intentar(leerFiscal),
@@ -593,10 +864,11 @@ const [cpeum, estatales, fiscal, federales, vigilancia, prs, commits] = await Pr
   porRepo(leerVigilancia),
   porRepo(leerPrs),
   porRepo(leerUltimoCommit),
+  porRepo((r) => leerActividad(r, desde)),
 ]);
 
-await writeFile(SALIDA, pagina({ cpeum, estatales, fiscal, federales, vigilancia, prs, commits }, generada));
+await writeFile(SALIDA, pagina({ cpeum, estatales, fiscal, federales, vigilancia, prs, commits, actividad }, generada));
 
-const fallas = [cpeum, estatales, fiscal, federales, ...Object.values(vigilancia), ...Object.values(prs), ...Object.values(commits)]
+const fallas = [cpeum, estatales, fiscal, federales, ...Object.values(vigilancia), ...Object.values(prs), ...Object.values(commits), ...Object.values(actividad)]
   .filter((r) => !r.ok).length;
 console.log(`estado.html generada${fallas ? ` con ${fallas} fuentes sin responder` : ""}`);

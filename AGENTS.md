@@ -11,10 +11,11 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   `/estado`, se sirven antes de llegar al Worker).
 - `scripts/estado.mjs` — genera `public/estado.html` (constitucion.app/estado):
   qué hay publicado en cada repo de datos, las leyes federales incluidas y
-  excluidas, los PR abiertos y la última corrida de cada `vigilar*.yml`. Lee la
-  API de GitHub y `raw.githubusercontent.com`, sin dependencias; corre en cada
-  despliegue (`deploy.yml` despliega también cada hora) y el HTML no se
-  versiona. En local: `npm run estado` (con `GITHUB_TOKEN=$(gh auth token)`
+  excluidas, los PR abiertos, una barra con las últimas 40 corridas de cada
+  `vigilar*.yml` y una cuadrícula de cambios por día de las últimas 26 semanas
+  (todo en HTML y CSS). Lee la API de GitHub (REST y GraphQL) y
+  `raw.githubusercontent.com`, sin dependencias; corre en cada despliegue
+  (`deploy.yml` despliega también cada tres horas) y el HTML no se versiona. En local: `npm run estado` (con `GITHUB_TOKEN=$(gh auth token)`
   para no topar el límite anónimo).
 - `wrangler.jsonc` — Worker con assets. Las migraciones `v1` y `v2` son el alta
   y la baja de un Durable Object anterior; no se pueden quitar de la lista.
