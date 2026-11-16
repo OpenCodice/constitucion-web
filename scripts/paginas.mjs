@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Genera las páginas que dependen de los repos de datos: public/leyes.html
-// (/leyes, para el público) y public/estado.html (/estado, el estado técnico).
+// Genera las páginas que dependen de los repos de datos: public/index.html
+// (el inicio), public/leyes.html (/leyes, para el público) y public/estado.html
+// (/estado, el status del sistema).
 // Corre en cada despliegue para que el sitio siga siendo estático y sin
 // JavaScript en el navegador.
 //
@@ -13,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { leerTodo, contarFallas } from "./lib/datos.mjs";
 import { paginaEstado } from "./estado.mjs";
 import { paginaLeyes } from "./leyes.mjs";
+import { paginaInicio } from "./inicio.mjs";
 
 const publico = (archivo) => fileURLToPath(new URL(`../public/${archivo}`, import.meta.url));
 
@@ -22,7 +24,8 @@ const datos = await leerTodo(generada);
 await Promise.all([
   writeFile(publico("estado.html"), paginaEstado(datos, generada)),
   writeFile(publico("leyes.html"), paginaLeyes(datos, generada)),
+  writeFile(publico("index.html"), paginaInicio(datos, generada)),
 ]);
 
 const fallas = contarFallas(datos);
-console.log(`estado.html y leyes.html generadas${fallas ? ` con ${fallas} fuentes sin responder` : ""}`);
+console.log(`index.html, estado.html y leyes.html generadas${fallas ? ` con ${fallas} fuentes sin responder` : ""}`);

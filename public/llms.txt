@@ -1,0 +1,26 @@
+# OpenCodice
+
+> El texto vigente de la ley mexicana en repositorios públicos de git, un archivo Markdown por artículo. Cada reforma es un commit: el historial de un archivo es el historial de ese artículo. Todo sale de los PDF oficiales con un extractor; nada se edita a mano. No hay API: se leen los archivos directamente.
+
+Los datos son de dominio público (CC0 1.0) y los extractores, MIT: se pueden usar y redistribuir sin restricciones. No es la publicación oficial ni asesoría legal. Para efectos jurídicos, la fuente es el Diario Oficial de la Federación o el periódico oficial de cada estado. El registro de diferencias empieza en junio de 2026; de las reformas anteriores solo hay las fechas que anota el propio texto oficial.
+
+## Cómo leerlo
+
+- Clonar un repositorio (`git clone https://github.com/OpenCodice/<repo>`) da todo el texto y, con `git log -p <archivo>`, la historia de cada artículo.
+- Un archivo suelto está en `https://raw.githubusercontent.com/OpenCodice/<repo>/main/<ruta>`.
+- El servidor MCP de GitHub (https://github.com/github/github-mcp-server) lee archivos y commits de estos repositorios públicos.
+- Los archivos se nombran con el número de artículo a tres dígitos y su sufijo: `001.md`, `004-a.md`, `077-bis-35-a.md`. Cada uno empieza con el encabezado del artículo (`# Artículo 82.`) y conserva las notas de reforma del PDF en cursiva (`_Párrafo reformado DOF 07-10-2026_`).
+- El título del commit dice qué tipo de cambio es: `Reforma CPEUM (DOF 2026-10-07): arts. 82, 116, 122` cuando cambió la ley, `Corrección de extracción jalisco: 29 artículos` cuando la ley es la misma y mejoró la lectura del PDF.
+
+## Repositorios
+
+- [constitucion-mexicana](https://github.com/OpenCodice/constitucion-mexicana): Constitución Política de los Estados Unidos Mexicanos. Artículos en `articulos/NNN.md`; índice (Título, Capítulo, fechas de reforma) en `metadata/articulos.json`; fecha de reforma → artículos en `metadata/reformas.json`.
+- [leyes-federales](https://github.com/OpenCodice/leyes-federales): las leyes federales que publica la Cámara de Diputados, con códigos y reglamentos. Artículos en `{ley}/NNN.md` (por ejemplo `lft/353-u.md`); índice en `metadata/{ley}/articulos.json` y reformas en `metadata/{ley}/reformas.json`. `fuentes.json` es el registro de cada ley: nombre, sigla, PDF de origen, versión y si está publicada o se dejó fuera y por qué.
+- [leyes-estatales](https://github.com/OpenCodice/leyes-estatales): constituciones de las 32 entidades. Artículos en `{estado}/constitucion/articulos/NNN.md` (por ejemplo `jalisco/constitucion/articulos/004.md`); metadata en `{estado}/constitucion/metadata/`.
+- [fiscal-mexicano](https://github.com/OpenCodice/fiscal-mexicano): legislación fiscal federal, con la Resolución Miscelánea Fiscal, sus anexos y los criterios del SAT. Unidades en `{documento}/` (artículos como `cff/001.md`, reglas como `rmf-2026/1.1.md`); lista de documentos en `metadata/documentos.json` y metadata de cada uno en `metadata/{documento}/`.
+
+## Más
+
+- [Qué leyes hay](https://constitucion.app/leyes): cada documento con su última reforma.
+- [Status del sistema](https://constitucion.app/estado): las corridas de la vigilancia semanal.
+- [Legislación fiscal](https://sat.constitucion.app): el detalle del corpus fiscal.

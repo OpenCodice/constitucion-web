@@ -3,7 +3,7 @@
 // actualización, sin hablar de repositorios ni de procesos. Lo técnico está en
 // /estado.
 
-import { ORG, REPOS, ESTADOS, TOTAL_INDICE_FEDERAL, esc, numero, fechaLarga, momento, plural, lista, documento } from "./lib/comun.mjs";
+import { ORG, REPOS, ESTADOS, TOTAL_INDICE_FEDERAL, esc, numero, fechaLarga, momento, plural, lista, documento, anclaTip } from "./lib/comun.mjs";
 
 // Años de la fila de cuadros: desde 2000 hasta el año en curso. En el teléfono
 // se ven solo los últimos AÑOS_EN_TELEFONO para que la fila quepa.
@@ -109,7 +109,7 @@ function filaAños(reformas, hasta) {
     const n = porAño[año] ?? 0;
     const texto = `${año}: ${n === 0 ? "sin reformas" : plural(n, "reforma", "reformas")}`;
     if (n) conReformas.push(`${año}, ${n}`);
-    cuadros.push(`<span class="a${nivel(n)}" title="${texto}"></span>`);
+    cuadros.push(`<span class="a${nivel(n)}${anclaTip(año - DESDE_AÑO, hasta - DESDE_AÑO + 1)}" data-tip="${texto}"></span>`);
   }
   const resumen = conReformas.length
     ? `Reformas por año desde ${DESDE_AÑO}: ${conReformas.join("; ")}. Los demás años, ninguna.`
@@ -419,6 +419,7 @@ const estilo = (hasta) => `
 .cuadro { display: inline-block; }
 .años .a1, .cuadro.a1 { background: var(--a1); } .años .a2, .cuadro.a2 { background: var(--a2); }
 .años .a3, .cuadro.a3 { background: var(--a3); } .años .a4, .cuadro.a4 { background: var(--a4); }
+.años span:hover { outline: 2px solid var(--texto); outline-offset: 1px; }
 .solo-telefono { display: none; }
 
 .letras { display: flex; flex-wrap: wrap; gap: 0.25em 0.6em; margin: 0 0 1rem; font-size: 0.9em; font-variant-numeric: tabular-nums; }
@@ -428,6 +429,8 @@ h3.letra { margin: 1.6rem 0 0.2rem; font-size: 1em; }
 @media (max-width: 40rem) {
   .doc, .excluidas li { grid-template-columns: 1fr; }
   .años { grid-column: 1; grid-row: auto; margin-top: 0.3rem; }
+  /* En el teléfono la fila empieza en el borde izquierdo y es corta. */
+  .años [data-tip]:hover::after { left: 0; right: auto; transform: none; }
   .años span:nth-child(-n + ${hasta - DESDE_AÑO + 1 - AÑOS_EN_TELEFONO}) { display: none; }
   .solo-telefono { display: inline; }
 }
@@ -471,6 +474,7 @@ ${seccionFiscal(fiscal, hasta)}
 </p>`;
 
   return documento({
+    ruta: "/leyes",
     titulo: "Qué leyes hay — OpenCodice",
     h1: "Qué leyes hay",
     descripcion:
@@ -478,7 +482,7 @@ ${seccionFiscal(fiscal, hasta)}
     estilo: estilo(hasta),
     cuerpo,
     pie: `<p>
-          <a href="/">Inicio</a> · <a href="/estado">Estado del sistema</a> ·
+          <a href="/">Inicio</a> · <a href="/estado">Status del sistema</a> ·
           Los datos y su historial están en <a href="https://github.com/${ORG}">GitHub</a>.
         </p>`,
   });

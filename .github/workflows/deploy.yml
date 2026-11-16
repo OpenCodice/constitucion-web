@@ -1,8 +1,8 @@
 name: Deploy a producción
 
 # Despliega el sitio estático (public/) y su Worker mínimo en cada push a main.
-# También cada tres horas, para que /estado (que se genera aquí desde los repos
-# de datos) se mantenga al día sin commits; no más seguido porque el repo es
+# También cada tres horas, para que las páginas (que se generan aquí desde los repos
+# de datos) se mantengan al día sin commits; no más seguido porque el repo es
 # privado y cada corrida consume minutos de Actions.
 #
 # Secrets requeridos (en este repo):
@@ -43,7 +43,7 @@ jobs:
 
       # Lee los repos públicos de OpenCodice; si alguno no responde, la página
       # lo dice y el despliegue sigue.
-      - name: Generar /leyes y /estado
+      - name: Generar el inicio, /leyes y /estado
         run: npm run paginas
         env:
           GITHUB_TOKEN: ${{ github.token }}

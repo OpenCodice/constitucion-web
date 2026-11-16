@@ -19,10 +19,13 @@ import {
 // El registro de estados vive con el código que los extrae.
 const EXTRACTOR_ESTATAL = "constitucion-extractor";
 
-// Corridas por vigilancia en la barra de estado y semanas en la cuadrícula de
-// cambios. Cada despliegue gasta una petición por cosa y repo, no por corrida.
-export const CORRIDAS = 40;
-export const SEMANAS = 26;
+// Semanas que abarca /estado: las barras semanales de cada vigilancia y los
+// cambios publicados.
+export const SEMANAS = 52;
+
+// Páginas de 100 corridas por vigilancia. Una semana normal tiene una corrida;
+// los días de desarrollo, decenas.
+const PAGINAS_CORRIDAS = 3;
 
 // Archivos de metadata que se leen a la vez de raw.githubusercontent.com.
 const LECTURAS_A_LA_VEZ = 16;
@@ -114,15 +117,20 @@ async function leerFederales() {
   }));
 }
 
-async function leerVigilancia(repo) {
+async function leerVigilancia(repo, desde) {
   const { workflows } = await api(`/repos/${ORG}/${repo}/actions/workflows?per_page=100`);
   const vigilar = workflows.filter((w) => /\/vigilar[^/]*\.ya?ml$/.test(w.path) && w.state === "active");
   return Promise.all(
     vigilar.map(async (w) => {
-      const { workflow_runs } = await api(
-        `/repos/${ORG}/${repo}/actions/workflows/${w.id}/runs?per_page=${CORRIDAS}`,
-      );
-      return { repo, nombre: w.name, archivo: w.path.split("/").pop(), url: w.html_url, corridas: workflow_runs };
+      const corridas = [];
+      for (let pagina = 1; pagina <= PAGINAS_CORRIDAS; pagina++) {
+        const { workflow_runs } = await api(
+          `/repos/${ORG}/${repo}/actions/workflows/${w.id}/runs?created=>=${desde.slice(0, 10)}&per_page=100&page=${pagina}`,
+        );
+        corridas.push(...workflow_runs);
+        if (workflow_runs.length < 100) break;
+      }
+      return { repo, nombre: w.name, archivo: w.path.split("/").pop(), url: w.html_url, corridas };
     }),
   );
 }
@@ -167,7 +175,7 @@ const HISTORIA = `query($owner: String!, $name: String!, $since: GitTimestamp!, 
     defaultBranchRef { target { ... on Commit {
       history(first: 100, since: $since, after: $after) {
         pageInfo { hasNextPage endCursor }
-        nodes { committedDate changedFilesIfAvailable }
+        nodes { committedDate changedFilesIfAvailable messageHeadline url }
       }
     } } }
   }
@@ -182,7 +190,14 @@ async function leerActividad(repo, desde) {
       for (let i = 0; i < PAGINAS_MAX; i++) {
         const d = await graphql(HISTORIA, { owner: ORG, name: repo, since: desde, after });
         const h = d.repository.defaultBranchRef.target.history;
-        commits.push(...h.nodes.map((n) => ({ fecha: n.committedDate, archivos: n.changedFilesIfAvailable })));
+        commits.push(
+          ...h.nodes.map((n) => ({
+            fecha: n.committedDate,
+            archivos: n.changedFilesIfAvailable,
+            titulo: n.messageHeadline,
+            url: n.url,
+          })),
+        );
         if (!h.pageInfo.hasNextPage) break;
         after = h.pageInfo.endCursor;
       }
@@ -194,7 +209,14 @@ async function leerActividad(repo, desde) {
   const commits = [];
   for (let pagina = 1; pagina <= PAGINAS_MAX; pagina++) {
     const lote = await api(`/repos/${ORG}/${repo}/commits?since=${desde}&per_page=100&page=${pagina}`);
-    commits.push(...(lote ?? []).map((c) => ({ fecha: c.commit.committer.date, archivos: null })));
+    commits.push(
+      ...(lote ?? []).map((c) => ({
+        fecha: c.commit.committer.date,
+        archivos: null,
+        titulo: c.commit.message.split("\n")[0],
+        url: c.html_url,
+      })),
+    );
     if (!lote || lote.length < 100) break;
   }
   return { conArchivos: false, commits };
@@ -222,7 +244,7 @@ export async function leerTodo(generada) {
     intentar(leerEstatales),
     intentar(leerFiscal),
     intentar(leerFederales),
-    porRepo(leerVigilancia),
+    porRepo((r) => leerVigilancia(r, desde)),
     porRepo(leerPrs),
     porRepo(leerUltimoCommit),
     porRepo((r) => leerActividad(r, desde)),

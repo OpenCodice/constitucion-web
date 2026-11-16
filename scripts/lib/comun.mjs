@@ -221,6 +221,10 @@ ${cuerpo}
 
 export const fallo = (que, r) => `<p class="aviso">No se pudo leer ${esc(que)}: ${esc(r.error)}.</p>`;
 
+// Ancla del tooltip según la posición del elemento en su fila (i de n): en
+// los extremos se alinea con el borde para no salirse de la página.
+export const anclaTip = (i, n) => (i < n / 3 ? " tip-i" : i >= (2 * n) / 3 ? " tip-d" : "");
+
 const ESTILO_COMUN = `
 main { max-width: 50rem; }
 .desplazable { overflow-x: auto; margin: 0 0 1.75em; }
@@ -232,19 +236,38 @@ th:last-child, td:last-child { padding-right: 0; }
 thead th { font-weight: 500; color: var(--tenue); white-space: nowrap; }
 tbody th { font-weight: 400; }
 .num { text-align: right; white-space: nowrap; }
-td time, td .dato { white-space: nowrap; }
+td time, th time, td .dato { white-space: nowrap; }
 .aviso { padding-left: 0.9em; border-left: 2px solid var(--texto); }
 .generada { color: var(--tenue); font-size: 0.85em; }
 h3 { margin: 2rem 0 0.8rem; font-size: 0.8em; font-weight: 600; }
 .oculto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .leyenda { display: flex; flex-wrap: wrap; gap: 0.4em 1.2em; align-items: center; font-size: 0.8em; color: var(--tenue); }
 .leyenda > span { display: inline-flex; align-items: center; gap: 0.4em; white-space: nowrap; }
+[data-tip] { position: relative; }
+[data-tip]:hover::after, [data-tip]:focus-visible::after {
+  content: attr(data-tip); position: absolute; bottom: calc(100% + 0.45rem); left: 50%; transform: translateX(-50%);
+  z-index: 10; width: max-content; max-width: 16rem; padding: 0.35rem 0.6rem; border-radius: 4px;
+  background: var(--texto); color: var(--fondo); box-shadow: 0 2px 10px rgb(0 0 0 / 0.25);
+  font-size: 0.75rem; font-weight: 400; line-height: 1.35; text-align: left; white-space: normal; pointer-events: none;
+}
+.tip-i:hover::after, .tip-i:focus-visible::after { left: 0; transform: none; }
+.tip-d:hover::after, .tip-d:focus-visible::after { left: auto; right: 0; transform: none; }
 `;
 
 const ICONO =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23111'/%3E%3C/svg%3E";
 
-export function documento({ titulo, h1, descripcion, estilo, cuerpo, pie }) {
+const SECCIONES = [
+  ["/leyes", "Leyes"],
+  ["/estado", "Status"],
+  ["https://github.com/OpenCodice", "GitHub"],
+];
+
+// `ruta` marca la sección actual en la barra.
+export function documento({ titulo, h1, descripcion, estilo, cuerpo, pie, ruta }) {
+  const enlaces = SECCIONES.map(
+    ([href, nombre]) => `<a href="${href}"${href === ruta ? ' aria-current="page"' : ""}>${nombre}</a>`,
+  ).join("\n            ");
   return `<!doctype html>
 <html lang="es-MX">
   <head>
@@ -260,7 +283,12 @@ export function documento({ titulo, h1, descripcion, estilo, cuerpo, pie }) {
   <body>
     <main>
       <header>
-        <p class="marca"><a href="/">OpenCodice</a></p>
+        <div class="cabecera">
+          <p class="marca"><a href="/">OpenCodice</a></p>
+          <nav aria-label="Secciones">
+            ${enlaces}
+          </nav>
+        </div>
         <h1>${esc(h1)}</h1>
       </header>
 

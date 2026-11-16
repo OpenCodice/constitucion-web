@@ -1,6 +1,6 @@
-// Página /estado: el estado del sistema para quien lo mantiene. Qué hay en
-// cada repo de datos, las corridas de vigilancia, los cambios por día y los
-// PR abiertos. La lista de leyes para el público está en /leyes.
+// Página /estado: el status del sistema. La salud de las vigilancias, lo que
+// han publicado, qué hay en cada repo de datos y el historial semanal de cada
+// vigilancia. La lista de leyes para el público está en /leyes.
 
 import {
   ORG,
@@ -8,10 +8,9 @@ import {
   TOTAL_INDICE_FEDERAL,
   esc,
   numero,
-  fechaLarga,
   momento,
   momentoCorto,
-  textoCorto,
+  fechaLarga,
   diaMexico,
   sumarDias,
   dia,
@@ -22,8 +21,10 @@ import {
   tabla,
   fallo,
   documento,
+  anclaTip,
 } from "./lib/comun.mjs";
-import { CORRIDAS, SEMANAS, inicioActividad } from "./lib/datos.mjs";
+import { SEMANAS, inicioActividad } from "./lib/datos.mjs";
+import { DIAS_ATRASO, FALLAS, ESTILO_SALUD, fechaCorrida, salud, insignia, cambios } from "./lib/resumen.mjs";
 
 const ESTADO_CORRIDA = {
   queued: "En cola",
@@ -43,7 +44,6 @@ const CONCLUSION = {
   startup_failure: "No arrancó",
   stale: "Vencida",
 };
-const EVENTO = { schedule: "programada", workflow_dispatch: "manual", push: "push", pull_request: "PR" };
 
 function estadoCorrida(c) {
   if (c.status !== "completed") return ESTADO_CORRIDA[c.status] ?? c.status;
@@ -191,60 +191,82 @@ ${tabla({
 <p>Las listas completas, con el motivo de cada exclusión, están en <a href="/leyes">Qué leyes hay</a>.</p>`;
 }
 
-// Tipo de barra por resultado. La falla, en rojo, además es más alta, para que
-// no se distinga de la correcta (verde) solo por el color.
-function claseCorrida(c) {
-  if (c.status !== "completed") return "b-curso";
-  if (["failure", "timed_out", "startup_failure"].includes(c.conclusion)) return "b-falla";
-  if (c.conclusion === "success") return "b-ok";
-  return "b-omitida";
+
+// Resultado de una semana de vigilancia según sus corridas. Las canceladas u
+// omitidas no cuentan. Una semana con fallas que terminó en una corrida
+// correcta se distingue de una que quedó en falla: ahí el sistema se
+// recuperó. Todas las barras miden lo mismo; el resultado también está en el
+// tooltip y en el aria-label, no solo en el color.
+function semanaVigilancia(corridas) {
+  const validas = corridas.filter((c) => c.status === "completed" && (c.conclusion === "success" || FALLAS.includes(c.conclusion)));
+  const fallidas = validas.filter((c) => c.conclusion !== "success").length;
+  const ultima = validas.at(-1);
+  if (!ultima) {
+    return corridas.some((c) => c.status !== "completed")
+      ? { clase: "b-curso", nombre: "en curso", ultima: corridas.at(-1) }
+      : { clase: "b-vacia", nombre: "sin corrida", ultima: null };
+  }
+  const base = { ultima, total: validas.length, fallidas };
+  if (ultima.conclusion !== "success") return { ...base, clase: "b-falla", nombre: "terminó en falla" };
+  if (fallidas) return { ...base, clase: "b-recupero", nombre: "tuvo fallas y terminó correcta" };
+  return { ...base, clase: "b-ok", nombre: "correcta" };
 }
 
 const LEYENDA_BARRAS = `<p class="leyenda" aria-hidden="true">
   <span><span class="barra b-ok"></span> Correcta</span>
-  <span><span class="barra b-falla"></span> Falló</span>
-  <span><span class="barra b-omitida"></span> Cancelada u omitida</span>
+  <span><span class="barra b-recupero"></span> Falló y se recuperó</span>
+  <span><span class="barra b-falla"></span> Terminó en falla</span>
+  <span><span class="barra b-vacia"></span> Sin corrida</span>
   <span><span class="barra b-curso"></span> En curso</span>
 </p>`;
 
-function filaVigilancia(w, varias) {
-  // La API las da de la más reciente a la más antigua.
-  const corridas = w.corridas.slice(0, CORRIDAS).reverse();
+function filaVigilancia(w, varias, generada) {
   const nombre = `${enlaceRepo(w.repo, w.repo)}${varias ? ` <a class="tenue" href="${esc(w.url)}">${esc(w.archivo)}</a>` : ""}`;
-  if (!corridas.length) {
-    return `<div class="vigilancia"><p class="vig-nombre">${nombre}</p><p class="vig-resumen">Sin corridas.</p></div>`;
-  }
-  const cuenta = (clase) => corridas.filter((c) => claseCorrida(c) === clase).length;
-  const ok = cuenta("b-ok");
-  const ultima = corridas.at(-1);
-  const inicio = CORRIDAS - corridas.length + 1;
-  const barras = corridas
-    .map((c, i) => {
-      const fecha = c.run_started_at ?? c.created_at;
-      const texto = `${textoCorto(fecha)}: ${estadoCorrida(c)}, ${EVENTO[c.event] ?? c.event}`;
-      const pos = i === 0 && inicio > 1 ? ` style="grid-column-start: ${inicio}"` : "";
-      return `<li${pos}><a class="barra ${claseCorrida(c)}" href="${esc(c.html_url)}" title="${esc(texto)}" aria-label="${esc(texto)}"></a></li>`;
+  const { inicio } = inicioActividad(generada);
+  // La API las da de la más reciente a la más antigua.
+  const corridas = [...w.corridas].reverse();
+  const semanas = Array.from({ length: SEMANAS }, (_, i) => {
+    const lunes = sumarDias(inicio, i * 7);
+    const siguiente = sumarDias(lunes, 7);
+    const deLaSemana = corridas.filter((c) => {
+      const d = diaMexico(fechaCorrida(c));
+      return d >= lunes && d < siguiente;
+    });
+    const semana = semanaVigilancia(deLaSemana);
+    // La semana en curso sin corridas todavía no ha fallado: le falta su lunes.
+    if (i === SEMANAS - 1 && semana.clase === "b-vacia") semana.nombre = "pendiente";
+    return { lunes, ...semana };
+  });
+  // Antes de la primera corrida la vigilancia no existía: ahí no se dibuja nada.
+  const primera = semanas.findIndex((s) => s.clase !== "b-vacia");
+  const barras = semanas
+    .map((s, i) => {
+      if (primera === -1 || i < primera) return "<li></li>";
+      const cuenta = s.total
+        ? ` (${plural(s.total, "corrida", "corridas")}${s.fallidas ? `, ${plural(s.fallidas, "fallida", "fallidas")}` : ""})`
+        : "";
+      const texto = `Semana del ${fechaLarga(s.lunes)}: ${s.nombre}${cuenta}`;
+      const clase = `barra ${s.clase}${anclaTip(i, SEMANAS)}`;
+      return s.ultima
+        ? `<li><a class="${clase}" href="${esc(s.ultima.html_url)}" data-tip="${esc(texto)}" aria-label="${esc(texto)}"></a></li>`
+        : `<li><span class="${clase}" data-tip="${esc(texto)}" role="img" aria-label="${esc(texto)}"></span></li>`;
     })
     .join("");
-  const detalle = [
-    [cuenta("b-falla"), "fallida", "fallidas"],
-    [cuenta("b-omitida"), "cancelada u omitida", "canceladas u omitidas"],
-    [cuenta("b-curso"), "en curso", "en curso"],
-  ]
-    .filter(([n]) => n)
-    .map(([n, uno, varios]) => plural(n, uno, varios));
+  const conCorrida = semanas.filter((s) => s.clase !== "b-vacia" && s.clase !== "b-curso");
+  const correctas = conCorrida.filter((s) => s.clase === "b-ok" || s.clase === "b-recupero").length;
+  const ultima = corridas.filter((c) => c.status === "completed").at(-1);
   return `<div class="vigilancia">
 <p class="vig-nombre">${nombre}</p>
-<ol class="barras" aria-label="Últimas ${corridas.length} corridas de ${esc(w.archivo)}, de la más antigua a la más reciente">${barras}</ol>
-<p class="vig-resumen">${numero(ok)} de ${numero(corridas.length)} correctas${
-    detalle.length ? `<span class="oculto"> (${detalle.join(", ")})</span>` : ""
-  } · última: <a href="${esc(ultima.html_url)}">${esc(estadoCorrida(ultima).toLowerCase())}</a>, ${momentoCorto(
-    ultima.run_started_at ?? ultima.created_at,
-  )}</p>
+<ol class="barras" aria-label="Últimas ${SEMANAS} semanas de ${esc(w.archivo)}, de la más antigua a la más reciente">${barras}</ol>
+<p class="vig-resumen">${numero(correctas)} de ${plural(conCorrida.length, "semana correcta", "semanas correctas")}${
+    ultima
+      ? ` · última corrida: <a href="${esc(ultima.html_url)}">${esc(estadoCorrida(ultima).toLowerCase())}</a>, ${momentoCorto(fechaCorrida(ultima))}`
+      : ""
+  }</p>
 </div>`;
 }
 
-function seccionProgreso({ vigilancia, prs }) {
+function seccionProgreso({ vigilancia, prs }, generada) {
   const filasV = [];
   const avisos = [];
   for (const [repo, r] of Object.entries(vigilancia)) {
@@ -252,7 +274,7 @@ function seccionProgreso({ vigilancia, prs }) {
       avisos.push(fallo(`la vigilancia de ${ORG}/${repo}`, r));
       continue;
     }
-    for (const w of r.datos) filasV.push(filaVigilancia(w, r.datos.length > 1));
+    for (const w of r.datos) filasV.push(filaVigilancia(w, r.datos.length > 1, generada));
   }
 
   const filasP = [];
@@ -273,13 +295,16 @@ function seccionProgreso({ vigilancia, prs }) {
     }
   }
 
-  return `<h2 id="progreso">En progreso</h2>
+  return `<h2 id="progreso">Vigilancia</h2>
 <p>
-  Cada lunes a las 09:00 UTC un workflow de vigilancia por repositorio descarga los PDF
-  oficiales y vuelve a extraer el texto. Si algo cambió, abre un pull request: se fusiona
-  solo cuando la extracción quedó verificada y, si no, queda como borrador para revisión.
+  Cada lunes un workflow por repositorio descarga los PDF oficiales y vuelve a extraer el
+  texto. Si algo cambió, un agente compara cada artículo contra el PDF y corrige el extractor
+  si hace falta; luego pasan pruebas que el agente no controla. Solo si todo queda verificado
+  se abre un pull request que se fusiona solo. Si no, no se publica nada y la siguiente
+  vigilancia lo reintenta.
 </p>
-<h3>Últimas corridas de cada vigilancia</h3>
+<h3>Últimas ${SEMANAS} semanas de cada vigilancia</h3>
+<p class="leyenda">Cada barra es una semana, de la más antigua a la más reciente.</p>
 ${filasV.length ? `${LEYENDA_BARRAS}\n${filasV.join("\n")}` : '<p class="tenue">No se encontraron workflows de vigilancia.</p>'}
 ${tabla({
   id: "t-prs",
@@ -297,182 +322,124 @@ ${tabla({
 ${avisos.join("\n")}`;
 }
 
-// Intensidad de cada día según archivos cambiados; los cortes son potencias de
-// diez porque una alta de leyes cambia miles de archivos y una reforma, unos
-// cuantos. Sin la cuenta de archivos se usan commits.
-const NIVELES_ARCHIVOS = [[1, "1 a 9"], [10, "10 a 99"], [100, "100 a 999"], [1000, "1,000 o más"]];
-const NIVELES_COMMITS = [[1, "1"], [2, "2"], [3, "3 o 4"], [5, "5 o más"]];
-const DIAS_SEMANA = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
-const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const PUBLICADOS_MAX = 12;
 
-function seccionActividad(actividad, generada) {
-  const titulo = '<h2 id="actividad">Cambios en los datos</h2>';
-  const leidos = Object.entries(actividad).filter(([, r]) => r.ok);
+function seccionPublicado(actividad) {
+  const titulo = '<h2 id="publicado">Lo que ha publicado el sistema</h2>';
   const avisos = Object.entries(actividad)
     .filter(([, r]) => !r.ok)
     .map(([repo, r]) => fallo(`los commits de ${ORG}/${repo}`, r));
-  if (!leidos.length) return `${titulo}\n${avisos.join("\n")}`;
-
-  const conArchivos = leidos.every(([, r]) => r.datos.conArchivos);
-  const { hoy, inicio } = inicioActividad(generada);
-  const porDia = {};
-  for (const [, r] of leidos) {
-    for (const c of r.datos.commits) {
-      const d = diaMexico(c.fecha);
-      if (d < inicio || d > hoy) continue;
-      const v = (porDia[d] ??= { commits: 0, archivos: 0, incompleto: false });
-      v.commits++;
-      if (c.archivos == null) v.incompleto = true;
-      else v.archivos += c.archivos;
-    }
-  }
-  const niveles = conArchivos ? NIVELES_ARCHIVOS : NIVELES_COMMITS;
-  const nivel = (v) => {
-    if (!v?.commits) return 0;
-    const x = conArchivos ? v.archivos : v.commits;
-    return Math.max(1, niveles.filter(([corte]) => x >= corte).length);
-  };
-  const describir = (d, v) => {
-    const cuando = `${d} (${DIAS_SEMANA[(new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7]})`;
-    if (!v) return `${cuando}: sin cambios`;
-    const archivos = conArchivos ? `, ${numero(v.archivos)}${v.incompleto ? " o más" : ""} ${v.archivos === 1 ? "archivo" : "archivos"}` : "";
-    return `${cuando}: ${plural(v.commits, "commit", "commits")}${archivos}`;
-  };
-
-  // Etiqueta de mes en la primera semana de cada mes; se omite la de un mes
-  // que apenas asoma al inicio, para que no se encime con la siguiente.
-  const meses = [];
-  for (let semana = 0; semana < SEMANAS; semana++) {
-    const mes = Number(sumarDias(inicio, semana * 7).slice(5, 7)) - 1;
-    if (meses.at(-1)?.mes !== mes) meses.push({ semana, mes });
-  }
-  if (meses.length > 1 && meses[1].semana < 3) meses.shift();
-  const celdas = meses.map(
-    ({ semana, mes }) => `<span class="mes" style="grid-column: ${semana + 2}">${MESES[mes]}</span>`,
-  );
-  for (let semana = 0; semana < SEMANAS; semana++) {
-    const lunes = sumarDias(inicio, semana * 7);
-    for (let dia = 0; dia < 7; dia++) {
-      const d = sumarDias(lunes, dia);
-      if (d > hoy) break;
-      const v = porDia[d];
-      celdas.push(
-        `<span class="c n${nivel(v)}" style="grid-area: ${dia + 2} / ${semana + 2}" title="${esc(describir(d, v))}"></span>`,
-      );
-    }
-  }
-  for (const dia of [0, 2, 4]) {
-    celdas.push(`<span class="dia-sem" style="grid-row: ${dia + 2}">${DIAS_SEMANA[dia]}</span>`);
-  }
-
-  const dias = Object.entries(porDia);
-  const commits = dias.reduce((s, [, v]) => s + v.commits, 0);
-  const archivos = dias.reduce((s, [, v]) => s + v.archivos, 0);
-  const pico = dias.sort(([, a], [, b]) => (conArchivos ? b.archivos - a.archivos : b.commits - a.commits))[0];
-  const resumen =
-    `Del ${fechaLarga(inicio)} al ${fechaLarga(hoy)}: ${plural(commits, "commit", "commits")}` +
-    (conArchivos ? ` y ${plural(archivos, "archivo cambiado", "archivos cambiados")}` : "") +
-    ` en ${plural(dias.length, "día", "días")}` +
-    (pico ? `. El día con más cambios fue el ${fechaLarga(pico[0])} (${describir(pico[0], pico[1]).split(": ")[1]}).` : ".");
-  const unidad = conArchivos ? "archivos cambiados" : "commits";
-  const muestras = [
-    `<span><span class="c n0"></span> ninguno</span>`,
-    ...niveles.map(([, etiqueta], i) => `<span><span class="c n${i + 1}"></span> ${esc(etiqueta)}</span>`),
-  ].join(" ");
-
+  const publicados = cambios(actividad);
+  const cuenta = (clave) => publicados.filter((c) => c.tipo.clave === clave).length;
+  const cifras = [
+    [cuenta("reforma"), "reforma incorporada", "reformas incorporadas"],
+    [cuenta("correccion"), "corrección de extracción", "correcciones de extracción"],
+    [cuenta("alta"), "lote de documentos nuevos", "lotes de documentos nuevos"],
+  ];
+  // Las altas llegan en lotes de decenas de documentos y taparían la lista;
+  // basta con su cifra.
+  const filas = publicados.filter((c) => c.tipo.clave !== "alta").slice(0, PUBLICADOS_MAX).map((c) => [
+    momentoCorto(c.fecha),
+    `<span class="tipo t-${c.tipo.clave}">${esc(c.tipo.nombre)}</span>`,
+    `<a href="${esc(c.url)}">${esc(c.titulo)}</a>`,
+  ]);
   return `${titulo}
 <p>
-  Cada cuadro es un día de las últimas ${SEMANAS} semanas, en los cuatro repositorios de datos
-  juntos; las columnas son semanas y las filas, días. Cuenta los commits de <code>main</code>,
-  también los de mantenimiento de los propios repositorios.
+  Cada cambio al texto llega como un commit con su tipo en el título: una <em>reforma</em> cuando
+  cambió la ley, una <em>corrección de extracción</em> cuando la ley es la misma y mejoró la
+  lectura del PDF, y un <em>alta</em> cuando entra un documento nuevo. Ninguno se edita a mano.
 </p>
-<figure class="actividad">
-<div class="cuadricula" role="img" aria-label="${esc(`Cambios por día en los repositorios de datos. ${resumen}`)}">
-${celdas.join("\n")}
-</div>
-<figcaption>
-<p class="leyenda" aria-hidden="true"><span>${conArchivos ? "Archivos cambiados por día:" : "Commits por día:"}</span> ${muestras}</p>
-<p>${esc(resumen)}</p>
-${
-  conArchivos
-    ? `<p class="tenue">Los archivos incluyen el texto de los artículos y la metadata que se genera con él.</p>`
-    : `<p class="tenue">La API no dio la cuenta de archivos de cada commit, así que la intensidad cuenta ${unidad}.</p>`
-}
-</figcaption>
-</figure>
+<ul class="cifras">
+${cifras.map(([n, uno, varios]) => `  <li><span class="cifra">${numero(n)}</span> ${esc(n === 1 ? uno : varios)}</li>`).join("\n")}
+</ul>
+<p class="tenue">En las últimas ${SEMANAS} semanas.</p>
+${tabla({
+  id: "t-publicado",
+  titulo: "Últimas reformas y correcciones",
+  columnas: [{ titulo: "Fecha" }, { titulo: "Tipo" }, { titulo: "Cambio" }],
+  filas,
+  vacio: "No hubo reformas ni correcciones en este periodo.",
+})}
 ${avisos.join("\n")}`;
 }
 
-const ESTILO = `
-/* Colores de los visuales. Las corridas correctas usan el verde de los checks
-   de GitHub, que es lo que esta página resume; el rojo marca solo lo que pide
-   atención. */
-:root {
-  --barra: #7a7a7a;
-  --verde: #2da44e;
-  --rojo: #b42318;
-  --n0: #ececec; --n1: #c6c6c6; --n2: #969696; --n3: #5c5c5c; --n4: #111111;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --barra: #8c8c8c;
-    --verde: #3fb950;
-    --rojo: #e0605a;
-    --n0: #1d1d1d; --n1: #3c3c3c; --n2: #6a6a6a; --n3: #a6a6a6; --n4: #f2f2f2;
+function seccionSalud(datos, generada) {
+  const s = salud(datos.vigilancia, generada);
+  const nombres = (vs) => lista(vs.map((v) => `<code>${esc(v.repo)}</code>`));
+  // El badge dice cuántas vigilancias están en cada caso; el subtexto, cuáles.
+  const detalle = [];
+  if (s.fallas.length) {
+    detalle.push(`Falló la última corrida de ${nombres(s.fallas)}; se reintenta sola y mientras tanto se conserva el texto vigente.`);
+  } else if (s.atrasadas.length) {
+    detalle.push(`Sin corrida correcta en más de ${DIAS_ATRASO} días: ${nombres(s.atrasadas)}.`);
+  } else if (s.sinLeer) {
+    detalle.push("No se pudo leer el estado de todas las vigilancias; abajo se indica cuál.");
   }
+  if (s.enCurso.length) detalle.push(`En curso: ${nombres(s.enCurso)}.`);
+  detalle.push(
+    `${s.ultimaRevision ? `Última revisión: ${momento(s.ultimaRevision)}` : "Sin revisiones todavía"} · próxima: ${momento(s.proximaRevision)}.`,
+  );
+  return `<p class="salud">${insignia(s)}</p>
+<p class="salud-sub">${detalle.join(" ")}</p>`;
 }
+
+const ESTILO = `
+${ESTILO_SALUD}
+:root { --barra: #7a7a7a; }
+@media (prefers-color-scheme: dark) { :root { --barra: #8c8c8c; } }
 
 
 .vigilancia { display: grid; grid-template-columns: 12rem 1fr; gap: 0.3rem 1rem; align-items: end; margin: 0 0 1rem; font-size: 0.85em; }
 .vig-nombre, .vig-resumen { margin: 0; }
 .vig-resumen { grid-column: 2; color: var(--tenue); font-size: 0.9em; }
-.barras { display: grid; grid-template-columns: repeat(${CORRIDAS}, 1fr); gap: 2px; height: 2.2rem; margin: 0; padding: 0; list-style: none; }
+.barras { display: grid; grid-template-columns: repeat(${SEMANAS}, 1fr); gap: 2px; height: 1.4rem; margin: 0; padding: 0; list-style: none; }
 .barras li { display: flex; align-items: flex-end; margin: 0; min-width: 0; }
-.barra { display: block; width: 100%; height: 60%; border-radius: 1px; background: var(--barra); }
+.barra { display: block; width: 100%; height: 100%; border-radius: 1px; background: var(--barra); }
 .barra.b-ok { background: var(--verde); }
-.barra.b-falla { height: 100%; background: var(--rojo); }
-.barra.b-omitida { background: transparent; box-shadow: inset 0 0 0 1px var(--tenue); }
+.barra.b-falla { background: var(--rojo); }
+.barra.b-recupero { background: var(--ambar); }
+.barra.b-vacia { background: transparent; box-shadow: inset 0 0 0 1px var(--linea); }
 .barra.b-curso { background: repeating-linear-gradient(135deg, var(--barra) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--barra); }
-a.barra:hover, a.barra:focus-visible { outline: 2px solid var(--texto); outline-offset: 1px; }
+.barras .barra:hover, a.barra:focus-visible { outline: 2px solid var(--texto); outline-offset: 1px; }
 .leyenda .barra { display: inline-block; width: 0.55rem; height: 0.75rem; }
-.leyenda .barra.b-falla { height: 1.15rem; }
 @media (max-width: 36rem) {
   .vigilancia { grid-template-columns: 1fr; }
   .vig-resumen { grid-column: 1; }
   .barras { gap: 1px; }
 }
 
-.actividad { margin: 0 0 1.5em; }
-.cuadricula { display: grid; grid-template-columns: 1.9rem repeat(${SEMANAS}, minmax(0, 1fr)); gap: 3px; max-width: 34rem; font-size: 0.7em; color: var(--tenue); }
-.cuadricula .c { aspect-ratio: 1; border-radius: 2px; }
-.mes { grid-row: 1; white-space: nowrap; line-height: 1.6; }
-.dia-sem { grid-column: 1; line-height: 1; align-self: center; }
-.c { display: inline-block; background: var(--n0); }
-.leyenda .c { width: 0.8rem; height: 0.8rem; border-radius: 2px; }
-.n1 { background: var(--n1); } .n2 { background: var(--n2); } .n3 { background: var(--n3); } .n4 { background: var(--n4); }
-.actividad figcaption { margin-top: 0.8em; font-size: 0.85em; }
-.actividad figcaption p { margin: 0 0 0.5em; }
-@media (max-width: 36rem) { .cuadricula { gap: 2px; } }
+.salud { margin: 0 0 0.5rem; }
+.salud-sub { margin-bottom: 2rem; color: var(--tenue); font-size: 0.85em; }
+
+.cifras { display: flex; flex-wrap: wrap; gap: 0.5em 2rem; margin: 0 0 0.4em; padding: 0; list-style: none; color: var(--tenue); font-size: 0.85em; }
+.cifras li { margin: 0; }
+.cifra { display: block; color: var(--texto); font-size: 1.8em; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tipo { white-space: nowrap; }
+.tipo::before { content: ""; display: inline-block; width: 0.55em; height: 0.55em; margin-right: 0.4em; border-radius: 50%; background: var(--tenue); }
+.t-reforma::before { background: var(--verde); }
 `;
 
 export function paginaEstado(datos, generada) {
-  const cuerpo = `      <p>
-        Estado técnico de OpenCodice: qué hay en cada repositorio de datos, cómo van los
-        workflows de vigilancia y qué cambió en los últimos meses. Para la lista de leyes, sin
-        detalles técnicos, ve <a href="/leyes">Qué leyes hay</a>.
+  const cuerpo = `${seccionSalud(datos, generada)}
+
+      <p>
+        Un sistema autónomo mantiene al día la ley en los repositorios: cada lunes descarga los
+        PDF oficiales, extrae el texto, lo verifica contra el PDF y solo publica lo que queda
+        verificado. Esta página muestra cómo va; se actualiza cada tres horas (la última, el
+        ${momento(generada)}) y las horas son de la Ciudad de México.
       </p>
-      <p class="generada">Generada el ${momento(generada)}. Se actualiza cada tres horas. Todas las horas son de la Ciudad de México.</p>
+
+${seccionPublicado(datos.actividad)}
 
 ${seccionResumen(datos)}
 
 ${seccionCorpus(datos)}
 
-${seccionProgreso(datos)}
-
-${seccionActividad(datos.actividad, generada)}`;
+${seccionProgreso(datos, generada)}`;
   return documento({
-    titulo: "Estado del sistema — OpenCodice",
-    h1: "Estado del sistema",
+    ruta: "/estado",
+    titulo: "Status del sistema — OpenCodice",
+    h1: "Status del sistema",
     descripcion:
       "Estado técnico de OpenCodice: repositorios de datos, corridas de vigilancia, cambios por día y pull requests abiertos.",
     estilo: ESTILO,
