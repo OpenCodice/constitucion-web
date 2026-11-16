@@ -43,8 +43,8 @@ jobs:
 
       # Lee los repos públicos de OpenCodice; si alguno no responde, la página
       # lo dice y el despliegue sigue.
-      - name: Generar página de estado
-        run: npm run estado
+      - name: Generar /leyes y /estado
+        run: npm run paginas
         env:
           GITHUB_TOKEN: ${{ github.token }}
 

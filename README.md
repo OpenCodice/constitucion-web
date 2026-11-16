@@ -4,7 +4,8 @@ Página estática de presentación del proyecto. No tiene build: lo que hay en
 `public/` se sirve tal cual desde Cloudflare Workers.
 
 - `public/index.html` y `public/estilo.css`: el sitio.
-- `scripts/estado.mjs`: genera `public/estado.html` (la página `/estado`) desde
+- `scripts/paginas.mjs`: genera `public/leyes.html` (`/leyes`, la lista de leyes
+  para el público) y `public/estado.html` (`/estado`, el estado técnico) desde
   los repos de datos; corre en cada despliegue, que también ocurre cada tres horas.
 - `worker/index.js`: responde `410` en las rutas del servicio de búsqueda que se
   retiró (`/api/*`, `/mcp`, `/openapi.json`, `/pdf/*`) y redirige el resto al inicio.

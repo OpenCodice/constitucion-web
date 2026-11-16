@@ -1,327 +1,29 @@
-#!/usr/bin/env node
-// Genera public/estado.html: qué hay publicado en los repos de datos de
-// OpenCodice y qué está en progreso. Corre en cada despliegue (también cada
-// hora) para que la página siga siendo estática y sin JavaScript en el
-// navegador.
-//
-// Sin dependencias: solo fetch de Node. Si GITHUB_TOKEN existe se usa para la
-// API (el límite anónimo es de 60 peticiones por hora). Ninguna falla de red
-// detiene el despliegue: cada fuente que no responde se anota en la página.
+// Página /estado: el estado del sistema para quien lo mantiene. Qué hay en
+// cada repo de datos, las corridas de vigilancia, los cambios por día y los
+// PR abiertos. La lista de leyes para el público está en /leyes.
 
-import { writeFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-
-const ORG = "OpenCodice";
-const API = "https://api.github.com";
-const RAW = "https://raw.githubusercontent.com";
-const SALIDA = fileURLToPath(new URL("../public/estado.html", import.meta.url));
-const TIEMPO_MAX = 20_000;
-
-// Corridas por vigilancia en la barra de estado, y semanas en la cuadrícula de
-// cambios. Cada despliegue gasta una petición por cosa y repo, no por corrida.
-const CORRIDAS = 40;
-const SEMANAS = 26;
-
-// Documentos del índice de LeyesBiblio de la Cámara de Diputados. El índice no
-// responde desde todas partes y el generador no debe depender de él, así que
-// se usa este total conocido para calcular lo que falta por procesar.
-const TOTAL_INDICE_FEDERAL = 326;
-
-// Clave de carpeta en leyes-estatales → nombre. Las claves de los estados que
-// aún no están son una suposición; si el repo usa otra, la carpeta aparece
-// igual en la tabla, con su clave como nombre.
-const ESTADOS = [
-  ["aguascalientes", "Aguascalientes"],
-  ["baja-california", "Baja California"],
-  ["baja-california-sur", "Baja California Sur"],
-  ["campeche", "Campeche"],
-  ["chiapas", "Chiapas"],
-  ["chihuahua", "Chihuahua"],
-  ["cdmx", "Ciudad de México"],
-  ["coahuila", "Coahuila"],
-  ["colima", "Colima"],
-  ["durango", "Durango"],
-  ["edomex", "Estado de México"],
-  ["guanajuato", "Guanajuato"],
-  ["guerrero", "Guerrero"],
-  ["hidalgo", "Hidalgo"],
-  ["jalisco", "Jalisco"],
-  ["michoacan", "Michoacán"],
-  ["morelos", "Morelos"],
-  ["nayarit", "Nayarit"],
-  ["nuevo-leon", "Nuevo León"],
-  ["oaxaca", "Oaxaca"],
-  ["puebla", "Puebla"],
-  ["queretaro", "Querétaro"],
-  ["quintana-roo", "Quintana Roo"],
-  ["san-luis-potosi", "San Luis Potosí"],
-  ["sinaloa", "Sinaloa"],
-  ["sonora", "Sonora"],
-  ["tabasco", "Tabasco"],
-  ["tamaulipas", "Tamaulipas"],
-  ["tlaxcala", "Tlaxcala"],
-  ["veracruz", "Veracruz"],
-  ["yucatan", "Yucatán"],
-  ["zacatecas", "Zacatecas"],
-];
-
-const REPOS = {
-  cpeum: "constitucion-mexicana",
-  estatales: "leyes-estatales",
-  fiscal: "fiscal-mexicano",
-  federales: "leyes-federales",
-};
-
-// ------------------------------------------------------------------ red
-
-class ErrorFuente extends Error {}
-
-async function pedir(url, { api = false, cuerpo } = {}) {
-  const cabeceras = { "User-Agent": "opencodice-estado" };
-  if (api) {
-    cabeceras.Accept = "application/vnd.github+json";
-    cabeceras["X-GitHub-Api-Version"] = "2022-11-28";
-    if (process.env.GITHUB_TOKEN) cabeceras.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
-  }
-  let ultimo;
-  for (let intento = 0; intento < 2; intento++) {
-    try {
-      const r = await fetch(url, {
-        headers: cabeceras,
-        signal: AbortSignal.timeout(TIEMPO_MAX),
-        ...(cuerpo && { method: "POST", body: JSON.stringify(cuerpo) }),
-      });
-      if (r.status === 404) return null;
-      // Un token sin acceso a otro repo no debe dejar sin datos públicos.
-      if ((r.status === 401 || r.status === 403) && cabeceras.Authorization) {
-        delete cabeceras.Authorization;
-        continue;
-      }
-      if (!r.ok) throw new ErrorFuente(`HTTP ${r.status}`);
-      return await r.json();
-    } catch (e) {
-      ultimo = e;
-    }
-  }
-  throw new ErrorFuente(ultimo?.name === "TimeoutError" ? "sin respuesta" : String(ultimo?.message ?? ultimo));
-}
-
-const crudo = (repo, ruta) => pedir(`${RAW}/${ORG}/${repo}/main/${ruta}`);
-const api = (ruta) => pedir(`${API}${ruta}`, { api: true });
-
-async function graphql(query, variables) {
-  const r = await pedir(`${API}/graphql`, { api: true, cuerpo: { query, variables } });
-  if (!r || r.errors) throw new ErrorFuente(r?.errors?.[0]?.message ?? "GraphQL sin respuesta");
-  return r.data;
-}
-
-// Ejecuta una lectura y convierte su falla en un valor que la página puede
-// mostrar, para que una fuente caída no tumbe a las demás.
-async function intentar(fn) {
-  try {
-    return { ok: true, datos: await fn() };
-  } catch (e) {
-    return { ok: false, error: e.message || String(e) };
-  }
-}
-
-// ------------------------------------------------------------------ lectura
-
-async function leerCpeum() {
-  const meta = await crudo(REPOS.cpeum, "metadata/articulos.json");
-  if (!meta) throw new ErrorFuente("no se encontró metadata/articulos.json");
-  return { articulos: meta.articulos.length, version: meta.version };
-}
-
-async function leerEstatales() {
-  const raiz = await api(`/repos/${ORG}/${REPOS.estatales}/contents/`);
-  if (!raiz) throw new ErrorFuente("no se encontró el repositorio");
-  const carpetas = raiz.filter((e) => e.type === "dir" && !e.name.startsWith(".")).map((e) => e.name);
-  const publicados = {};
-  await Promise.all(
-    carpetas.map(async (c) => {
-      const meta = await crudo(REPOS.estatales, `${c}/constitucion/metadata/articulos.json`);
-      if (meta) publicados[c] = { articulos: meta.articulos.length, version: meta.version };
-    }),
-  );
-  const conocidos = new Set(ESTADOS.map(([c]) => c));
-  const filas = ESTADOS.map(([clave, nombre]) => ({ clave, nombre, ...publicados[clave] }));
-  for (const c of Object.keys(publicados)) {
-    if (!conocidos.has(c)) filas.push({ clave: c, nombre: c, ...publicados[c] });
-  }
-  filas.sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
-  return filas;
-}
-
-async function leerFiscal() {
-  const meta = await crudo(REPOS.fiscal, "metadata/documentos.json");
-  if (!meta) throw new ErrorFuente("no se encontró metadata/documentos.json");
-  return meta.documentos;
-}
-
-async function leerFederales() {
-  const fuentes = await crudo(REPOS.federales, "fuentes.json");
-  if (!fuentes) throw new ErrorFuente("no se encontró fuentes.json");
-  return fuentes.documentos;
-}
-
-async function leerVigilancia(repo) {
-  const { workflows } = await api(`/repos/${ORG}/${repo}/actions/workflows?per_page=100`);
-  const vigilar = workflows.filter((w) => /\/vigilar[^/]*\.ya?ml$/.test(w.path) && w.state === "active");
-  return Promise.all(
-    vigilar.map(async (w) => {
-      const { workflow_runs } = await api(
-        `/repos/${ORG}/${repo}/actions/workflows/${w.id}/runs?per_page=${CORRIDAS}`,
-      );
-      return { repo, nombre: w.name, archivo: w.path.split("/").pop(), url: w.html_url, corridas: workflow_runs };
-    }),
-  );
-}
-
-async function leerPrs(repo) {
-  const prs = await api(`/repos/${ORG}/${repo}/pulls?state=open&per_page=100`);
-  return (prs ?? []).map((p) => ({ repo, ...p }));
-}
-
-async function leerUltimoCommit(repo) {
-  const commits = await api(`/repos/${ORG}/${repo}/commits?per_page=1`);
-  const c = commits?.[0];
-  return c ? { fecha: c.commit.committer.date, titulo: c.commit.message.split("\n")[0], url: c.html_url } : null;
-}
-
-// Commits de main desde `desde`, con cuántos archivos cambió cada uno. GraphQL
-// da esa cuenta en la misma consulta (REST pediría una petición por commit);
-// pide token, así que sin él se cae a REST y solo se cuentan commits.
-const HISTORIA = `query($owner: String!, $name: String!, $since: GitTimestamp!, $after: String) {
-  repository(owner: $owner, name: $name) {
-    defaultBranchRef { target { ... on Commit {
-      history(first: 100, since: $since, after: $after) {
-        pageInfo { hasNextPage endCursor }
-        nodes { committedDate changedFilesIfAvailable }
-      }
-    } } }
-  }
-}`;
-const PAGINAS_MAX = 5;
-
-async function leerActividad(repo, desde) {
-  if (process.env.GITHUB_TOKEN) {
-    try {
-      const commits = [];
-      let after = null;
-      for (let i = 0; i < PAGINAS_MAX; i++) {
-        const d = await graphql(HISTORIA, { owner: ORG, name: repo, since: desde, after });
-        const h = d.repository.defaultBranchRef.target.history;
-        commits.push(...h.nodes.map((n) => ({ fecha: n.committedDate, archivos: n.changedFilesIfAvailable })));
-        if (!h.pageInfo.hasNextPage) break;
-        after = h.pageInfo.endCursor;
-      }
-      return { conArchivos: true, commits };
-    } catch {
-      // Sigue con REST.
-    }
-  }
-  const commits = [];
-  for (let pagina = 1; pagina <= PAGINAS_MAX; pagina++) {
-    const lote = await api(`/repos/${ORG}/${repo}/commits?since=${desde}&per_page=100&page=${pagina}`);
-    commits.push(...(lote ?? []).map((c) => ({ fecha: c.commit.committer.date, archivos: null })));
-    if (!lote || lote.length < 100) break;
-  }
-  return { conArchivos: false, commits };
-}
-
-// ------------------------------------------------------------------ formato
-
-const esc = (s) =>
-  String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-
-const numero = (n) => (n == null ? "—" : new Intl.NumberFormat("es-MX").format(n));
-
-const fechaLarga = (iso) =>
-  new Intl.DateTimeFormat("es-MX", { dateStyle: "long", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
-
-const enMexico = (iso, opciones) =>
-  new Intl.DateTimeFormat("es-MX", { timeZone: "America/Mexico_City", hourCycle: "h23", ...opciones }).format(new Date(iso));
-
-// En prosa la fecha va completa; en las tablas, compacta y con columnas alineadas.
-const momento = (iso) =>
-  `<time datetime="${esc(new Date(iso).toISOString())}">${esc(
-    enMexico(iso, { dateStyle: "long", timeStyle: "short" }),
-  )}</time>`;
-
-const partesMexico = (iso) =>
-  Object.fromEntries(
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/Mexico_City",
-      hourCycle: "h23",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-      .formatToParts(new Date(iso))
-      .map((x) => [x.type, x.value]),
-  );
-
-const textoCorto = (iso) => {
-  const p = partesMexico(iso);
-  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
-};
-
-const momentoCorto = (iso) => `<time datetime="${esc(new Date(iso).toISOString())}">${textoCorto(iso)}</time>`;
-
-// Día del calendario en la Ciudad de México, como 'YYYY-MM-DD'.
-const diaMexico = (iso) => {
-  const p = partesMexico(iso);
-  return `${p.year}-${p.month}-${p.day}`;
-};
-
-const dia = (iso) => (iso ? `<span class="dato">${esc(iso)}</span>` : "—");
-
-const masReciente = (fechas) => fechas.filter(Boolean).sort().at(-1);
-
-const enlaceRepo = (repo, texto = `${ORG}/${repo}`) =>
-  `<a href="https://github.com/${ORG}/${esc(repo)}">${esc(texto)}</a>`;
-
-function plural(n, uno, varios) {
-  return `${numero(n)} ${n === 1 ? uno : varios}`;
-}
-
-function lista(nombres) {
-  if (nombres.length <= 1) return nombres.join("");
-  return `${nombres.slice(0, -1).join(", ")} y ${nombres.at(-1)}`;
-}
-
-// Las tablas anchas se desplazan dentro de su contenedor, no la página entera.
-function tabla({ id, titulo, columnas, filas, vacio = "Ninguna." }) {
-  if (!filas.length) return `<p class="tenue">${esc(vacio)}</p>`;
-  const cabeza = columnas
-    .map((c) => `<th scope="col"${c.num ? ' class="num"' : ""}>${esc(c.titulo)}</th>`)
-    .join("");
-  const cuerpo = filas
-    .map(
-      (f) =>
-        `<tr>${f
-          .map((celda, i) => {
-            const clase = columnas[i].num ? ' class="num"' : "";
-            return i === 0 ? `<th scope="row"${clase}>${celda}</th>` : `<td${clase}>${celda}</td>`;
-          })
-          .join("")}</tr>`,
-    )
-    .join("\n");
-  return `<div class="desplazable" role="region" aria-labelledby="${id}" tabindex="0">
-<table>
-<caption id="${id}">${esc(titulo)}</caption>
-<thead><tr>${cabeza}</tr></thead>
-<tbody>
-${cuerpo}
-</tbody>
-</table>
-</div>`;
-}
-
-const fallo = (que, r) => `<p class="aviso">No se pudo leer ${esc(que)}: ${esc(r.error)}.</p>`;
+import {
+  ORG,
+  REPOS,
+  TOTAL_INDICE_FEDERAL,
+  esc,
+  numero,
+  fechaLarga,
+  momento,
+  momentoCorto,
+  textoCorto,
+  diaMexico,
+  sumarDias,
+  dia,
+  masReciente,
+  enlaceRepo,
+  plural,
+  lista,
+  tabla,
+  fallo,
+  documento,
+} from "./lib/comun.mjs";
+import { CORRIDAS, SEMANAS, inicioActividad } from "./lib/datos.mjs";
 
 const ESTADO_CORRIDA = {
   queued: "En cola",
@@ -415,10 +117,45 @@ ${tabla({
 })}
 ${avisos.join("\n")}
 <p class="tenue">
+  La lista de cada documento, con sus reformas, está en <a href="/leyes">Qué leyes hay</a>.
   “Reforma más reciente” es la fecha de publicación oficial más reciente entre los documentos
   del corpus. En la legislación fiscal la cifra de artículos cuenta unidades: también reglas,
   fichas y criterios.
 </p>`;
+}
+
+// Lo que no cabe en la tabla de resumen: estados que faltan y el avance de
+// las leyes federales. Las listas completas están en /leyes.
+function seccionCorpus({ estatales, federales }) {
+  const partes = [];
+  if (estatales.ok) {
+    const pub = estatales.datos.filter((e) => e.articulos != null);
+    const faltan = estatales.datos.length - pub.length;
+    partes.push(`<p>
+  <strong>Constituciones estatales:</strong> ${lista(pub.map((e) => esc(e.nombre))) || "ninguna"}, en
+  <code>{estado}/constitucion/</code> de ${enlaceRepo(REPOS.estatales)}.
+  ${faltan > 0 ? `Faltan ${plural(faltan, "entidad", "entidades")}, sin fecha comprometida.` : ""}
+</p>`);
+  }
+  if (federales.ok) {
+    const docs = federales.datos;
+    const inc = docs.filter((d) => d.estado === "incluida");
+    const exc = docs.filter((d) => d.estado === "excluida");
+    const total = Math.max(TOTAL_INDICE_FEDERAL, docs.length);
+    const faltan = total - docs.length;
+    const reparadas = inc.filter((d) => d.alta?.via === "reparada").length;
+    const pendientes = inc.filter((d) => d.revision_pendiente).length;
+    partes.push(`<p>
+  <strong>Leyes federales:</strong> de ${numero(total)} documentos (el índice de la Cámara de
+  Diputados más los reglamentos fiscales), ${numero(inc.length)} están en
+  ${enlaceRepo(REPOS.federales)}${reparadas ? ` (${plural(reparadas, "entró", "entraron")} tras una reparación del extractor)` : ""},
+  ${numero(exc.length)} quedaron excluidas y ${faltan > 0 ? `${numero(faltan)} faltan por procesar` : "ninguna falta por procesar"}.
+  ${pendientes ? `${plural(pendientes, "publicada tiene", "publicadas tienen")} <code>revision_pendiente</code>.` : ""}
+</p>`);
+  }
+  if (!partes.length) return "";
+  return `${partes.join("\n")}
+<p>Las listas completas, con el motivo de cada exclusión, están en <a href="/leyes">Qué leyes hay</a>.</p>`;
 }
 
 // Tipo de barra por resultado. La falla es la única en color y además más alta,
@@ -527,95 +264,6 @@ ${tabla({
 ${avisos.join("\n")}`;
 }
 
-function seccionEstatales(estatales) {
-  if (!estatales.ok) {
-    return `<h2 id="estatales">Constituciones estatales</h2>\n${fallo(`${ORG}/${REPOS.estatales}`, estatales)}`;
-  }
-  const filas = estatales.datos;
-  const pub = filas.filter((e) => e.articulos != null);
-  const faltan = filas.length - pub.length;
-  return `<h2 id="estatales">Constituciones estatales</h2>
-<p>
-  Publicadas: ${lista(pub.map((e) => esc(e.nombre))) || "ninguna"}.
-  ${faltan > 0 ? `Faltan ${plural(faltan, "entidad", "entidades")}; no hay fecha comprometida para ellas.` : ""}
-  Cada una vive en <code>{estado}/constitucion/</code> del repositorio
-  ${enlaceRepo(REPOS.estatales)}.
-</p>
-${tabla({
-  id: "t-estatales",
-  titulo: "Las 32 entidades federativas",
-  columnas: [{ titulo: "Entidad" }, { titulo: "Estado" }, { titulo: "Artículos", num: true }, { titulo: "Última reforma" }],
-  filas: filas.map((e) => [
-    e.articulos != null
-      ? `<a href="https://github.com/${ORG}/${REPOS.estatales}/tree/main/${esc(e.clave)}/constitucion">${esc(e.nombre)}</a>`
-      : esc(e.nombre),
-    e.articulos != null ? "Publicada" : '<span class="tenue">Falta</span>',
-    e.articulos != null ? numero(e.articulos) : "—",
-    dia(e.version),
-  ]),
-})}`;
-}
-
-function seccionFederales(federales) {
-  if (!federales.ok) {
-    return `<h2 id="federales">Leyes federales</h2>\n${fallo(`${ORG}/${REPOS.federales}`, federales)}`;
-  }
-  const docs = federales.datos;
-  const porNombre = (a, b) => a.etiqueta.localeCompare(b.etiqueta, "es");
-  const inc = docs.filter((d) => d.estado === "incluida").sort(porNombre);
-  const exc = docs.filter((d) => d.estado === "excluida").sort(porNombre);
-  const total = Math.max(TOTAL_INDICE_FEDERAL, docs.length);
-  const faltan = total - docs.length;
-  const reparadas = inc.filter((d) => d.alta?.via === "reparada").length;
-  const pendientes = inc.filter((d) => d.revision_pendiente).length;
-  const carpeta = (d) =>
-    `<a href="https://github.com/${ORG}/${REPOS.federales}/tree/main/${esc(d.clave)}"><code>${esc(d.clave)}</code></a>`;
-  const pdf = (d) => (d.url ? `<a href="${esc(d.url)}">PDF</a>` : "—");
-
-  return `<h2 id="federales">Leyes federales</h2>
-<p>
-  De los ${numero(total)} documentos del corpus federal (el índice de leyes vigentes de la
-  Cámara de Diputados más los reglamentos fiscales),
-  <span class="dato">${numero(inc.length)}</span> están publicados en
-  ${enlaceRepo(REPOS.federales)}${reparadas ? ` (${plural(reparadas, "entró", "entraron")} después de que el agente corrigió el extractor)` : ""}
-  y <span class="dato">${numero(exc.length)}</span> quedaron fuera del corpus, cada uno con su
-  motivo en la tabla de abajo.
-  ${faltan > 0 ? `${faltan === 1 ? "Falta" : "Faltan"} <span class="dato">${numero(faltan)}</span> por procesar.` : "No queda ninguno por procesar."}
-</p>
-${
-  pendientes
-    ? `<p>${plural(pendientes, "ley publicada tiene", "leyes publicadas tienen")} una versión nueva del PDF que aún no se pudo extraer con fidelidad; mientras tanto conservan la versión anterior y aparecen marcadas en la tabla.</p>`
-    : ""
-}
-${tabla({
-  id: "t-incluidas",
-  titulo: `Leyes federales publicadas (${numero(inc.length)})`,
-  columnas: [
-    { titulo: "Ley" },
-    { titulo: "Clave" },
-    { titulo: "Artículos", num: true },
-    { titulo: "Última reforma" },
-    { titulo: "Fuente oficial" },
-  ],
-  filas: inc.map((d) => [
-    esc(d.etiqueta) + (d.revision_pendiente ? ' <span class="tenue">(versión nueva pendiente)</span>' : ""),
-    carpeta(d),
-    numero(d.unidades),
-    dia(d.version),
-    pdf(d),
-  ]),
-})}
-${tabla({
-  id: "t-excluidas",
-  titulo: `Fuera del corpus (${numero(exc.length)})`,
-  columnas: [{ titulo: "Ley" }, { titulo: "Clave" }, { titulo: "Motivo" }, { titulo: "Fuente oficial" }],
-  filas: exc.map((d) => [esc(d.etiqueta), `<code>${esc(d.clave)}</code>`, esc(d.motivo ?? "—"), pdf(d)]),
-})}
-<p class="tenue">
-  Las leyes fuera del corpus se reintentan solas cuando cambia su PDF o el extractor.
-</p>`;
-}
-
 // Intensidad de cada día según archivos cambiados; los cortes son potencias de
 // diez porque una alta de leyes cambia miles de archivos y una reforma, unos
 // cuantos. Sin la cuenta de archivos se usan commits.
@@ -623,14 +271,6 @@ const NIVELES_ARCHIVOS = [[1, "1 a 9"], [10, "10 a 99"], [100, "100 a 999"], [10
 const NIVELES_COMMITS = [[1, "1"], [2, "2"], [3, "3 o 4"], [5, "5 o más"]];
 const DIAS_SEMANA = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-
-const sumarDias = (dia, n) => new Date(Date.parse(`${dia}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
-
-function inicioActividad(generada) {
-  const hoy = diaMexico(generada);
-  const semana = (new Date(`${hoy}T00:00:00Z`).getUTCDay() + 6) % 7;
-  return { hoy, inicio: sumarDias(hoy, -semana - (SEMANAS - 1) * 7) };
-}
 
 function seccionActividad(actividad, generada) {
   const titulo = '<h2 id="actividad">Cambios en los datos</h2>';
@@ -731,22 +371,6 @@ ${avisos.join("\n")}`;
 }
 
 const ESTILO = `
-main { max-width: 50rem; }
-.desplazable { overflow-x: auto; margin: 0 0 1.75em; }
-.desplazable:focus-visible { outline: 2px solid var(--texto); outline-offset: 3px; }
-table { width: 100%; border-collapse: collapse; font-size: 0.8em; line-height: 1.4; font-variant-numeric: tabular-nums; }
-caption { caption-side: top; text-align: left; padding-bottom: 0.6em; font-weight: 600; }
-th, td { padding: 0.45em 0.9em 0.45em 0; border-bottom: 1px solid var(--linea); text-align: left; vertical-align: top; }
-th:last-child, td:last-child { padding-right: 0; }
-thead th { font-weight: 500; color: var(--tenue); white-space: nowrap; }
-tbody th { font-weight: 400; }
-.num { text-align: right; white-space: nowrap; }
-td time, td .dato { white-space: nowrap; }
-.aviso { padding-left: 0.9em; border-left: 2px solid var(--texto); }
-.generada { color: var(--tenue); font-size: 0.85em; }
-h3 { margin: 2rem 0 0.8rem; font-size: 0.8em; font-weight: 600; }
-.oculto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-
 /* Colores de los visuales. El rojo es el único color de la página y solo
    marca lo que pide atención. */
 :root {
@@ -762,8 +386,6 @@ h3 { margin: 2rem 0 0.8rem; font-size: 0.8em; font-weight: 600; }
   }
 }
 
-.leyenda { display: flex; flex-wrap: wrap; gap: 0.4em 1.2em; align-items: center; font-size: 0.8em; color: var(--tenue); }
-.leyenda > span { display: inline-flex; align-items: center; gap: 0.4em; white-space: nowrap; }
 
 .vigilancia { display: grid; grid-template-columns: 12rem 1fr; gap: 0.3rem 1rem; align-items: end; margin: 0 0 1rem; font-size: 0.85em; }
 .vig-nombre, .vig-resumen { margin: 0; }
@@ -796,79 +418,31 @@ a.barra:hover, a.barra:focus-visible { outline: 2px solid var(--texto); outline-
 @media (max-width: 36rem) { .cuadricula { gap: 2px; } }
 `;
 
-function pagina(datos, generada) {
-  return `<!doctype html>
-<html lang="es-MX">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Estado — OpenCodice</title>
-    <meta name="description" content="Qué hay publicado en OpenCodice y qué está en progreso: constitución federal, constituciones estatales, legislación fiscal y leyes federales." />
-    <meta name="color-scheme" content="light dark" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23111'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="/estilo.css" />
-    <style>${ESTILO}</style>
-  </head>
-  <body>
-    <main>
-      <header>
-        <p class="marca"><a href="/">OpenCodice</a></p>
-        <h1>Estado del proyecto</h1>
-      </header>
-
-      <p>
-        Qué hay publicado en los repositorios de datos y qué está en progreso. Las cifras se
-        leen de los propios repositorios.
+export function paginaEstado(datos, generada) {
+  const cuerpo = `      <p>
+        Estado técnico de OpenCodice: qué hay en cada repositorio de datos, cómo van los
+        workflows de vigilancia y qué cambió en los últimos meses. Para la lista de leyes, sin
+        detalles técnicos, ve <a href="/leyes">Qué leyes hay</a>.
       </p>
       <p class="generada">Generada el ${momento(generada)}. Se actualiza cada tres horas. Todas las horas son de la Ciudad de México.</p>
 
 ${seccionResumen(datos)}
 
+${seccionCorpus(datos)}
+
 ${seccionProgreso(datos)}
 
-${seccionActividad(datos.actividad, generada)}
-
-${seccionEstatales(datos.estatales)}
-
-${seccionFederales(datos.federales)}
-
-      <footer>
-        <p>
-          <a href="/">Inicio</a> · El código y los datos están en
+${seccionActividad(datos.actividad, generada)}`;
+  return documento({
+    titulo: "Estado del sistema — OpenCodice",
+    h1: "Estado del sistema",
+    descripcion:
+      "Estado técnico de OpenCodice: repositorios de datos, corridas de vigilancia, cambios por día y pull requests abiertos.",
+    estilo: ESTILO,
+    cuerpo,
+    pie: `<p>
+          <a href="/">Inicio</a> · <a href="/leyes">Qué leyes hay</a> · El código y los datos están en
           <a href="https://github.com/${ORG}">github.com/${ORG}</a>.
-        </p>
-      </footer>
-    </main>
-  </body>
-</html>
-`;
+        </p>`,
+  });
 }
-
-// ------------------------------------------------------------------ main
-
-async function porRepo(fn) {
-  const nombres = Object.values(REPOS);
-  const resultados = await Promise.all(nombres.map((r) => intentar(() => fn(r))));
-  return Object.fromEntries(nombres.map((r, i) => [r, resultados[i]]));
-}
-
-const generada = new Date().toISOString();
-const { inicio: inicioCuadricula } = inicioActividad(generada);
-// Un día de margen: el día se cuenta en hora de la Ciudad de México y la API filtra en UTC.
-const desde = `${sumarDias(inicioCuadricula, -1)}T00:00:00Z`;
-const [cpeum, estatales, fiscal, federales, vigilancia, prs, commits, actividad] = await Promise.all([
-  intentar(leerCpeum),
-  intentar(leerEstatales),
-  intentar(leerFiscal),
-  intentar(leerFederales),
-  porRepo(leerVigilancia),
-  porRepo(leerPrs),
-  porRepo(leerUltimoCommit),
-  porRepo((r) => leerActividad(r, desde)),
-]);
-
-await writeFile(SALIDA, pagina({ cpeum, estatales, fiscal, federales, vigilancia, prs, commits, actividad }, generada));
-
-const fallas = [cpeum, estatales, fiscal, federales, ...Object.values(vigilancia), ...Object.values(prs), ...Object.values(commits), ...Object.values(actividad)]
-  .filter((r) => !r.ok).length;
-console.log(`estado.html generada${fallas ? ` con ${fallas} fuentes sin responder` : ""}`);

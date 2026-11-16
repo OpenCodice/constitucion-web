@@ -1,6 +1,7 @@
 node_modules/
-# Lo genera scripts/estado.mjs en cada despliegue.
+# Los genera scripts/paginas.mjs en cada despliegue.
 public/estado.html
+public/leyes.html
 dist/
 .data/
 .dev.vars
