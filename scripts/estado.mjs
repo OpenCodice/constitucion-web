@@ -220,8 +220,8 @@ const LEYENDA_BARRAS = `<p class="leyenda" aria-hidden="true">
   <span><span class="barra b-curso"></span> En curso</span>
 </p>`;
 
-function filaVigilancia(w, varias, generada) {
-  const nombre = `${enlaceRepo(w.repo, w.repo)}${varias ? ` <a class="tenue" href="${esc(w.url)}">${esc(w.archivo)}</a>` : ""}`;
+function filaVigilancia(w, generada) {
+  const nombre = `${enlaceRepo(w.repo, w.repo)} <a class="tenue" href="${esc(w.url)}">${esc(w.archivo)}</a>`;
   const { inicio } = inicioActividad(generada);
   // La API las da de la más reciente a la más antigua.
   const corridas = [...w.corridas].reverse();
@@ -274,7 +274,7 @@ function seccionProgreso({ vigilancia, prs }, generada) {
       avisos.push(fallo(`la vigilancia de ${ORG}/${repo}`, r));
       continue;
     }
-    for (const w of r.datos) filasV.push(filaVigilancia(w, r.datos.length > 1, generada));
+    for (const w of r.datos) filasV.push(filaVigilancia(w, generada));
   }
 
   const filasP = [];
@@ -297,8 +297,8 @@ function seccionProgreso({ vigilancia, prs }, generada) {
 
   return `<h2 id="progreso">Vigilancia</h2>
 <p>
-  Cada lunes un workflow por repositorio descarga los PDF oficiales y vuelve a extraer el
-  texto. Si algo cambió, un agente compara cada artículo contra el PDF y corrige el extractor
+  Cada lunes un Worker de Cloudflare lanza la vigilancia de cada repositorio de datos: un
+  workflow de su extractor que descarga los PDF oficiales y vuelve a extraer el texto. Si algo cambió, un agente compara cada artículo contra el PDF y corrige el extractor
   si hace falta; luego pasan pruebas que el agente no controla. Solo si todo queda verificado
   se abre un pull request que se fusiona solo. Si no, no se publica nada y la siguiente
   vigilancia lo reintenta.
@@ -334,11 +334,12 @@ function seccionPublicado(actividad) {
   const cifras = [
     [cuenta("reforma"), "reforma incorporada", "reformas incorporadas"],
     [cuenta("correccion"), "corrección de extracción", "correcciones de extracción"],
-    [cuenta("alta"), "lote de documentos nuevos", "lotes de documentos nuevos"],
+    [cuenta("alta"), "alta de documento", "altas de documentos"],
+    [cuenta("retiro"), "retiro de documento", "retiros de documentos"],
   ];
-  // Las altas llegan en lotes de decenas de documentos y taparían la lista;
-  // basta con su cifra.
-  const filas = publicados.filter((c) => c.tipo.clave !== "alta").slice(0, PUBLICADOS_MAX).map((c) => [
+  // Hay un commit por documento y las altas y retiros llegan por cientos al
+  // incorporar un corpus: taparían la lista, así que basta con su cifra.
+  const filas = publicados.filter((c) => c.tipo.clave !== "alta" && c.tipo.clave !== "retiro").slice(0, PUBLICADOS_MAX).map((c) => [
     momentoCorto(c.fecha),
     `<span class="tipo t-${c.tipo.clave}">${esc(c.tipo.nombre)}</span>`,
     `<a href="${esc(c.url)}">${esc(c.titulo)}</a>`,
@@ -347,7 +348,8 @@ function seccionPublicado(actividad) {
 <p>
   Cada cambio al texto llega como un commit con su tipo en el título: una <em>reforma</em> cuando
   cambió la ley, una <em>corrección de extracción</em> cuando la ley es la misma y mejoró la
-  lectura del PDF, y un <em>alta</em> cuando entra un documento nuevo. Ninguno se edita a mano.
+  lectura del PDF, un <em>alta</em> cuando entra un documento nuevo y un <em>retiro</em> cuando
+  sale uno cuya extracción ya no reproduce el PDF. Ninguno se edita a mano.
 </p>
 <ul class="cifras">
 ${cifras.map(([n, uno, varios]) => `  <li><span class="cifra">${numero(n)}</span> ${esc(n === 1 ? uno : varios)}</li>`).join("\n")}
@@ -375,6 +377,7 @@ function seccionSalud(datos, generada) {
   } else if (s.sinLeer) {
     detalle.push("No se pudo leer el estado de todas las vigilancias; abajo se indica cuál.");
   }
+  if (s.nuevas.length) detalle.push(`Aún sin su primera corrida: ${nombres(s.nuevas)}.`);
   if (s.enCurso.length) detalle.push(`En curso: ${nombres(s.enCurso)}.`);
   detalle.push(
     `${s.ultimaRevision ? `Última revisión: ${momento(s.ultimaRevision)}` : "Sin revisiones todavía"} · próxima: ${momento(s.proximaRevision)}.`,
@@ -406,6 +409,9 @@ ${ESTILO_SALUD}
   .vigilancia { grid-template-columns: 1fr; }
   .vig-resumen { grid-column: 1; }
   .barras { gap: 1px; }
+  /* El tipo se parte en dos renglones para dejar ancho al título del cambio. */
+  [aria-labelledby="t-publicado"] .tipo { white-space: normal; }
+  [aria-labelledby="t-publicado"] td:last-child { min-width: 9rem; }
 }
 
 .salud { margin: 0 0 0.5rem; }

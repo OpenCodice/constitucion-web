@@ -18,12 +18,16 @@ function saludVigilancia(w, generada) {
   );
   const ultima = terminadas[0];
   const correcta = terminadas.find((c) => c.conclusion === "success");
-  const atrasada = !correcta || Date.parse(generada) - Date.parse(fechaCorrida(correcta)) > DIAS_ATRASO * 86_400_000;
+  const dias = (fecha) => (Date.parse(generada) - Date.parse(fecha)) / 86_400_000;
+  // Una vigilancia recién creada que aún no ha terminado una corrida no está
+  // atrasada: le falta su primer lunes.
+  const nueva = !ultima && w.creada && dias(w.creada) <= DIAS_ATRASO;
+  const atrasada = !correcta || dias(fechaCorrida(correcta)) > DIAS_ATRASO;
   return {
     repo: w.repo,
     ultima,
     enCurso: w.corridas.some((c) => c.status !== "completed"),
-    estado: ultima && FALLAS.includes(ultima.conclusion) ? "falla" : atrasada ? "atrasada" : "ok",
+    estado: ultima && FALLAS.includes(ultima.conclusion) ? "falla" : nueva ? "nueva" : atrasada ? "atrasada" : "ok",
   };
 }
 
@@ -46,8 +50,10 @@ export function salud(vigilancia, generada) {
   const con = (estado) => vigilancias.filter((v) => v.estado === estado);
   const fallas = con("falla");
   const atrasadas = con("atrasada");
+  const nuevas = con("nueva");
   const sinLeer = lecturas.some((r) => !r.ok) || !vigilancias.length;
-  const total = vigilancias.length;
+  // Las nuevas no cuentan en el veredicto hasta su primera corrida.
+  const total = vigilancias.length - nuevas.length;
 
   let clase, veredicto;
   if (fallas.length) {
@@ -56,7 +62,7 @@ export function salud(vigilancia, generada) {
   } else if (atrasadas.length) {
     clase = "s-atraso";
     veredicto = `${atrasadas.length}/${total} vigilancias atrasadas`;
-  } else if (sinLeer) {
+  } else if (sinLeer || !total) {
     clase = "s-atraso";
     veredicto = "Vigilancias sin leer";
   } else {
@@ -72,6 +78,7 @@ export function salud(vigilancia, generada) {
     veredicto,
     fallas,
     atrasadas,
+    nuevas,
     sinLeer,
     enCurso: vigilancias.filter((v) => v.enCurso),
     ultimaRevision: fechas.at(-1) ?? null,
@@ -82,12 +89,14 @@ export function salud(vigilancia, generada) {
 export const insignia = ({ clase, veredicto }) => `<span class="insignia ${clase}">${esc(veredicto)}</span>`;
 
 // Tipo de cambio según el título del commit, que el pipeline escribe con un
-// formato fijo («Reforma …», «Corrección de extracción …», «Alta de …»). Los
+// formato fijo («Reforma …», «Corrección de extracción …», «Alta de …»,
+// «Retiro de …»). Los
 // demás commits son mantenimiento de los propios repositorios.
 const TIPOS = [
   [/^Reforma\b/, "reforma", "Reforma"],
   [/^Alta\b/, "alta", "Alta"],
   [/^Corrección de extracción\b/, "correccion", "Corrección de extracción"],
+  [/^Retiro\b/, "retiro", "Retiro"],
   [/^Actualización automática\b/, "reforma", "Actualización"],
 ];
 

@@ -1,25 +1,34 @@
 // Página de inicio. Se genera en cada despliegue para que las cifras, el
 // status y las últimas reformas salgan de los repos de datos.
 
-import { ORG, REPOS, esc, numero, fechaLarga, diaMexico, momento } from "./lib/comun.mjs";
+import { ORG, REPOS, esc, numero, plural, fechaLarga, diaMexico, momento } from "./lib/comun.mjs";
 import { ESTILO_SALUD, salud, insignia, cambios } from "./lib/resumen.mjs";
 
 const REFORMAS_EN_INICIO = 3;
 
 // Artículo de ejemplo para citar: el 82 de la Constitución en la reforma de
 // octubre de 2026.
-const EJEMPLO = { repo: REPOS.cpeum, ruta: "articulos/082.md", commit: "632cab6" };
+const EJEMPLO = { repo: REPOS.cpeum, ruta: "articulos/082.md", commit: "c5a88de" };
 
 const repo = (r) => `https://github.com/${ORG}/${r}`;
 
+// Las que quedan fuera es porque su extracción no reproduce fielmente el PDF;
+// el motivo de cada una está en /leyes.
+function fueraFederales(d) {
+  const fuera = d.filter((x) => x.estado !== "incluida").length;
+  return fuera
+    ? `; <a href="/leyes">${plural(fuera, "queda fuera", "quedan fuera")}</a> porque su extracción no reproduce fielmente el PDF`
+    : "";
+}
+
 // Una línea por corpus; si su fuente no respondió, el nombre va sin cifra.
 function corpus({ cpeum, federales, estatales, fiscal }) {
-  const cifra = (r, f) => (r.ok ? `: <span class="dato">${f(r.datos)}</span>` : "");
+  const cifra = (r, f, resto = () => "") => (r.ok ? `: <span class="dato">${f(r.datos)}</span>${resto(r.datos)}` : "");
   return [
     `<a href="${repo(REPOS.cpeum)}">Constitución federal</a>${cifra(cpeum, (d) => `${numero(d.articulos)} artículos`)}.`,
-    `<a href="${repo(REPOS.federales)}">Leyes federales</a>${cifra(federales, (d) => `${numero(d.filter((x) => x.estado === "incluida").length)} leyes`)}.`,
+    `<a href="${repo(REPOS.federales)}">Leyes federales</a>${cifra(federales, (d) => `${numero(d.filter((x) => x.estado === "incluida").length)} de ${numero(d.length)} leyes`, fueraFederales)}.`,
     `<a href="${repo(REPOS.estatales)}">Constituciones estatales</a>${cifra(estatales, (d) => `${numero(d.filter((e) => e.articulos != null).length)} de 32 entidades`)}.`,
-    `<a href="${repo(REPOS.fiscal)}">Legislación fiscal</a>${cifra(fiscal, (d) => `${numero(d.length)} documentos`)}, con la Miscelánea y los criterios del SAT.`,
+    `<a href="${repo(REPOS.fiscal)}">Legislación fiscal</a>${cifra(fiscal, (d) => `${numero(d.length)} documentos`)}, con la Miscelánea y los criterios del SAT (<a href="https://sat.constitucion.app">detalle</a>).`,
   ]
     .map((l) => `        <li>${l}</li>`)
     .join("\n");
@@ -49,7 +58,8 @@ ${filas}
 
 function status(vigilancia, generada) {
   const s = salud(vigilancia, generada);
-  const revision = s.ultimaRevision ? ` · última revisión: ${momento(s.ultimaRevision)}` : "";
+  const nuevas = s.nuevas.length ? ` · ${plural(s.nuevas.length, "más sin su primera corrida", "más sin su primera corrida")}` : "";
+  const revision = `${nuevas}${s.ultimaRevision ? ` · última revisión: ${momento(s.ultimaRevision)}` : ""}`;
   return `<p class="status">${insignia(s)}<span class="tenue">${revision}</span></p>`;
 }
 
@@ -114,20 +124,37 @@ ${corpus(datos)}
       </ul>
       <p><a href="/leyes">Ver todas las leyes y su última reforma →</a></p>
 ${ultimasReformas(datos.actividad)}
+      <h2>El historial es el producto</h2>
+      <p>
+        Los repositorios de datos solo tienen commits de texto legal, uno por documento, y el
+        título dice qué pasó:
+      </p>
+      <ul>
+        <li><code>Reforma CPEUM (DOF 2026-10-07): arts. 82, 116, 122</code>: cambió la ley.</li>
+        <li><code>Corrección de extracción jalisco: …</code>: la misma ley, mejor leída del PDF.</li>
+        <li><code>Alta de LGS</code> o <code>Retiro de LFPCCS: …</code>: entra o sale un documento.</li>
+      </ul>
+      <p>Así, <code>git log -- lgs/</code> es la historia de la Ley General de Salud.</p>
+      <p>
+        La historia de cada documento empieza en su alta. Las reformas anteriores no están como
+        commits: solo sus fechas, en <code>metadata/reformas.json</code>.
+      </p>
+
       <h2>Cómo se mantiene</h2>
       ${status(datos.vigilancia, generada)}
       <p>
-        Cada lunes se descargan los PDF oficiales y se vuelve a extraer el texto: las leyes
-        federales y la Constitución, de la compilación de la Cámara de Diputados; las
+        Cada lunes se descargan los PDF oficiales y un extractor determinista vuelve a generar el
+        texto: la Constitución y las leyes federales, de la Cámara de Diputados; las
         constituciones estatales, de cada congreso o periódico oficial; y la Miscelánea y los
-        criterios, del SAT.
+        criterios, del SAT. Los sitios estatales que solo responden desde México se descargan
+        desde un servidor en México, y Baja California Sur, que solo publica en Word, se
+        convierte a PDF y se guardan los dos.
       </p>
       <p>
-        Si algo cambió, un agente de IA compara cada artículo contra el PDF y, si la extracción
-        tiene un defecto, corrige el extractor. Después pasan pruebas automáticas que el agente
-        no controla. Solo si todo queda verificado se publica; si no, se conserva el texto
-        vigente y se reintenta la semana siguiente. La IA solo se usa para mantener los datos,
-        nunca al consultarlos. <a href="/estado">Ver el status del sistema →</a>
+        Un agente de IA revisa contra el PDF solo lo que cambió y, si encuentra un defecto de
+        extracción, repara el extractor. Deciden pruebas deterministas que el agente no
+        controla: solo se publica lo verificado y lo demás espera a la semana siguiente. Nadie
+        edita el texto legal a mano. <a href="/estado">Ver el status del sistema →</a>
       </p>
 
       <h2>Para citar</h2>
@@ -142,9 +169,18 @@ ${ultimasReformas(datos.actividad)}
       <h2>Para agentes de IA</h2>
       <p>
         Son archivos Markdown: un agente puede clonar el repositorio o leer cada artículo por su
-        URL. <a href="/llms.txt"><code>/llms.txt</code></a> explica cómo están organizados.
+        URL. <a href="/llms.txt"><code>/llms.txt</code></a> explica las rutas, los títulos de
+        los commits y los registros (<code>fuentes.json</code>, <code>estados.json</code>). No
+        hay búsqueda ni respuestas generadas: la IA solo se usa para mantener los datos, nunca
+        al consultarlos.
       </p>
       <pre><code>git clone https://github.com/${ORG}/${REPOS.federales}</code></pre>
+
+      <h2>Lo que sigue</h2>
+      <p>
+        Una bitácora: páginas estáticas, generadas del historial, para recorrer las reformas sin
+        usar git.
+      </p>
 
       <footer>
         <p>
@@ -153,8 +189,7 @@ ${ultimasReformas(datos.actividad)}
           es MIT: se pueden usar y redistribuir sin restricciones.
         </p>
         <p>
-          No sustituye a la publicación oficial ni es asesoría legal. El registro de diferencias
-          empieza en junio de 2026.
+          No sustituye a la publicación oficial ni es asesoría legal.
         </p>
       </footer>
     </main>

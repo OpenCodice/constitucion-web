@@ -117,22 +117,28 @@ async function leerFederales() {
   }));
 }
 
+// La vigilancia de cada repo de datos vive en su extractor, para que el
+// historial del repo de datos solo tenga cambios de texto legal.
+const VIGILANCIAS = {
+  [REPOS.cpeum]: ["constitucion-extractor", "vigilar-cpeum.yml"],
+  [REPOS.estatales]: ["constitucion-extractor", "vigilar-estatales.yml"],
+  [REPOS.fiscal]: ["fiscal-extractor", "vigilar-fiscal.yml"],
+  [REPOS.federales]: ["fiscal-extractor", "vigilar-federal.yml"],
+};
+
 async function leerVigilancia(repo, desde) {
-  const { workflows } = await api(`/repos/${ORG}/${repo}/actions/workflows?per_page=100`);
-  const vigilar = workflows.filter((w) => /\/vigilar[^/]*\.ya?ml$/.test(w.path) && w.state === "active");
-  return Promise.all(
-    vigilar.map(async (w) => {
-      const corridas = [];
-      for (let pagina = 1; pagina <= PAGINAS_CORRIDAS; pagina++) {
-        const { workflow_runs } = await api(
-          `/repos/${ORG}/${repo}/actions/workflows/${w.id}/runs?created=>=${desde.slice(0, 10)}&per_page=100&page=${pagina}`,
-        );
-        corridas.push(...workflow_runs);
-        if (workflow_runs.length < 100) break;
-      }
-      return { repo, nombre: w.name, archivo: w.path.split("/").pop(), url: w.html_url, corridas };
-    }),
-  );
+  const [extractor, archivo] = VIGILANCIAS[repo];
+  const w = await api(`/repos/${ORG}/${extractor}/actions/workflows/${archivo}`);
+  if (!w) throw new ErrorFuente(`no se encontró ${extractor}/${archivo}`);
+  const corridas = [];
+  for (let pagina = 1; pagina <= PAGINAS_CORRIDAS; pagina++) {
+    const { workflow_runs } = await api(
+      `/repos/${ORG}/${extractor}/actions/workflows/${w.id}/runs?created=>=${desde.slice(0, 10)}&per_page=100&page=${pagina}`,
+    );
+    corridas.push(...workflow_runs);
+    if (workflow_runs.length < 100) break;
+  }
+  return [{ repo, extractor, nombre: w.name, archivo, url: w.html_url, creada: w.created_at, corridas }];
 }
 
 // GitHub lista a lo más 3,000 archivos por PR, en páginas de 100.
@@ -180,7 +186,9 @@ const HISTORIA = `query($owner: String!, $name: String!, $since: GitTimestamp!, 
     } } }
   }
 }`;
-const PAGINAS_MAX = 5;
+// leyes-federales tiene un commit por ley, así que un alta del índice completo
+// son cientos de commits.
+const PAGINAS_MAX = 10;
 
 async function leerActividad(repo, desde) {
   if (process.env.GITHUB_TOKEN) {

@@ -17,14 +17,16 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   la página sin detener el despliegue. En local: `npm run paginas` (con
   `GITHUB_TOKEN=$(gh auth token)` para no topar el límite anónimo).
   - `scripts/inicio.mjs` → `/`: qué es, cifras de cada corpus, últimas
-    reformas, status de la vigilancia, cómo citar y cómo lo usa un agente.
+    reformas, cómo leer el historial, status de la vigilancia, cómo citar,
+    cómo lo usa un agente y lo que sigue.
   - `scripts/leyes.mjs` → `/leyes` («Qué leyes hay»), para el público y sin
     detalles técnicos: por documento, su última reforma, cuántas reformas anota,
     una fila de cuadros por año y si tiene una actualización en revisión (un PR
     abierto que lo toca o `revision_pendiente`). Su color es verde y ámbar; en
     `/estado`, verde para las corridas correctas y rojo para las fallas.
   - `scripts/estado.mjs` → `/estado` («Status del sistema»), técnica: arriba
-    el veredicto de salud (según la última corrida de cada `vigilar*.yml`) con
+    el veredicto de salud (según la última corrida de cada `vigilar-*.yml`, que
+    viven en los extractores: `VIGILANCIAS` en `scripts/lib/datos.mjs`) con
     la última y la próxima revisión; luego las reformas y correcciones
     publicadas (por el título del commit), el resumen por repo y, al final,
     una barra por semana de cada vigilancia y los PR abiertos.
