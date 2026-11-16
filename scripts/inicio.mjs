@@ -102,6 +102,11 @@ export function paginaInicio(datos, generada) {
         <a href="${base}/commit/${commit}">la de octubre de 2026 a los artículos 82, 116 y 122</a>
         de la Constitución.
       </p>
+      <p>
+        <strong>Se mantiene solo:</strong> cada semana revisa las fuentes oficiales, verifica cada
+        cambio contra el PDF y publica únicamente lo verificado, sin que nadie edite el texto.
+        <strong>Es abierto:</strong> los datos son de dominio público y el código es libre.
+      </p>
 
       <h2>Qué hay hoy</h2>
       <ul>
@@ -115,8 +120,14 @@ ${ultimasReformas(datos.actividad)}
         Cada lunes se descargan los PDF oficiales y se vuelve a extraer el texto: las leyes
         federales y la Constitución, de la compilación de la Cámara de Diputados; las
         constituciones estatales, de cada congreso o periódico oficial; y la Miscelánea y los
-        criterios, del SAT. Un cambio solo se publica después de comprobarlo contra el PDF.
-        <a href="/estado">Ver el status del sistema →</a>
+        criterios, del SAT.
+      </p>
+      <p>
+        Si algo cambió, un agente de IA compara cada artículo contra el PDF y, si la extracción
+        tiene un defecto, corrige el extractor. Después pasan pruebas automáticas que el agente
+        no controla. Solo si todo queda verificado se publica; si no, se conserva el texto
+        vigente y se reintenta la semana siguiente. La IA solo se usa para mantener los datos,
+        nunca al consultarlos. <a href="/estado">Ver el status del sistema →</a>
       </p>
 
       <h2>Para citar</h2>
