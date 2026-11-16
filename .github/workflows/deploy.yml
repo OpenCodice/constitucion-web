@@ -1,6 +1,8 @@
 name: Deploy a producción
 
 # Despliega el sitio estático (public/) y su Worker mínimo en cada push a main.
+# También cada hora, para que /estado (que se genera aquí desde los repos de
+# datos) se mantenga al día sin necesidad de commits.
 #
 # Secrets requeridos (en este repo):
 #   CLOUDFLARE_API_TOKEN   permisos "Edit Cloudflare Workers"
@@ -10,6 +12,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    - cron: "23 * * * *"
 
 concurrency:
   group: deploy
@@ -35,6 +39,13 @@ jobs:
 
       - name: Instalar dependencias
         run: npm ci
+
+      # Lee los repos públicos de OpenCodice; si alguno no responde, la página
+      # lo dice y el despliegue sigue.
+      - name: Generar página de estado
+        run: npm run estado
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Deploy (Worker + assets)
         run: npx wrangler deploy

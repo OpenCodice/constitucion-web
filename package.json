@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "estado": "node scripts/estado.mjs",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },

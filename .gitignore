@@ -1,4 +1,6 @@
 node_modules/
+# Lo genera scripts/estado.mjs en cada despliegue.
+public/estado.html
 dist/
 .data/
 .dev.vars
