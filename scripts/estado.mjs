@@ -371,18 +371,19 @@ ${avisos.join("\n")}`;
 }
 
 const ESTILO = `
-/* Colores de los visuales. Las corridas correctas usan el mismo verde de
-   /leyes; el rojo marca solo lo que pide atención. */
+/* Colores de los visuales. Las corridas correctas usan el verde de los checks
+   de GitHub, que es lo que esta página resume; el rojo marca solo lo que pide
+   atención. */
 :root {
   --barra: #7a7a7a;
-  --verde: #3f8757;
+  --verde: #2da44e;
   --rojo: #b42318;
   --n0: #ececec; --n1: #c6c6c6; --n2: #969696; --n3: #5c5c5c; --n4: #111111;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --barra: #8c8c8c;
-    --verde: #5fae78;
+    --verde: #3fb950;
     --rojo: #e0605a;
     --n0: #1d1d1d; --n1: #3c3c3c; --n2: #6a6a6a; --n3: #a6a6a6; --n4: #f2f2f2;
   }
