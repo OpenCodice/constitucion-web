@@ -31,6 +31,9 @@ function git(dir, args, entrada) {
     p.stdout.on("data", (b) => salida.push(b));
     p.stderr.on("data", (b) => errores.push(b));
     p.on("error", rechazar);
+    // Si git termina antes de leer la entrada, escribirle da EPIPE: el error
+    // que importa es el de git, que llega con su código de salida.
+    p.stdin.on("error", () => {});
     p.on("close", (codigo) => {
       if (codigo === 0) resolver(Buffer.concat(salida));
       else rechazar(new Error(`git ${args[0]}: ${Buffer.concat(errores).toString().trim() || `código ${codigo}`}`));
