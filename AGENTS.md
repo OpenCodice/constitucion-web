@@ -3,9 +3,9 @@
 Landing estático de [constitucion.app](https://constitucion.app). Presenta el proyecto y enlaza a los
 repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
 
-- `public/` — el sitio: `estilo.css`, `llms.txt` (guía para agentes de IA) y
-  las páginas que genera `scripts/paginas.mjs`. Sin framework ni JavaScript en
-  la página.
+- `public/` — el sitio: `estilo.css`, `llms.txt` (guía para agentes de IA),
+  `hemiciclo.js` (lo único de JavaScript; ver «Hemiciclos») y las páginas que
+  genera `scripts/paginas.mjs`. Sin framework.
 - `worker/index.js` — responde `410` en las rutas del servicio de búsqueda que
   se retiró (`/api/*`, `/mcp`, `/openapi.json`, `/pdf/*`) y redirige al inicio
   cualquier otra ruta que no sea un archivo de `public/` (los assets, como
@@ -103,9 +103,11 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     grupo, y a la vista `votos_faltantes` con `nombres_fuente`,
     `inconsistencias`, `diferencia_conteos`/`_grupos`, `discrepancias` y la
     misma votación en otra fuente, y `retirada_de_la_fuente`);
-    `/congreso/legisladores/` (por cámara y grupo) y
-    `/congreso/legisladores/{persona}` (mandatos con licencias y comisiones,
-    sus votos y lo que presentó, con estatus y desenlace); y
+    `/congreso/legisladores/` (por cámara y grupo),
+    `/congreso/legisladores/{persona}` (su lugar en el hemiciclo de su cámara
+    si está en funciones, mandatos con licencias y comisiones, sus votos y lo
+    que presentó, con estatus y desenlace);
+    `/congreso/camaras` (la composición de cada cámara, ver «Hemiciclos»); y
     `/congreso/expedientes/` y `/congreso/expedientes/{id}` (cronología,
     votaciones nominales y económicas, asuntos con autor, decreto del DOF y
     su documento en la bitácora). No hay una página por asunto (son decenas
@@ -125,6 +127,40 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   - `scripts/lib/` — lectura de datos y formato compartidos; `resumen.mjs` es
     la salud de las vigilancias y los cambios publicados, que el inicio y
     `/estado` cuentan igual.
+- **Hemiciclos** (`scripts/lib/hemiciclo.mjs`, probado en
+  `scripts/hemiciclo.test.mjs`): un asiento por legislador en un SVG generado
+  aquí. Filas concéntricas en un semicírculo (las mínimas en que caben, los
+  asientos de cada fila en proporción a su radio), ordenados por ángulo de
+  izquierda a derecha y asignados en orden, así que cada grupo parlamentario
+  ocupa un sector contiguo, siempre en el mismo orden (`PARTIDOS`: PT, Morena,
+  PVEM, PRD, PES, MC, PRI, PAN y sin grupo al final), con una banda de su color
+  y su sigla. Es esquemático: no son los lugares del salón.
+  - En `/congreso/votaciones/{id}` (si hay votos con nombre), cada asiento con
+    el color de su sentido; los `votos_faltantes` son asientos sin nombre en su
+    grupo y sentido (nunca se atribuyen). Con borde, quien votó distinto a la
+    mayoría de su grupo: el sentido más votado entre a favor, en contra y
+    abstención (con los no atribuidos); sin mayoría única o sin grupo, no se
+    marca a nadie. Debajo, la lista de quienes votaron distinto.
+  - En `/congreso/camaras`, la composición por grupo (`composicion`): cada
+    mandato de la legislatura más reciente cuyo estatus en el SIL es «Activo»
+    (el propietario o el suplente que entró en su lugar). El total se compara
+    con 500 y 128 y, si no cuadra, la página lo dice. El 2026-11-17 dio
+    500 (44 suplentes) y 128 (27 suplentes), sin fórmulas contadas dos veces.
+  - Miniaturas sin enlaces por asiento (`svgMini`: un trazo por color, cada
+    asiento un punto de trazo redondo, unos 6 KB): las dos cámaras en
+    `/congreso/`, el lugar de cada legislador en su página y cada votación con
+    votos en «Proceso legislativo» de la bitácora, enlazada a su página.
+  - Colores: una sola tabla en `hemiciclo.mjs` (`PARTIDOS`, `SENTIDOS`), con
+    su origen y la versión para modo oscuro; el CSS (`ESTILO_HEMICICLO`) va solo
+    en las páginas que tienen un hemiciclo.
+  - `public/hemiciclo.js`, cargado con `defer` solo en las páginas con un
+    hemiciclo interactivo (votaciones y cámaras): tooltip propio, filtro por
+    sentido, grupo y marca al tocar la leyenda, búsqueda por nombre, flechas
+    para moverse entre asientos (un solo tab), y en pantallas táctiles el
+    primer toque muestra quién es y el segundo abre su página. Sin él, cada
+    asiento es un enlace con su `<title>` y la lista de nombres sigue abajo.
+    Vive en la raíz de `public/` porque `public/congreso/` se borra en cada
+    generación.
 - `wrangler.jsonc` — Worker con assets. Las migraciones `v1` y `v2` son el alta
   y la baja de un Durable Object anterior; no se pueden quitar de la lista.
 
@@ -134,12 +170,15 @@ Para verlo en local: `npm install && npm run paginas && npm run dev`.
 ## Criterios
 
 - **Estilo:** texto plano sobre la página, sobrio y legible, sin animaciones.
-  Tipografía del sistema, blanco y negro, modo oscuro por `prefers-color-scheme`.
+  Tipografía del sistema, blanco y negro (el color, solo en los datos: los
+  hemiciclos y las gráficas), modo oscuro por `prefers-color-scheme`.
   `estilo.css` es el mismo archivo en `constitucion-web` y `fiscal-web`: un
   cambio de estilo va en los dos.
 - **Contenido:** las cifras (artículos, documentos, unidades) salen de los repos
   de datos; actualízalas cuando cambie el corpus y no prometas lo que aún no
   existe.
+- **JavaScript:** se permite con mejora progresiva (la página funciona sin
+  él), sin dependencias ni compilación, sin servicios en tiempo de lectura.
 - **Sin LLM ni servicios en tiempo de lectura.** Aquí hubo un chat con búsqueda
   semántica y se retiró a propósito. La bitácora también es estática: se
   genera del historial de git en cada despliegue.

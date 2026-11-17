@@ -228,3 +228,12 @@ test("página: sin datos del Congreso no hay sección", () => {
   const archivos = paginasBitacora(modelo(historial()), "2026-12-21T00:00:00Z", { ok: false, error: "no existe" });
   assert.ok(!pagina(archivos, 3).includes('id="proceso"'));
 });
+
+test("página: miniatura del hemiciclo junto a la votación con votos, enlazada a ella", () => {
+  const c = congreso();
+  c.votaciones.get("sil-200-1").votes = [{ voter_id: "ana-perez", mandato_id: "sil-1", option: "yes", group_id: "partido-morena", grupo_fuente: "Morena" }];
+  const s = seccion(pagina(paginasBitacora(modelo(historial()), "2026-12-21T00:00:00Z", c), 3));
+  assert.ok(s.includes(`<figure class="mini"><a href="${urlVotacion("sil-200-1")}"><svg class="mini-svg"`));
+  assert.ok(s.includes("1 a favor"));
+  assert.ok(!pagina(paginasBitacora(modelo(historial()), "2026-12-21T00:00:00Z", c), 3).includes("hemiciclo.js"));
+});

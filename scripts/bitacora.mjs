@@ -41,6 +41,7 @@ import { TIPOS_DOCUMENTO, articulosDe, dirMetadata } from "./lib/historial.mjs";
 import { diferenciaArticulo, encabezado } from "./lib/diferencias.mjs";
 import { vinculosDe } from "./lib/vinculos.mjs";
 import { urlVotacion, urlLegislador, urlExpediente, urlSilExpediente } from "./lib/congreso.mjs";
+import { ESTILO_HEMICICLO, asientosVotacion, resumenSentidos, svgMini } from "./lib/hemiciclo.mjs";
 
 const SITIO = "https://constitucion.app";
 const BASE = "/bitacora";
@@ -396,7 +397,8 @@ function pagina({ titulo, h1, descripcion, cuerpo, generada, sobre = "" }) {
     titulo: `${titulo} — OpenCodice`,
     h1,
     descripcion,
-    estilo: ESTILO,
+    // Solo las páginas con hemiciclos (la sección de proceso legislativo) llevan su estilo.
+    estilo: cuerpo.includes('class="mini-svg') ? `${ESTILO}${ESTILO_HEMICICLO}` : ESTILO,
     cuerpo: `${sobre}${cuerpo}`,
     pie: `<p>
           <a href="${BASE}/">Bitácora</a> · <a href="${BASE}/metadatos">Cambios de metadatos</a> · <a href="/leyes">Qué leyes hay</a> · <a href="/estado">Status del sistema</a> ·
@@ -759,6 +761,26 @@ function notasVotacion(v, otras) {
   return notas.length ? `<br><span class="tenue">${notas.join(" ")}</span>` : "";
 }
 
+// Un hemiciclo pequeño por votación con el voto de cada quien (de la fuente
+// que lo publique), enlazado a su página. Sin JavaScript.
+function minisVotaciones(m, grupo) {
+  const minis = grupo.votaciones
+    .map(({ votacion: v, otras }) => {
+      const conVotos = [v, ...otras].find((x) => x.votos_publicados && x.votes?.length);
+      if (!conVotos) return "";
+      const xs = asientosVotacion(m, conVotos);
+      const resumen = resumenSentidos(xs);
+      const fecha = v.start_date ? fechaLarga(v.start_date) : "sin fecha";
+      return `<figure class="mini"><a href="${esc(urlVotacion(conVotos.id))}">${svgMini(xs, {
+        modo: "votacion",
+        etiqueta: `Hemiciclo de la votación del ${fecha}: ${resumen}.`,
+      })}<span class="mini-t">${esc(fecha)}${RESULTADO[v.result] ? ` · ${esc(RESULTADO[v.result])}` : ""}</span></a>
+<span>${resumen}</span></figure>`;
+    })
+    .filter(Boolean);
+  return minis.length ? `<div class="minis">\n${minis.join("\n")}\n</div>` : "";
+}
+
 function tablaVotaciones(grupo, id) {
   const conteo = (v, opcion) => numero(v.counts?.find((x) => x.option === opcion)?.value);
   return tabla({
@@ -850,7 +872,7 @@ function textoLegislaturas(l) {
   }`;
 }
 
-function bloqueProceso(p, h) {
+function bloqueProceso(p, h, m) {
   const d = p.decreto;
   const filas = [
     ["Decreto", d.url ? `<a href="${esc(d.url)}">${esc(d.titulo)}</a>` : esc(d.titulo)],
@@ -872,7 +894,7 @@ function bloqueProceso(p, h) {
     if (x.iniciativas.length) partes.push(`<${h}>Iniciativas${sufijo}</${h}>\n${listaIniciativas(x.iniciativas)}`);
     if (x.votaciones.length || x.economicas.length) {
       partes.push(`<${h}>Votaciones${sufijo}</${h}>`);
-      x.votaciones.forEach((g, i) => partes.push(tablaVotaciones(g, `vot-${d.id}-${x.enlace.id}-${i}`)));
+      x.votaciones.forEach((g, i) => partes.push(tablaVotaciones(g, `vot-${d.id}-${x.enlace.id}-${i}`), minisVotaciones(m, g)));
       if (!x.votaciones.length) partes.push('<p class="tenue">No hubo votaciones nominales registradas.</p>');
       if (x.economicas.length) {
         const cuentas = x.economicas.map((e) => `${plural(e.n, "votación económica", "votaciones económicas")}${e.nombre ? ` en ${esc(e.nombre)}` : ""}`);
@@ -888,7 +910,7 @@ function seccionVinculos(c, fuente) {
   if (!ps.length) return "";
   const varios = ps.length > 1;
   const bloques = ps.map((p, i) =>
-    varios ? `<h3>Decreto ${i + 1} de ${ps.length}</h3>\n<section class="proceso">\n${bloqueProceso(p, "h4")}\n</section>` : bloqueProceso(p, "h3"),
+    varios ? `<h3>Decreto ${i + 1} de ${ps.length}</h3>\n<section class="proceso">\n${bloqueProceso(p, "h4", fuente)}\n</section>` : bloqueProceso(p, "h3", fuente),
   );
   return `<h2 id="proceso">Proceso legislativo</h2>
 <p class="tenue">Del Diario Oficial de la Federación y del Sistema de Información Legislativa (SIL) de Gobernación, según <a href="https://github.com/${ORG}/congreso-mexicano">${ORG}/congreso-mexicano</a>.</p>

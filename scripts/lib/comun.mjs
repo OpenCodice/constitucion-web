@@ -269,8 +269,9 @@ const SECCIONES = [
   ["https://github.com/OpenCodice", "GitHub"],
 ];
 
-// `ruta` marca la sección actual en la barra.
-export function documento({ titulo, h1, descripcion, estilo, cuerpo, pie, ruta }) {
+// `ruta` marca la sección actual en la barra; `cabeza`, lo que una página
+// agregue al <head> (un script con `defer`, por ejemplo).
+export function documento({ titulo, h1, descripcion, estilo, cuerpo, pie, ruta, cabeza = "" }) {
   const enlaces = SECCIONES.map(
     ([href, nombre]) => `<a href="${href}"${href === ruta ? ' aria-current="page"' : ""}>${nombre}</a>`,
   ).join("\n            ");
@@ -284,7 +285,7 @@ export function documento({ titulo, h1, descripcion, estilo, cuerpo, pie, ruta }
     <meta name="color-scheme" content="light dark" />
     <link rel="icon" href="${ICONO}" />
     <link rel="stylesheet" href="/estilo.css" />
-    <style>${ESTILO_COMUN}${estilo}</style>
+    <style>${ESTILO_COMUN}${estilo}</style>${cabeza ? `\n    ${cabeza}` : ""}
   </head>
   <body>
     <main>

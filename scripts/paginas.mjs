@@ -4,8 +4,9 @@
 // (/estado, el status del sistema), public/bitacora/ (la bitácora de
 // cambios, del historial de git) y public/congreso/ (votaciones y
 // legisladores, de congreso-mexicano).
-// Corre en cada despliegue para que el sitio siga siendo estático y sin
-// JavaScript en el navegador.
+// Corre en cada despliegue para que el sitio siga siendo estático; el único
+// JavaScript en el navegador es public/hemiciclo.js, que solo mejora los
+// hemiciclos ya generados aquí.
 //
 // Sin dependencias: fetch de Node y git. Si GITHUB_TOKEN existe se usa para la
 // API (el límite anónimo es de 60 peticiones por hora). Ninguna falla de red

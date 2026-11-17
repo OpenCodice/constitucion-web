@@ -18,6 +18,18 @@
 import { ESTADOS, ORG, esc, numero, plural, lista, fechaLarga, momento, tabla, documento as paginaHtml } from "./lib/comun.mjs";
 import { ASUNTOS, BASE_CONGRESO, urlVotacion, urlLegislador, urlExpediente, urlSilExpediente, urlDato } from "./lib/congreso.mjs";
 import { historiaDe } from "./bitacora.mjs";
+import {
+  ESTILO_HEMICICLO,
+  asientosVotacion,
+  composicion,
+  figuraHemiciclo,
+  grupo as grupoHemiciclo,
+  listaDisidentes,
+  lugar,
+  resumenGrupos,
+  resumenSentidos,
+  svgMini,
+} from "./lib/hemiciclo.mjs";
 
 const REPO = "congreso-mexicano";
 const ULTIMAS_EN_INDICE = 15;
@@ -158,6 +170,7 @@ const ficha = (filas) =>
 // ------------------------------------------------------------------ página
 
 const ESTILO = `
+.mini-yo{max-width:15rem;margin:0 0 1.5rem}
 .sobre { margin: -2.5rem 0 1.25rem; font-size: 0.9em; color: var(--tenue); }
 .ficha { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.35em 1.2em; margin: 0 0 2rem; font-size: 0.85em; }
 .ficha dt { color: var(--tenue); }
@@ -178,16 +191,21 @@ const ESTILO = `
 td.texto { min-width: 16em; }
 `;
 
-function pagina({ titulo, h1, descripcion, cuerpo, generada, sobre = "" }) {
+// Las páginas con hemiciclo cargan su estilo y public/hemiciclo.js.
+const SCRIPT_HEMICICLO = '<script src="/hemiciclo.js" defer></script>';
+
+// `hemiciclo`: false, "css" (solo miniaturas) o "js" (hemiciclo interactivo).
+function pagina({ titulo, h1, descripcion, cuerpo, generada, sobre = "", hemiciclo = false }) {
   return paginaHtml({
     ruta: `${BASE_CONGRESO}/`,
     titulo: `${titulo} — OpenCodice`,
     h1,
     descripcion,
-    estilo: ESTILO,
+    estilo: hemiciclo ? `${ESTILO}${ESTILO_HEMICICLO}` : ESTILO,
+    cabeza: hemiciclo === "js" ? SCRIPT_HEMICICLO : "",
     cuerpo: `${sobre}${cuerpo}`,
     pie: `<p>
-          <a href="${BASE_CONGRESO}/">Congreso</a> · <a href="${BASE_CONGRESO}/votaciones/">Votaciones</a> ·
+          <a href="${BASE_CONGRESO}/">Congreso</a> · <a href="${BASE_CONGRESO}/camaras">Cámaras</a> · <a href="${BASE_CONGRESO}/votaciones/">Votaciones</a> ·
           <a href="${BASE_CONGRESO}/legisladores/">Legisladores</a> · <a href="${BASE_CONGRESO}/expedientes/">Expedientes</a> ·
           <a href="https://github.com/${ORG}/${REPO}">Datos en ${ORG}/${REPO}</a>
         </p>
@@ -297,6 +315,16 @@ function paginaIndice(m, generada) {
   )}, ${numero(decretosConExp)} ligados a su expediente.</li>
 </ul>
 
+${
+  m.composiciones.length
+    ? `<h2>Las cámaras hoy</h2>
+<div class="minis">
+${m.composiciones.map(miniComposicion).join("\n")}
+</div>
+<p><a href="${BASE_CONGRESO}/camaras">Ver quién ocupa cada lugar →</a></p>
+`
+    : ""
+}
 <h2>Lo que no cuadra, a la vista</h2>
 <p>
   Lo que una fuente publica se conserva aunque no cuadre consigo misma o con otra fuente; nada se
@@ -327,6 +355,7 @@ ${ultimas.length ? `<ul class="lista">\n${ultimas.map((v) => filaVotacion(m, v))
     descripcion: "Cada votación nominal del Congreso de la Unión con el voto de cada legislador, y lo que presenta cada diputado y senador, de fuentes oficiales.",
     cuerpo,
     generada,
+    hemiciclo: m.composiciones.length ? "css" : false,
   });
 }
 
@@ -344,7 +373,7 @@ function paginaSinDatos(congreso, generada) {
 
 function indiceVotaciones(m, generada) {
   const vs = [...m.votaciones.values()].sort(porFechaDesc);
-  const porMes = agrupar(vs, (v) => (v.start_date ?? "sin fecha").slice(0, 7));
+  const porMes = agrupar(vs, (v) => (v.start_date ? v.start_date.slice(0, 7) : "sin fecha"));
   const mes = (k) =>
     k === "sin fecha"
       ? "Sin fecha"
@@ -537,6 +566,32 @@ function seccionVotos(m, v) {
 ${bloques.join("\n")}`;
 }
 
+// El hemiciclo de la votación: cada asiento con el color de su voto, en el
+// sector de su grupo; los votos que la fuente no atribuye, sin nombre.
+function seccionHemiciclo(m, v) {
+  if (!v.votos_publicados || !v.votes?.length) return "";
+  const xs = asientosVotacion(m, v);
+  const cuenta = (o) => xs.filter((x) => x.sentido === o).length;
+  const res = RESULTADO_VOTACION[v.result];
+  const sinNombre = xs.filter((x) => !x.persona).length;
+  const disidentes = xs.filter((x) => x.disidente).length;
+  const etiqueta = `Hemiciclo de la votación: ${resumenSentidos(xs)}. Por grupo: ${resumenGrupos(xs)}.${
+    disidentes ? ` ${plural(disidentes, "voto distinto", "votos distintos")} a la mayoría de su grupo.` : ""
+  } Cada asiento enlaza a la página del legislador; la lista completa está más abajo.`;
+  const nota = `Un asiento por voto (${plural(xs.length, "asiento", "asientos")}${
+    sinNombre ? `, ${plural(sinNombre, "sin nombre", "sin nombre")}: la fuente ${sinNombre === 1 ? "lo cuenta y no dice de quién es" : "los cuenta y no dice de quiénes son"}` : ""
+  }), con el grupo que la lista de esta votación da a cada quien. La disposición es esquemática: no son los lugares del salón de sesiones. Con borde, quien votó distinto a la mayoría de su grupo (entre a favor, en contra y abstención; las ausencias no cuentan, y en un grupo sin una mayoría clara o en los legisladores sin grupo no se marca a nadie).`;
+  // «Aprobada, 344 a 116»: a favor y en contra, de los asientos.
+  const centro = [[res ?? "A favor y en contra", "c2"], [`${numero(cuenta("yes"))} a ${numero(cuenta("no"))}`, "c1"]];
+  return `<h2 id="hemiciclo">Cómo votó cada quien</h2>
+${figuraHemiciclo(xs, { modo: "votacion", etiqueta, centro, nota })}
+${
+  disidentes
+    ? `<h3 class="sentido">Votaron distinto a la mayoría de su grupo <span class="cuenta">${numero(disidentes)}</span></h3>\n${listaDisidentes(xs)}`
+    : '<p class="tenue">Nadie votó distinto a la mayoría de su grupo (sin contar ausencias).</p>'
+}`;
+}
+
 function paginaVotacion(m, v, generada) {
   const exp = v.expediente_id ? m.expedientes.get(v.expediente_id) : null;
   const filas = [
@@ -564,6 +619,7 @@ ${avisoRetirada(v, "esta votación")}
 ${ficha(filas)}
 ${seccionNoCuadra(m, v)}
 ${seccionOtrasFuentes(m, v)}
+${seccionHemiciclo(m, v)}
 ${tablaConteos(v)}
 ${tablaGrupos(v)}
 <h2 id="votos">El voto de cada legislador</h2>
@@ -576,22 +632,84 @@ ${fuentes(v)}`;
     descripcion: `${recortar(tituloVotacion(v), 150)} — votación nominal con el voto de cada legislador.`,
     cuerpo,
     generada,
+    hemiciclo: v.votos_publicados && v.votes?.length ? "js" : false,
+  });
+}
+
+// ------------------------------------------------------------------ cámaras
+
+const CAMARAS_HOY = [
+  ["camara-de-diputados", "Cámara de Diputados", "diputados", "diputado"],
+  ["senado", "Senado", "senadores", "senador"],
+];
+
+// La composición de cada cámara con mandatos registrados.
+function composiciones(m) {
+  return CAMARAS_HOY.map(([org, nombre, plurales, singular]) => ({ ...composicion(m, org), nombre, plurales, singular })).filter((c) => c.mandatos);
+}
+
+function etiquetaComposicion(c) {
+  return `Composición de la ${c.nombre === "Senado" ? "Cámara de Senadores" : c.nombre}: ${plural(c.total, c.singular, c.plurales)} en funciones. ${resumenGrupos(c.asientos)}.`;
+}
+
+// Total frente a lo que fija la Constitución, dicho tal cual si no cuadra.
+function cuadre(c) {
+  if (c.esperado == null) return "";
+  if (c.total === c.esperado) return `Da ${numero(c.total)}, los ${numero(c.esperado)} que fija la Constitución.`;
+  return `<strong>Da ${numero(c.total)}, no los ${numero(c.esperado)} que fija la Constitución</strong> (${c.total < c.esperado ? `faltan ${numero(c.esperado - c.total)}` : `sobran ${numero(c.total - c.esperado)}`}): así lo registra hoy el SIL, y no se ajusta aquí.`;
+}
+
+function miniComposicion(c) {
+  return `<figure class="mini"><a href="${BASE_CONGRESO}/camaras#${esc(c.organizacion)}">${svgMini(c.asientos, { modo: "composicion", etiqueta: etiquetaComposicion(c) })}<span class="mini-t">${esc(c.nombre)}</span></a>
+<span>${plural(c.total, c.singular, c.plurales)}: ${resumenGrupos(c.asientos)}</span></figure>`;
+}
+
+function paginaCamaras(m, cs, generada) {
+  const secciones = cs.map((c) => {
+    const fuera = c.fuera.map(([e, n]) => (e === "sin estatus" ? `${numero(n)} sin estatus en el SIL` : `${numero(n)} con estatus «${esc(e)}»`));
+    return `<h2 id="${esc(c.organizacion)}">${esc(c.nombre)} <span class="cuenta">${esc((c.legislatura ?? "").toUpperCase())} Legislatura</span></h2>
+${figuraHemiciclo(c.asientos, {
+  modo: "composicion",
+  etiqueta: `${etiquetaComposicion(c)} Cada asiento enlaza a la página del legislador.`,
+  centro: [[numero(c.total), "c1"], [c.plurales, "c2"]],
+  nota: `Disposición esquemática, no los lugares del salón de sesiones. Grupo parlamentario según el SIL, consultado el ${c.consultado ? momento(c.consultado) : "—"}.`,
+})}
+<p>
+  ${cuadre(c)} De ${plural(c.mandatos, "mandato registrado", "mandatos registrados")} en la legislatura, se cuentan ${numero(c.total)}${
+    c.suplentes ? ` (${c.suplentes === 1 ? "1 es suplente que entró" : `${numero(c.suplentes)} son suplentes que entraron`} en lugar de su propietario)` : ""
+  }${fuera.length ? `; no se cuentan ${lista(fuera)}` : ""}.${
+    c.formulasDobles ? ` <strong>En ${plural(c.formulasDobles, "fórmula", "fórmulas")} el SIL da como activos al propietario y a su suplente a la vez;</strong> los dos se cuentan.` : ""
+  }
+</p>`;
+  });
+  const cuerpo = `${migas()}
+<p>
+  Quién ocupa hoy cada lugar en el Congreso de la Unión, por grupo parlamentario: un asiento por
+  legislador en funciones. Pase el cursor (o toque) un asiento para ver quién es; la leyenda filtra
+  por grupo y el buscador encuentra un nombre. Sin JavaScript, cada asiento es un enlace.
+</p>
+<p class="tenue">
+  Regla: se cuenta cada mandato de la legislatura más reciente cuyo estatus en el SIL es «Activo».
+  El SIL lo marca en quien ocupa el lugar hoy: el propietario o, si este pidió licencia, se separó
+  o murió, el suplente que entró en su lugar (con su propio mandato). Las licencias y
+  reincorporaciones de cada quien están en su página. El grupo es el que el SIL muestra hoy; los
+  cambios de bancada no se registran.
+</p>
+${secciones.join("\n")}
+<p><a href="${BASE_CONGRESO}/legisladores/">Todos los legisladores, con propietarios y suplentes →</a></p>`;
+  return pagina({
+    titulo: "Las cámaras hoy",
+    h1: "Las cámaras hoy",
+    descripcion: "Composición de la Cámara de Diputados y del Senado por grupo parlamentario: un asiento por legislador en funciones, según el SIL.",
+    cuerpo,
+    generada,
+    hemiciclo: "js",
   });
 }
 
 // ------------------------------------------------------------------ legisladores
 
 const grupoMandato = (m, x) => m.organizaciones.get(x.on_behalf_of_id)?.name ?? x.partido_fuente ?? "Sin grupo";
-
-function lugar(x) {
-  const a = x.area ?? {};
-  const ent = a.entidad ? NOMBRES_ESTADOS[a.entidad] ?? a.entidad : null;
-  const partes = [];
-  if (ent) partes.push(ent);
-  if (a.distrito != null) partes.push(`distrito ${a.distrito}${a.cabecera ? ` (${a.cabecera})` : ""}`);
-  if (a.circunscripcion != null) partes.push(`circunscripción ${a.circunscripcion}`);
-  return partes.join(", ");
-}
 
 function indiceLegisladores(m, generada) {
   const mandatos = [...m.mandatos.values()];
@@ -757,6 +875,26 @@ ${tabla({
 })}`;
 }
 
+// Su asiento en el hemiciclo de su cámara, si está en funciones.
+function lugarEnCamara(m, id) {
+  for (const c of m.composiciones) {
+    const i = c.asientos.findIndex((x) => x.persona === id);
+    if (i < 0) continue;
+    const x = c.asientos[i];
+    const g = grupoHemiciclo(x.grupo);
+    const enGrupo = c.asientos.filter((y) => y.grupo === x.grupo).length;
+    const nombreGrupo = x.grupo === "sg" ? x.grupoFuente || g.sigla : g.sigla;
+    return `<figure class="mini mini-yo"><a href="${BASE_CONGRESO}/camaras#${esc(c.organizacion)}">${svgMini(c.asientos, {
+      modo: "composicion",
+      etiqueta: `Su lugar en la ${c.nombre === "Senado" ? "Cámara de Senadores" : c.nombre}: ${nombreGrupo}, uno de ${numero(enGrupo)} de ${numero(c.total)}.`,
+      resaltar: i,
+      atenuar: true,
+    })}<span class="mini-t">En funciones en ${c.nombre === "Senado" ? "el Senado" : `la ${esc(c.nombre)}`}</span></a>
+<span>${x.grupo === "sg" ? `${esc(nombreGrupo)}, sin grupo parlamentario` : `${esc(g.nombre)}: ${numero(enGrupo)} de ${numero(c.total)} ${esc(c.plurales)}`}${x.calidad === "suplente" ? ", como suplente en funciones" : ""}. Lugar esquemático.</span></figure>`;
+  }
+  return "";
+}
+
 function paginaLegislador(m, id, generada) {
   const p = m.personas.get(id) ?? { id, name: id };
   const mandatos = (m.mandatosPorPersona.get(id) ?? []).slice().sort((a, b) => (b.start_date ?? "").localeCompare(a.start_date ?? ""));
@@ -772,6 +910,7 @@ function paginaLegislador(m, id, generada) {
   }
   <span class="tenue">${enlaceJson(rutaPersona(p), "Sus datos")}.</span>
 </p>
+${lugarEnCamara(m, id)}
 <h2 id="mandatos">${mandatos.length === 1 ? "Mandato" : "Mandatos"}</h2>
 ${mandatos.map((x) => seccionMandato(m, x)).join("\n") || '<p class="tenue">Sin mandatos registrados.</p>'}
 <h2 id="votos">Cómo votó</h2>
@@ -788,6 +927,7 @@ ${seccionAsuntosPersona(m, id)}`;
     descripcion: `${p.name}: sus mandatos, cómo votó en cada votación nominal y las iniciativas y proposiciones que presentó.`,
     cuerpo,
     generada,
+    hemiciclo: m.composiciones.some((c) => c.asientos.some((x) => x.persona === id)) ? "css" : false,
   });
 }
 
@@ -970,7 +1110,9 @@ export function paginasCongreso(congreso, generada, { bitacora } = {}) {
     return archivos;
   }
   const m = { ...congreso, votacionesPorAsunto: agrupar([...congreso.votaciones.values()], claveAsunto) };
+  m.composiciones = composiciones(m);
   archivos.set("congreso/index.html", paginaIndice(m, generada));
+  if (m.composiciones.length) archivos.set("congreso/camaras.html", paginaCamaras(m, m.composiciones, generada));
   archivos.set("congreso/votaciones/index.html", indiceVotaciones(m, generada));
   archivos.set("congreso/legisladores/index.html", indiceLegisladores(m, generada));
   archivos.set("congreso/expedientes/index.html", indiceExpedientes(m, generada));
