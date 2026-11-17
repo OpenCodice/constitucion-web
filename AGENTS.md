@@ -11,7 +11,7 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   cualquier otra ruta que no sea un archivo de `public/` (los assets, como
   `/leyes`, `/estado` y `/bitacora/…`, se sirven antes de llegar al Worker).
 - `scripts/paginas.mjs` — genera en cada despliegue (`deploy.yml` despliega
-  también cada tres horas) las páginas, que dependen de los repos de datos; el
+  también al terminar cada vigilancia y una vez al día) las páginas, que dependen de los repos de datos; el
   HTML no se versiona. Lee la API de GitHub (REST y GraphQL),
   `raw.githubusercontent.com` y, para la bitácora, el historial de git de los
   repos de datos, sin dependencias; una fuente caída se anota en la página sin

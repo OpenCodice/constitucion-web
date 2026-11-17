@@ -6,7 +6,7 @@ Página estática de presentación del proyecto. No tiene build: lo que hay en
 - `public/index.html` y `public/estilo.css`: el sitio.
 - `scripts/paginas.mjs`: genera `public/leyes.html` (`/leyes`, la lista de leyes
   para el público) y `public/estado.html` (`/estado`, el estado técnico) desde
-  los repos de datos; corre en cada despliegue, que también ocurre cada tres horas.
+  los repos de datos; corre en cada despliegue, que también ocurre al terminar cada vigilancia (aviso `datos-actualizados`) y una vez al día desde el Worker `scheduler`.
 - `worker/index.js`: responde `410` en las rutas del servicio de búsqueda que se
   retiró (`/api/*`, `/mcp`, `/openapi.json`, `/pdf/*`) y redirige el resto al inicio.
 
