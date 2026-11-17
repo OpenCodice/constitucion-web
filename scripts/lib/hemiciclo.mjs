@@ -75,48 +75,109 @@ export function lugar(x) {
 
 // Proporción del radio interior respecto al exterior.
 const HUECO = 0.4;
+// Radio del asiento respecto al espacio entre asientos vecinos.
+const TAMANO = 0.4;
 
-// Posiciones de n asientos en un semicírculo de radio 1 con centro en el
-// origen (y hacia arriba), en filas concéntricas: las mínimas filas en que
-// caben, repartiendo los asientos por fila en proporción a su radio. Se
-// devuelven ordenadas por ángulo, de izquierda a derecha (en el mismo ángulo,
-// de dentro hacia fuera), para que asignarlas en orden dé sectores
-// contiguos. `r` es el radio de cada asiento.
-export function asientos(n) {
-  if (n <= 0) return [];
-  let filas = 1;
+// Filas concéntricas de un semicírculo de radio 1 (centro en el origen, y hacia
+// arriba) para n asientos: las mínimas en que caben con el mismo espacio entre
+// filas que entre asientos, y los asientos de cada fila en proporción a su
+// radio (por residuo mayor), así que el espacio a lo largo de cada fila es casi
+// el mismo en todas. `r` es el radio de cada asiento.
+export function filas(n) {
+  if (n <= 0) return { radios: [], porFila: [], r: 0 };
+  let k = 1;
   let paso;
   let radios;
-  for (;; filas++) {
-    paso = filas === 1 ? 1 - HUECO : (1 - HUECO) / (filas - 1);
-    radios = Array.from({ length: filas }, (_, i) => (filas === 1 ? (1 + HUECO) / 2 : HUECO + i * paso));
-    const cabe = radios.reduce((s, r) => s + Math.floor((Math.PI * r) / paso) + 1, 0);
-    if (cabe >= n) break;
+  for (;; k++) {
+    paso = k === 1 ? 1 - HUECO : (1 - HUECO) / (k - 1);
+    radios = Array.from({ length: k }, (_, i) => (k === 1 ? (1 + HUECO) / 2 : HUECO + i * paso));
+    if (radios.reduce((s, r) => s + Math.floor((Math.PI * r) / paso), 0) >= n) break;
   }
-  // Por resto mayor, sin pasar de lo que cabe en cada fila.
-  const capacidad = radios.map((r) => Math.floor((Math.PI * r) / paso) + 1);
-  const suma = radios.reduce((s, r) => s + r, 0);
-  const exacto = radios.map((r) => (n * r) / suma);
-  const porFila = exacto.map((x, i) => Math.min(Math.floor(x), capacidad[i]));
-  let faltan = n - porFila.reduce((s, x) => s + x, 0);
-  const orden = exacto.map((x, i) => [x - Math.floor(x), i]).sort((a, b) => b[0] - a[0] || b[1] - a[1]);
-  while (faltan > 0) {
-    for (const [, i] of orden) {
-      if (faltan > 0 && porFila[i] < capacidad[i]) {
-        porFila[i]++;
-        faltan--;
+  const porFila = residuoMayor(radios, n);
+  const alLargo = Math.min(...radios.map((r, i) => (porFila[i] ? (Math.PI * r) / porFila[i] : Infinity)));
+  return { radios, porFila, r: TAMANO * Math.min(paso, alLargo) };
+}
+
+// Reparte n en partes proporcionales a `pesos`, por residuo mayor.
+function residuoMayor(pesos, n) {
+  const suma = pesos.reduce((s, x) => s + x, 0);
+  const exacto = pesos.map((x) => (n * x) / suma);
+  const r = exacto.map(Math.floor);
+  const orden = exacto.map((x, i) => [x - Math.floor(x), i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  for (let k = 0, faltan = n - r.reduce((s, x) => s + x, 0); k < faltan; k++) r[orden[k % orden.length][1]]++;
+  return r;
+}
+
+// Reparte casillas (en cada fila, una lista de lugares de izquierda a
+// derecha) entre partes consecutivas de los tamaños dados, en cuñas: cada
+// parte toma en cada fila su proporción de la fila, y la suma de cada parte en
+// todas las filas es exacta. Cada casilla está en la fracción (j + ½) / m de
+// su fila (j de m); se ordenan todas por esa fracción y se asignan en orden,
+// así que la frontera entre dos partes cae en la misma fracción en todas las
+// filas: una línea casi radial. Devuelve, por parte, sus casillas y el rango
+// de fracciones [desde, hasta] que la separa de sus vecinas.
+function cunas(casillasPorFila, tamanos) {
+  const todas = casillasPorFila
+    .flatMap((cs, fila) => cs.map((c, j) => ({ c, f: (j + 0.5) / cs.length, fila })))
+    .sort((a, b) => a.f - b.f || a.fila - b.fila);
+  const partes = [];
+  let k = 0;
+  for (const n of tamanos) {
+    partes.push({ casillas: todas.slice(k, k + n), desde: 0, hasta: 1 });
+    k += n;
+  }
+  // La frontera, a la mitad entre la última casilla de una parte y la primera de la siguiente.
+  for (let i = 1; i < partes.length; i++) {
+    const a = partes[i - 1].casillas.at(-1)?.f ?? partes[i - 1].desde;
+    const b = partes[i].casillas[0]?.f ?? a;
+    partes[i - 1].hasta = partes[i].desde = (a + b) / 2;
+  }
+  return partes;
+}
+
+const tramos = (xs, clave) => {
+  const r = [];
+  for (const x of xs) {
+    if (r.at(-1)?.clave === clave(x)) r.at(-1).n++;
+    else r.push({ clave: clave(x), n: 1 });
+  }
+  return r;
+};
+
+// Dónde va cada asiento. `xs` viene ordenado por grupo (y, en una votación,
+// por sentido dentro del grupo): cada grupo es una cuña del centro al borde, y
+// dentro de ella cada sentido es una sub-cuña con el mismo método. Devuelve la
+// posición de cada elemento de `xs` (mismo orden) y el rango angular de cada
+// grupo (a0 > a1, en radianes; π es la izquierda).
+export function disposicion(xs, { sub = null } = {}) {
+  const { radios, porFila, r } = filas(xs.length);
+  const pos = new Array(xs.length);
+  const casillas = porFila.map((m, fila) => Array.from({ length: m }, (_, j) => ({ fila, j, m })));
+  const grupos = tramos(xs, (x) => x.grupo);
+  const cg = cunas(casillas, grupos.map((g) => g.n));
+  let inicio = 0;
+  const sectores = grupos.map((g, k) => {
+    const deGrupo = xs.slice(inicio, inicio + g.n);
+    // Las casillas del grupo, por fila y de izquierda a derecha.
+    const porFilaGrupo = porFila.map(() => []);
+    for (const { c } of cg[k].casillas) porFilaGrupo[c.fila].push(c);
+    porFilaGrupo.forEach((cs) => cs.sort((a, b) => a.j - b.j));
+    const subtramos = sub ? tramos(deGrupo, sub) : [{ n: g.n }];
+    let i0 = inicio;
+    for (const parte of cunas(porFilaGrupo, subtramos.map((t) => t.n))) {
+      // Dentro de la sub-cuña, en orden (alfabético) de izquierda a derecha y de dentro hacia fuera.
+      const cs = parte.casillas.map(({ c }) => c);
+      const angulo = (c) => Math.PI * (1 - (c.j + 0.5) / c.m);
+      cs.sort((a, b) => angulo(b) - angulo(a) || a.fila - b.fila);
+      for (const c of cs) {
+        const a = angulo(c);
+        pos[i0++] = { x: radios[c.fila] * Math.cos(a), y: radios[c.fila] * Math.sin(a), angulo: a, fila: c.fila, r };
       }
     }
-  }
-  const r = Math.min(paso, filas === 1 ? (Math.PI * radios[0]) / Math.max(porFila[0] - 1, 1) : paso) * 0.42;
-  const xs = [];
-  porFila.forEach((k, fila) => {
-    for (let j = 0; j < k; j++) {
-      const angulo = k === 1 ? Math.PI / 2 : Math.PI * (1 - j / (k - 1));
-      xs.push({ x: radios[fila] * Math.cos(angulo), y: radios[fila] * Math.sin(angulo), angulo, fila, r });
-    }
+    inicio += g.n;
+    return { grupo: g.clave, n: g.n, a0: Math.PI * (1 - cg[k].desde), a1: Math.PI * (1 - cg[k].hasta) };
   });
-  return xs.sort((a, b) => b.angulo - a.angulo || a.fila - b.fila);
+  return { pos, sectores, r, filas: radios.length };
 }
 
 // ------------------------------------------------------------------ quién va en cada asiento
@@ -147,7 +208,8 @@ function mayorias(xs) {
 }
 
 // Un asiento por voto con nombre y uno por cada voto que la fuente cuenta sin
-// atribuir (sin nombre, en su grupo y sentido). Por grupo, sentido y apellido.
+// atribuir (sin nombre, en su grupo y sentido). Por grupo; dentro del grupo,
+// por sentido y apellido, y al final los sin nombre (también por sentido).
 export function asientosVotacion(m, v) {
   const xs = (v.votes ?? []).map((x) => {
     const mandato = x.mandato_id ? m.mandatos.get(x.mandato_id) : null;
@@ -175,6 +237,7 @@ export function asientosVotacion(m, v) {
   return xs.sort(
     (a, b) =>
       grupo(a.grupo).orden - grupo(b.grupo).orden ||
+      (a.persona ? 0 : 1) - (b.persona ? 0 : 1) ||
       sentido(a.sentido).orden - sentido(b.sentido).orden ||
       a.orden.localeCompare(b.orden, "es"),
   );
@@ -229,57 +292,63 @@ export function composicion(m, org) {
 
 // ------------------------------------------------------------------ SVG
 
-// Lienzo: el semicírculo de radio R con centro en (CX, CY); alrededor, la
-// banda de color de cada grupo y su sigla.
-const R = 180;
+// Lienzo: el semicírculo de radio R con centro en (CX, CY); alrededor, a una
+// separación del borde de los asientos, la banda de color de cada grupo y su
+// sigla. La fila de abajo queda sobre la línea base (la primera casilla de
+// cada fila está medio lugar por encima).
+const R = 178;
 const CX = 230;
-const CY = 214;
+const CY = 216;
 const ANCHO = 460;
 const ALTO = 222;
+const SEPARACION = 4;
+const GRUESO = 5;
+const HUECO_BANDAS = 1.6;
 const f1 = (x) => (Math.round(x * 10) / 10).toString();
 const punto = (s) => [CX + s.x * R, CY - s.y * R];
 
 function arco(r, a0, a1) {
   const [x0, y0] = [CX + r * Math.cos(a0), CY - r * Math.sin(a0)];
   const [x1, y1] = [CX + r * Math.cos(a1), CY - r * Math.sin(a1)];
-  return `M${f1(x0)} ${f1(y0)}A${r} ${r} 0 0 1 ${f1(x1)} ${f1(y1)}`;
+  return `M${f1(x0)} ${f1(y0)}A${f1(r)} ${f1(r)} 0 0 1 ${f1(x1)} ${f1(y1)}`;
 }
 
-// Sectores contiguos de cada grupo: de qué ángulo a qué ángulo va.
-function sectores(xs, pos) {
-  const r = [];
-  xs.forEach((x, i) => {
-    const ultimo = r.at(-1);
-    if (ultimo?.grupo === x.grupo) {
-      ultimo.fin = pos[i].angulo;
-      ultimo.n++;
-    } else r.push({ grupo: x.grupo, inicio: pos[i].angulo, fin: pos[i].angulo, n: 1 });
-  });
-  // La frontera entre dos sectores, a la mitad.
-  r.forEach((s, i) => {
-    s.a0 = i === 0 ? Math.PI : (r[i - 1].fin + s.inicio) / 2;
-    s.a1 = i === r.length - 1 ? 0 : (s.fin + r[i + 1].inicio) / 2;
-  });
-  return r;
-}
+// Radio de la banda (al centro de su trazo), según el tamaño de los asientos.
+const radioBanda = (r) => R * (1 + r) + SEPARACION + GRUESO / 2;
 
-function bandas(secs, { etiquetas = true } = {}) {
-  const rb = R + 8;
+// Banda de cada grupo sobre exactamente su rango angular, con un hueco entre
+// bandas, y su sigla centrada en la cuña (si cabe y no choca con la anterior).
+function bandas(secs, r, { etiquetas = true } = {}) {
+  const rb = radioBanda(r);
+  const hueco = HUECO_BANDAS / rb / 2;
+  let ultima = null;
   return secs
-    .map((s) => {
-      const hueco = s.a0 - s.a1 > 0.04 ? 0.006 : 0;
+    .map((s, i) => {
       const g = grupo(s.grupo);
-      const banda = `<path class="banda g-${g.clave}" d="${arco(rb, s.a0 - hueco, s.a1 + hueco)}"/>`;
-      if (!etiquetas || s.a0 - s.a1 < 0.12) return banda;
+      const a0 = s.a0 - (i > 0 ? hueco : 0);
+      const a1 = s.a1 + (i < secs.length - 1 ? hueco : 0);
+      const banda = a0 > a1 ? `<path class="banda g-${g.clave}" d="${arco(rb, a0, a1)}"/>` : "";
+      if (!etiquetas || (s.a0 - s.a1) * rb < 14) return banda;
       const a = (s.a0 + s.a1) / 2;
-      const re = rb + 9;
+      const re = rb + GRUESO / 2 + 5;
       const x = CX + re * Math.cos(a);
       const y = CY - re * Math.sin(a);
-      const ancla = Math.cos(a) > 0.25 ? "start" : Math.cos(a) < -0.25 ? "end" : "middle";
-      return `${banda}<text x="${f1(x)}" y="${f1(y + 3)}" text-anchor="${ancla}">${esc(g.sigla)}</text>`;
+      const ancho = g.sigla.length * 6.5;
+      const ancla = Math.cos(a) > 0.3 ? "start" : Math.cos(a) < -0.3 ? "end" : "middle";
+      const izq = ancla === "start" ? x : ancla === "end" ? x - ancho : x - ancho / 2;
+      // Sin encimar la sigla anterior: si choca, queda solo la leyenda.
+      if (ultima && izq < ultima.der + 4 && Math.abs(y - ultima.y) < 13) return banda;
+      ultima = { der: izq + ancho, y };
+      // La línea base del texto, para que quede fuera de la banda arriba y a los lados.
+      const dy = Math.sin(a) > 0.5 ? 0 : 4;
+      return `${banda}<text x="${f1(x)}" y="${f1(y + dy)}" text-anchor="${ancla}">${esc(g.sigla)}</text>`;
     })
     .join("");
 }
+
+// Sub-cuñas de una votación: a favor, en contra, abstención, presente sin
+// votar, ausente y, al final, los votos sin nombre (uno por sentido).
+const subSentido = (x) => `${x.sentido}${x.persona ? "" : "|sn"}`;
 
 function tituloAsiento(x, modo) {
   const g = grupo(x.grupo);
@@ -294,8 +363,7 @@ function tituloAsiento(x, modo) {
 // Hemiciclo con un enlace por asiento. modo: "votacion" (color del sentido,
 // banda del grupo) o "composicion" (color del grupo).
 export function svgHemiciclo(xs, { modo, etiqueta, centro = [], id }) {
-  const pos = asientos(xs.length);
-  const r = pos[0]?.r ?? 0;
+  const { pos, sectores, r } = disposicion(xs, { sub: modo === "votacion" ? subSentido : null });
   const asientosSvg = xs
     .map((x, i) => {
       const [cx, cy] = punto(pos[i]);
@@ -321,7 +389,7 @@ export function svgHemiciclo(xs, { modo, etiqueta, centro = [], id }) {
     .reverse()
     .join("");
   return `<svg class="hemiciclo-svg" viewBox="0 0 ${ANCHO} ${ALTO}" role="group" aria-label="${esc(etiqueta)}" data-centro="${CX} ${CY}"${id ? ` id="${esc(id)}"` : ""}>
-${bandas(sectores(xs, pos))}${textoCentro}
+${bandas(sectores, r)}${textoCentro}
 ${asientosSvg}
 </svg>`;
 }
@@ -330,8 +398,8 @@ ${asientosSvg}
 // asiento como un punto (trazo de longitud cero con extremo redondo), para que
 // pese poco. `resaltar` (índice) marca un asiento con un anillo.
 export function svgMini(xs, { modo, etiqueta, resaltar = null, atenuar = false }) {
-  const pos = asientos(xs.length);
-  const r = (pos[0]?.r ?? 0) * R;
+  const { pos, sectores, r: rr } = disposicion(xs, { sub: modo === "votacion" ? subSentido : null });
+  const r = rr * R;
   const porClase = new Map();
   xs.forEach((x, i) => {
     const clase = modo === "votacion" ? sentido(x.sentido).css : `g-${grupo(x.grupo).clave}`;
@@ -345,7 +413,7 @@ export function svgMini(xs, { modo, etiqueta, resaltar = null, atenuar = false }
     const [cx, cy] = punto(pos[resaltar]);
     anillo = `<circle class="anillo" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r * 3)}"/><circle class="yo g-${grupo(xs[resaltar].grupo).clave}" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r * 1.6)}"/>`;
   }
-  return `<svg class="mini-svg${atenuar ? " atenuado" : ""}" viewBox="0 0 ${ANCHO} ${ALTO}" role="img" aria-label="${esc(etiqueta)}" style="--r:${f1(r * 2)}px">${bandas(sectores(xs, pos), { etiquetas: false })}${trazos}${anillo}</svg>`;
+  return `<svg class="mini-svg${atenuar ? " atenuado" : ""}" viewBox="0 0 ${ANCHO} ${ALTO}" role="img" aria-label="${esc(etiqueta)}" style="--r:${f1(r * 2)}px">${bandas(sectores, rr, { etiquetas: false })}${trazos}${anillo}</svg>`;
 }
 
 // ------------------------------------------------------------------ texto alrededor

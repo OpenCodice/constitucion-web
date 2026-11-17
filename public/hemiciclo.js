@@ -146,7 +146,9 @@
     });
 
     // ---------------------------------------------------------------- teclado
-    const visibles = () => info.filter((i) => !fig.classList.contains("filtrado") || i.a.classList.contains("sel"));
+    // Las flechas recorren los asientos de izquierda a derecha (por ángulo), no en el orden del documento.
+    const porAngulo = info.slice().sort((p, q) => q.angulo - p.angulo || p.radio - q.radio);
+    const visibles = () => porAngulo.filter((i) => !fig.classList.contains("filtrado") || i.a.classList.contains("sel"));
     function enfocar(i) {
       if (!i) return;
       asientos.forEach((a) => a.setAttribute("tabindex", "-1"));

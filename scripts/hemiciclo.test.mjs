@@ -4,22 +4,91 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { modeloCongreso } from "./lib/congreso.mjs";
-import { asientos, asientosVotacion, claveGrupo, composicion, svgHemiciclo, svgMini } from "./lib/hemiciclo.mjs";
+import { asientosVotacion, disposicion, filas, claveGrupo, composicion, svgHemiciclo, svgMini } from "./lib/hemiciclo.mjs";
 import { paginasCongreso } from "./congreso.mjs";
 
-test("geometría: n asientos sin encimarse, de izquierda a derecha", () => {
+const conGrupos = (spec) => spec.flatMap(([grupo, n, sentidos]) =>
+  sentidos ? sentidos.flatMap(([sentido, k]) => Array.from({ length: k }, () => ({ grupo, sentido, persona: "x" }))) : Array.from({ length: n }, () => ({ grupo })),
+);
+const SENADO = [["pt", 6], ["morena", 66], ["pvem", 14], ["mc", 6], ["pri", 13], ["pan", 21], ["sg", 2]];
+const DIPUTADOS = [["pt", 49], ["morena", 254], ["pvem", 62], ["mc", 29], ["pri", 36], ["pan", 69], ["sg", 1]];
+
+function sinSolapes(d, n) {
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++) {
+      const [a, b] = [d.pos[i], d.pos[j]];
+      assert.ok(Math.hypot(a.x - b.x, a.y - b.y) > 2 * d.r, `asientos ${i} y ${j} se enciman`);
+    }
+}
+
+test("geometría: filas y asientos sin encimarse ni salirse", () => {
   for (const n of [1, 2, 7, 128, 499, 500]) {
-    const xs = asientos(n);
-    assert.equal(xs.length, n, `n=${n}`);
-    for (let i = 1; i < xs.length; i++) assert.ok(xs[i - 1].angulo >= xs[i].angulo);
-    for (const p of xs) assert.ok(p.y >= -1e-9 && Math.hypot(p.x, p.y) <= 1 + 1e-9);
-    // Ningún par de asientos se toca.
-    if (n <= 500) {
-      for (let i = 0; i < xs.length; i++)
-        for (let j = i + 1; j < xs.length; j++) assert.ok(Math.hypot(xs[i].x - xs[j].x, xs[i].y - xs[j].y) > 2 * xs[i].r, `n=${n}: ${i} y ${j}`);
+    const f = filas(n);
+    assert.equal(f.porFila.reduce((s, x) => s + x, 0), n, `n=${n}`);
+    const d = disposicion(Array.from({ length: n }, () => ({ grupo: "morena" })));
+    assert.equal(d.pos.filter(Boolean).length, n);
+    for (const p of d.pos) {
+      // Dentro del semicírculo, sin cortarse en la línea base.
+      assert.ok(p.y - d.r >= -1e-9, `n=${n}: un asiento se sale por abajo`);
+      assert.ok(Math.hypot(p.x, p.y) + d.r <= 1 + d.r + 1e-9);
+    }
+    sinSolapes(d, n);
+  }
+  assert.equal(disposicion([]).pos.length, 0);
+});
+
+test("geometría: cuñas por grupo con la suma exacta, proporcionales en cada fila y dentro de su banda", () => {
+  for (const spec of [SENADO, DIPUTADOS]) {
+    const xs = conGrupos(spec);
+    const d = disposicion(xs);
+    const n = xs.length;
+    assert.deepEqual(d.sectores.map((s) => [s.grupo, s.n]), spec);
+    const porFila = filas(n).porFila;
+    for (const [g, total] of spec) {
+      const s = d.sectores.find((x) => x.grupo === g);
+      const mios = xs.map((x, i) => (x.grupo === g ? d.pos[i] : null)).filter(Boolean);
+      assert.equal(mios.length, total);
+      for (const p of mios) assert.ok(p.angulo <= s.a0 + 1e-9 && p.angulo >= s.a1 - 1e-9, `${g}: un asiento fuera de su banda`);
+      // En cada fila, su proporción de la fila (a menos de un asiento y medio).
+      porFila.forEach((m, fila) => {
+        const k = mios.filter((p) => p.fila === fila).length;
+        assert.ok(Math.abs(k - (total * m) / n) < 1.5, `${g}, fila ${fila}: ${k} frente a ${((total * m) / n).toFixed(2)}`);
+      });
+    }
+    // Las bandas cubren el semicírculo sin huecos ni encimarse.
+    assert.equal(d.sectores[0].a0, Math.PI);
+    assert.equal(d.sectores.at(-1).a1, 0);
+    for (let i = 1; i < d.sectores.length; i++) assert.equal(d.sectores[i].a0, d.sectores[i - 1].a1);
+    sinSolapes(d, n);
+  }
+});
+
+test("geometría: sub-cuñas por sentido dentro del grupo, con la suma exacta", () => {
+  const xs = conGrupos([
+    ["morena", 0, [["yes", 242], ["absent", 11]]],
+    ["pvem", 0, [["yes", 54], ["abstain", 1], ["absent", 6]]],
+    ["pan", 0, [["no", 59], ["absent", 10]]],
+  ]);
+  const d = disposicion(xs, { sub: (x) => x.sentido });
+  for (const g of ["morena", "pvem", "pan"]) {
+    const s = d.sectores.find((x) => x.grupo === g);
+    const idx = xs.map((x, i) => i).filter((i) => xs[i].grupo === g);
+    for (const i of idx) assert.ok(d.pos[i].angulo <= s.a0 + 1e-9 && d.pos[i].angulo >= s.a1 - 1e-9);
+    // Cada sentido es una sub-cuña: en cada fila, sus asientos son contiguos y en el orden de los sentidos.
+    const filasG = new Map();
+    for (const i of idx) {
+      const p = d.pos[i];
+      if (!filasG.has(p.fila)) filasG.set(p.fila, []);
+      filasG.get(p.fila).push([p.angulo, xs[i].sentido]);
+    }
+    for (const [, ps] of filasG) {
+      const orden = ps.sort((a, b) => b[0] - a[0]).map(([, v]) => v);
+      const cambios = orden.filter((v, k) => k > 0 && v !== orden[k - 1]).length;
+      assert.ok(cambios <= new Set(orden).size - 1, `${g}: sentidos mezclados en una fila: ${orden.join(",")}`);
     }
   }
-  assert.deepEqual(asientos(0), []);
+  assert.equal(d.pos.filter(Boolean).length, xs.length);
+  sinSolapes(d, xs.length);
 });
 
 test("grupos: por partido ligado o por el nombre de la fuente", () => {

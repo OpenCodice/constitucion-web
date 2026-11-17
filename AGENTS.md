@@ -130,11 +130,17 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
 - **Hemiciclos** (`scripts/lib/hemiciclo.mjs`, probado en
   `scripts/hemiciclo.test.mjs`): un asiento por legislador en un SVG generado
   aquí. Filas concéntricas en un semicírculo (las mínimas en que caben, los
-  asientos de cada fila en proporción a su radio), ordenados por ángulo de
-  izquierda a derecha y asignados en orden, así que cada grupo parlamentario
-  ocupa un sector contiguo, siempre en el mismo orden (`PARTIDOS`: PT, Morena,
-  PVEM, PRD, PES, MC, PRI, PAN y sin grupo al final), con una banda de su color
-  y su sigla. Es esquemático: no son los lugares del salón.
+  asientos de cada fila en proporción a su radio). Cada grupo parlamentario es
+  una cuña del centro al borde (`disposicion`): en cada fila toma su
+  proporción de la fila, y la suma por grupo es exacta (cada asiento está en la
+  fracción (j + ½)/m de su fila; se ordenan por esa fracción y se asignan en
+  orden, así que la frontera cae en la misma fracción en todas las filas).
+  Siempre en el mismo orden (`PARTIDOS`: PT, Morena, PVEM, PRD, PES, MC, PRI,
+  PAN y sin grupo al final), con una banda de su color sobre exactamente el
+  rango angular de su cuña, separada de los asientos, y su sigla centrada en la
+  cuña. Dentro de cada cuña, cada sentido del voto es una sub-cuña con el mismo
+  método (a favor, en contra, abstención, presente sin votar, ausente y los
+  votos sin nombre al final). Es esquemático: no son los lugares del salón.
   - En `/congreso/votaciones/{id}` (si hay votos con nombre), cada asiento con
     el color de su sentido; los `votos_faltantes` son asientos sin nombre en su
     grupo y sentido (nunca se atribuyen). Con borde, quien votó distinto a la
