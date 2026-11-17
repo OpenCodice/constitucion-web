@@ -473,6 +473,7 @@ ${seccionCorpus(datos)}
 ${seccionProgreso(datos, generada)}`;
   return documento({
     ruta: "/estado",
+    url: "/estado",
     titulo: "Status del sistema — OpenCodice",
     h1: "Status del sistema",
     descripcion:

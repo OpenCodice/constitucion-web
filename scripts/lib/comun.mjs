@@ -1,6 +1,8 @@
 // Lo que comparten las páginas generadas: constantes del proyecto, acceso a la
 // red y formato de HTML.
 
+import { ALTO, ANCHO, SITIO, registrar } from "./tarjeta.mjs";
+
 export const ORG = "OpenCodice";
 
 export const REPOS = {
@@ -258,6 +260,33 @@ h3 { margin: 2rem 0 0.8rem; font-size: 0.8em; font-weight: 600; }
 .tip-d:hover::after, .tip-d:focus-visible::after { left: auto; right: 0; transform: none; }
 `;
 
+// Lo que leen los buscadores y las redes al enlazar una página: la URL
+// canónica, Open Graph y la tarjeta de Twitter, con su imagen (`tarjeta.mjs`).
+// Sin `url` (las pruebas) se omite lo que depende de ella.
+export function metaSocial({ url, titulo, descripcion, tarjeta, tipo = "website" }) {
+  const imagen = registrar({ titulo: tarjeta?.titulo ?? titulo, detalle: descripcion, ...tarjeta });
+  const absoluta = url ? `${SITIO}${url}` : "";
+  const alt = [tarjeta?.etiqueta, tarjeta?.titulo ?? titulo].filter(Boolean).join(": ");
+  return [
+    absoluta && `<link rel="canonical" href="${esc(absoluta)}" />`,
+    `<meta property="og:site_name" content="OpenCodice" />`,
+    `<meta property="og:locale" content="es_MX" />`,
+    `<meta property="og:type" content="${tipo}" />`,
+    absoluta && `<meta property="og:url" content="${esc(absoluta)}" />`,
+    `<meta property="og:title" content="${esc(titulo)}" />`,
+    `<meta property="og:description" content="${esc(descripcion)}" />`,
+    `<meta property="og:image" content="${imagen}" />`,
+    `<meta property="og:image:width" content="${ANCHO}" />`,
+    `<meta property="og:image:height" content="${ALTO}" />`,
+    `<meta property="og:image:alt" content="${esc(alt)}" />`,
+    `<meta name="twitter:card" content="summary_large_image" />`,
+    `<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />`,
+    `<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)" />`,
+  ]
+    .filter(Boolean)
+    .join("\n    ");
+}
+
 const ICONO =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23111'/%3E%3C/svg%3E";
 
@@ -269,9 +298,19 @@ const SECCIONES = [
   ["https://github.com/OpenCodice", "GitHub"],
 ];
 
-// `ruta` marca la sección actual en la barra; `cabeza`, lo que una página
-// agregue al <head> (un script con `defer`, por ejemplo).
-export function documento({ titulo, h1, descripcion, estilo, cuerpo, pie, ruta, cabeza = "" }) {
+// `ruta` marca la sección actual en la barra; `url` es la de la página misma;
+// `tarjeta`, el texto de su imagen para redes (por omisión, la sección, el h1
+// y la descripción); `cabeza`, lo que una página agregue al <head> (un script
+// con `defer`, por ejemplo).
+export function documento({ titulo, h1, descripcion, estilo, cuerpo, pie, ruta, url, tarjeta, tipo, cabeza = "" }) {
+  const seccion = SECCIONES.find(([href]) => href === ruta)?.[1];
+  const meta = metaSocial({
+    url,
+    titulo: titulo.replace(/ — OpenCodice$/, ""),
+    descripcion,
+    tarjeta: { etiqueta: seccion, titulo: h1, ...tarjeta },
+    tipo,
+  });
   const enlaces = SECCIONES.map(
     ([href, nombre]) => `<a href="${href}"${href === ruta ? ' aria-current="page"' : ""}>${nombre}</a>`,
   ).join("\n            ");
@@ -282,6 +321,7 @@ export function documento({ titulo, h1, descripcion, estilo, cuerpo, pie, ruta, 
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${esc(titulo)}</title>
     <meta name="description" content="${esc(descripcion)}" />
+    ${meta}
     <meta name="color-scheme" content="light dark" />
     <link rel="icon" href="${ICONO}" />
     <link rel="stylesheet" href="/estilo.css" />

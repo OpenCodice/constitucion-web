@@ -4,6 +4,7 @@ Landing estático de [constitucion.app](https://constitucion.app). Presenta el p
 repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
 
 - `public/` — el sitio: `estilo.css`, `llms.txt` (guía para agentes de IA),
+  `robots.txt`,
   `hemiciclo.js` (lo único de JavaScript; ver «Hemiciclos») y las páginas que
   genera `scripts/paginas.mjs`. Sin framework.
 - `worker/index.js` — responde `410` en las rutas del servicio de búsqueda que
@@ -18,7 +19,8 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   detener el despliegue. En local: `npm run paginas` (con
   `GITHUB_TOKEN=$(gh auth token)` para no topar el límite anónimo, y
   `REPOS_DATOS=..` para leer los clones del espacio de trabajo en vez de
-  clonar en `.datos/`). Tarda unos 15 s.
+  clonar en `.datos/`). Tarda unos 15 s más las tarjetas que no estén en
+  `.tarjetas/`.
   - `scripts/inicio.mjs` → `/`: qué es, cifras de cada corpus, últimas
     reformas, cómo leer el historial, status de la vigilancia, cómo citar,
     cómo lo usa un agente y lo que sigue.
@@ -170,6 +172,19 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     la bitácora las agrupa en «Leyes de los estados» y `/estado` cuenta las
     dos vigilancias de leyes-estatales (`vigilar-estatales.yml` de
     constitucion-extractor y `vigilar-leyes-estatales.yml` de fiscal-extractor).
+  - **Buscadores y redes:** cada página lleva su URL canónica, Open Graph y
+    tarjeta de Twitter (`metaSocial` de `scripts/lib/comun.mjs`; `documento()`
+    la pone sola si recibe `url`) y su imagen de 1200×630 en `/og/{hash}.png`
+    (`scripts/lib/tarjeta.mjs`: satori → SVG → PNG con resvg, fuente Inter de
+    `@fontsource/inter`). La tarjeta es la sección, el h1 y la descripción,
+    salvo las páginas que pasan su propia `tarjeta` (un cambio de la
+    bitácora lleva el nombre del documento). El nombre sale del hash de su
+    contenido, así que las tarjetas iguales se comparten y `.tarjetas/` (que
+    `deploy.yml` conserva con `actions/cache`) evita volver a dibujarlas: la
+    primera vez tarda unos 2–3 minutos. Si cambia el diseño, sube `VERSION`
+    en `tarjeta.mjs`. `paginas.mjs` escribe además `public/sitemap.xml`;
+    `public/robots.txt` es fijo. El inicio lleva JSON-LD (`WebSite` y
+    `Organization`) y la bitácora enlaza su Atom con `rel="alternate"`.
   - `scripts/lib/` — lectura de datos y formato compartidos; `resumen.mjs` es
     la salud de las vigilancias y los cambios publicados, que el inicio y
     `/estado` cuentan igual.

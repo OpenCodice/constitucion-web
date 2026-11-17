@@ -554,6 +554,7 @@ ${seccionFiscal(fiscal, hasta)}
 
   return documento({
     ruta: "/leyes",
+    url: "/leyes",
     titulo: "Qué leyes hay — OpenCodice",
     h1: "Qué leyes hay",
     descripcion:

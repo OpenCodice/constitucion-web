@@ -5,6 +5,10 @@ public/estado.html
 public/leyes.html
 public/bitacora/
 public/congreso/
+public/og/
+public/sitemap.xml
+# Tarjetas ya dibujadas; deploy.yml las conserva entre corridas.
+.tarjetas/
 # Clones de los repos de datos que lee la bitácora.
 .datos/
 dist/

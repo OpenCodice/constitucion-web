@@ -396,9 +396,12 @@ ins::after, del::after { content: "] "; }
 .evidencia ul { padding-left: 1.2em; margin: 0.4em 0; }
 `;
 
-function pagina({ titulo, h1, descripcion, cuerpo, generada, sobre = "" }) {
+function pagina({ titulo, h1, descripcion, cuerpo, generada, url, tarjeta, tipo, sobre = "" }) {
   const html = paginaHtml({
     ruta: `${BASE}/`,
+    url,
+    tarjeta,
+    tipo,
     titulo: `${titulo} — OpenCodice`,
     h1,
     descripcion,
@@ -410,7 +413,12 @@ function pagina({ titulo, h1, descripcion, cuerpo, generada, sobre = "" }) {
       cuerpo.includes('class="tira"') || cuerpo.includes('class="estados"') ? ESTILO_CADENA : "",
       cuerpo.includes('class="cuadricula"') || cuerpo.includes('class="vida"') ? ESTILO_VIDA : "",
     ].join(""),
-    cabeza: cuerpo.includes('<figure class="hemiciclo"') ? '<script src="/hemiciclo.js" defer></script>' : "",
+    cabeza: [
+      `<link rel="alternate" type="application/atom+xml" href="${BASE}/reformas.xml" title="Reformas registradas en OpenCodice" />`,
+      cuerpo.includes('<figure class="hemiciclo"') ? '<script src="/hemiciclo.js" defer></script>' : "",
+    ]
+      .filter(Boolean)
+      .join("\n    "),
     cuerpo: `${sobre}${cuerpo}`,
     pie: `<p>
           <a href="${BASE}/">Bitácora</a> · <a href="${BASE}/metadatos">Cambios de metadatos</a> · <a href="/leyes">Qué leyes hay</a> · <a href="/estado">Status del sistema</a> ·
@@ -460,6 +468,7 @@ ${
     : '<p class="tenue">Todavía no hay reformas registradas.</p>'
 }`;
   return pagina({
+    url: `${BASE}/`,
     titulo: "Bitácora",
     h1: "Bitácora de reformas",
     descripcion: "Las reformas a la ley mexicana registradas en OpenCodice, con los artículos que cambiaron y la diferencia de su texto.",
@@ -478,7 +487,7 @@ ${pestañas(ruta, cuentas(m))}
 ${avisoFallas(m.fallas)}
 ${texto}
 ${porMes.map(([mes, g]) => `<h3 class="grupo">${esc(mesLargo(`${mes}-01`))}</h3>\n${listaCambios(g)}`).join("\n") || '<p class="tenue">Ninguno.</p>'}`;
-  return pagina({ titulo, h1, descripcion, cuerpo, generada });
+  return pagina({ url: `${BASE}${ruta}`, titulo, h1, descripcion, cuerpo, generada });
 }
 
 const GRUPOS_DOCUMENTOS = [
@@ -518,6 +527,7 @@ ${avisoFallas(m.fallas)}
 <p>Cada documento con su historia: su alta, sus reformas y las correcciones de su extracción.</p>
 ${bloques}`;
   return pagina({
+    url: `${BASE}/documentos`,
     titulo: "Documentos en la bitácora",
     h1: "Bitácora: documentos",
     descripcion: "La historia de cada documento de OpenCodice: su alta, sus reformas y las correcciones de su extracción.",
@@ -610,6 +620,8 @@ ${listaCambios(
 ${seccionCuadricula(d)}
 ${reformasAnteriores(d)}`;
   return pagina({
+    url: urlDocumento(d.clave),
+    tarjeta: { titulo: d.nombre, detalle: "Su historia: el alta, las reformas y las correcciones de su extracción, con la diferencia de su texto." },
     titulo: `${d.nombre}: historia`,
     h1: d.nombre,
     descripcion: `Historia de ${d.nombre} en OpenCodice: reformas, correcciones de extracción y la diferencia de su texto.`,
@@ -1032,10 +1044,14 @@ ${seccionAjustes(c)}
 <h2>En la historia del documento</h2>
 ${vecinos(c)}`;
   const h1 = tituloCambio(c);
+  const resumen = `${resumenCambio(c).replace(/<[^>]+>/g, "")}.`;
   return pagina({
+    url: urlCambio(c),
+    tipo: "article",
+    tarjeta: { etiqueta: c.doc.nombre, detalle: resumen },
     titulo: `${h1} · ${c.doc.sigla ?? c.doc.nombre}`,
     h1,
-    descripcion: `${NOMBRE_CLASE[c.clase]} de ${c.doc.nombre}: ${resumenCambio(c).replace(/<[^>]+>/g, "")}.`,
+    descripcion: `${NOMBRE_CLASE[c.clase]} de ${c.doc.nombre}: ${resumen}`,
     cuerpo,
     sobre,
     generada,

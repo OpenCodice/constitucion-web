@@ -195,9 +195,11 @@ td.texto { min-width: 16em; }
 const SCRIPT_HEMICICLO = '<script src="/hemiciclo.js" defer></script>';
 
 // `hemiciclo`: false, "css" (solo miniaturas) o "js" (hemiciclo interactivo).
-function pagina({ titulo, h1, descripcion, cuerpo, generada, sobre = "", hemiciclo = false }) {
+function pagina({ titulo, h1, descripcion, cuerpo, generada, url, tarjeta, sobre = "", hemiciclo = false }) {
   return paginaHtml({
     ruta: `${BASE_CONGRESO}/`,
+    url,
+    tarjeta,
     titulo: `${titulo} — OpenCodice`,
     h1,
     descripcion,
@@ -350,6 +352,7 @@ ${ultimas.length ? `<ul class="lista">\n${ultimas.map((v) => filaVotacion(m, v))
   <li>Cambios de bancada: el partido de cada mandato es el que el SIL muestra hoy; el de cada voto, el que mostró la lista de esa votación.</li>
 </ul>`;
   return pagina({
+    url: `${BASE_CONGRESO}/`,
     titulo: "Congreso",
     h1: "Congreso: quién vota qué",
     descripcion: "Cada votación nominal del Congreso de la Unión con el voto de cada legislador, y lo que presenta cada diputado y senador, de fuentes oficiales.",
@@ -361,6 +364,7 @@ ${ultimas.length ? `<ul class="lista">\n${ultimas.map((v) => filaVotacion(m, v))
 
 function paginaSinDatos(congreso, generada) {
   return pagina({
+    url: `${BASE_CONGRESO}/`,
     titulo: "Congreso",
     h1: "Congreso: quién vota qué",
     descripcion: "Las votaciones y legisladores del Congreso de la Unión, de congreso-mexicano.",
@@ -388,6 +392,7 @@ ${[...porMes]
   .map(([k, xs]) => `<h3 class="sentido">${esc(mes(k))} <span class="cuenta">${numero(xs.length)}</span></h3>\n<ul class="lista">\n${xs.map((v) => filaVotacion(m, v)).join("\n")}\n</ul>`)
   .join("\n")}`;
   return pagina({
+    url: `${BASE_CONGRESO}/votaciones/`,
     titulo: "Votaciones del Congreso",
     h1: "Votaciones nominales",
     descripcion: "Todas las votaciones nominales registradas del Congreso de la Unión, con sus conteos.",
@@ -627,6 +632,8 @@ ${seccionVotos(m, v)}
 <h2 id="fuentes">Fuentes</h2>
 ${fuentes(v)}`;
   return pagina({
+    url: urlVotacion(v.id),
+    tarjeta: { etiqueta: "Congreso · Votaciones", detalle: recortar(tituloVotacion(v), 200) },
     titulo: `Votación ${v.id}`,
     h1: `Votación en ${camaraDe(v) === "Senado" ? "el Senado" : `la ${camaraDe(v)}`}, ${v.start_date ? fechaLarga(v.start_date) : "sin fecha"}`,
     descripcion: `${recortar(tituloVotacion(v), 150)} — votación nominal con el voto de cada legislador.`,
@@ -698,6 +705,7 @@ ${figuraHemiciclo(c.asientos, {
 ${secciones.join("\n")}
 <p><a href="${BASE_CONGRESO}/legisladores/">Todos los legisladores, con propietarios y suplentes →</a></p>`;
   return pagina({
+    url: `${BASE_CONGRESO}/camaras`,
     titulo: "Las cámaras hoy",
     h1: "Las cámaras hoy",
     descripcion: "Composición de la Cámara de Diputados y del Senado por grupo parlamentario: un asiento por legislador en funciones, según el SIL.",
@@ -754,6 +762,7 @@ function indiceLegisladores(m, generada) {
 </p>
 ${secciones.join("\n")}`;
   return pagina({
+    url: `${BASE_CONGRESO}/legisladores/`,
     titulo: "Legisladores",
     h1: "Legisladores",
     descripcion: "Diputados y senadores por cámara y grupo parlamentario, con sus votos y lo que presentaron.",
@@ -922,6 +931,8 @@ ${seccionVotosPersona(m, id, mandatos)}
 </p>
 ${seccionAsuntosPersona(m, id)}`;
   return pagina({
+    url: urlLegislador(id),
+    tarjeta: { etiqueta: "Congreso · Legisladores", detalle: "Sus mandatos, cómo votó en cada votación nominal y las iniciativas y proposiciones que presentó." },
     titulo: p.name,
     h1: p.name,
     descripcion: `${p.name}: sus mandatos, cómo votó en cada votación nominal y las iniciativas y proposiciones que presentó.`,
@@ -955,6 +966,7 @@ ${tabla({
   filas,
 })}`;
   return pagina({
+    url: `${BASE_CONGRESO}/expedientes/`,
     titulo: "Expedientes del Congreso",
     h1: "Expedientes",
     descripcion: "Los expedientes del proceso legislativo del SIL que llegaron a votación nominal.",
@@ -1091,6 +1103,8 @@ ${seccionDecreto(m, e, bitacora) || '<p class="tenue">Sin decreto publicado en e
 <h2 id="fuentes">Fuentes</h2>
 ${fuentes(e)}`;
   return pagina({
+    url: urlExpediente(e.id),
+    tarjeta: { etiqueta: `Congreso · Expediente ${e.seguimiento}` },
     titulo: `Expediente ${e.seguimiento}`,
     h1: recortar(e.denominacion, 220),
     descripcion: `Expediente ${e.seguimiento} del SIL: cronología, votaciones con el voto de cada legislador y decreto.`,

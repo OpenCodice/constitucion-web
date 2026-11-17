@@ -1,11 +1,34 @@
 // Página de inicio. Se genera en cada despliegue para que las cifras, el
 // status y las últimas reformas salgan de los repos de datos.
 
-import { ORG, REPOS, esc, numero, plural, fechaLarga, diaMexico, momento } from "./lib/comun.mjs";
+import { ORG, REPOS, metaSocial, esc, numero, plural, fechaLarga, diaMexico, momento } from "./lib/comun.mjs";
 import { ESTILO_SALUD, salud, insignia, cambios } from "./lib/resumen.mjs";
 import { ultimasReformas as reformasBitacora } from "./bitacora.mjs";
 
 const REFORMAS_EN_INICIO = 3;
+
+// Para los buscadores: el sitio y quién lo publica.
+const JSON_LD = JSON.stringify({
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://constitucion.app/#sitio",
+      url: "https://constitucion.app/",
+      name: "OpenCodice",
+      inLanguage: "es-MX",
+      description: "El texto vigente de la ley mexicana, un archivo por artículo, con cada reforma registrada en git.",
+      publisher: { "@id": "https://constitucion.app/#organizacion" },
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://constitucion.app/#organizacion",
+      name: "OpenCodice",
+      url: "https://constitucion.app/",
+      sameAs: ["https://github.com/OpenCodice"],
+    },
+  ],
+});
 
 // Artículo de ejemplo para citar: el 82 de la Constitución en la reforma de
 // octubre de 2026.
@@ -104,13 +127,16 @@ export function paginaInicio(datos, generada) {
       name="description"
       content="El texto vigente de la Constitución, las leyes federales, las constituciones estatales y la legislación fiscal de México, un archivo por artículo, con cada reforma registrada en git."
     />
-    <meta property="og:title" content="OpenCodice — las leyes de México, versionadas" />
-    <meta
-      property="og:description"
-      content="El texto vigente de la ley mexicana, un archivo por artículo, con cada reforma registrada en git."
-    />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://constitucion.app/" />
+    ${metaSocial({
+      url: "/",
+      titulo: "OpenCodice — las leyes de México, versionadas",
+      descripcion: "El texto vigente de la ley mexicana, un archivo por artículo, con cada reforma registrada en git.",
+      tarjeta: {
+        titulo: "Las leyes de México, versionadas como código.",
+        detalle: "La Constitución, las leyes federales y estatales y la legislación fiscal: un archivo por artículo y cada reforma, un commit.",
+      },
+    })}
+    <script type="application/ld+json">${JSON_LD}</script>
     <meta name="color-scheme" content="light dark" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23111'/%3E%3C/svg%3E" />
     <link rel="alternate" type="text/plain" href="/llms.txt" title="Guía para agentes" />

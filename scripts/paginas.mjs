@@ -8,7 +8,8 @@
 // JavaScript en el navegador es public/hemiciclo.js, que solo mejora los
 // hemiciclos ya generados aquí.
 //
-// Sin dependencias: fetch de Node y git. Si GITHUB_TOKEN existe se usa para la
+// Los datos se leen sin dependencias (fetch de Node y git); las tarjetas para
+// redes se dibujan con satori y resvg (`lib/tarjeta.mjs`). Si GITHUB_TOKEN existe se usa para la
 // API (el límite anónimo es de 60 peticiones por hora). Ninguna falla de red
 // detiene el despliegue: cada fuente que no responde se anota en la página.
 
@@ -24,7 +25,9 @@ import { paginaLeyes } from "./leyes.mjs";
 import { paginaInicio } from "./inicio.mjs";
 import { modelo, paginasBitacora } from "./bitacora.mjs";
 import { paginasCongreso } from "./congreso.mjs";
+import { SITIO, escribirTarjetas } from "./lib/tarjeta.mjs";
 
+const raiz = (archivo) => fileURLToPath(new URL(`../${archivo}`, import.meta.url));
 const publico = (archivo) => fileURLToPath(new URL(`../public/${archivo}`, import.meta.url));
 
 const generada = new Date().toISOString();
@@ -59,9 +62,26 @@ await Promise.all([
   writeFile(publico("index.html"), paginaInicio(datos, generada)),
 ]);
 
+// Cada página registró su tarjeta al generarse; aquí se dibujan las que no
+// estén en el caché.
+const tarjetas = await escribirTarjetas(publico("og"), raiz(".tarjetas"));
+
+// La dirección de cada página, como la sirve Cloudflare: sin `.html` y con
+// `/` final en los `index.html`.
+const urlDe = (archivo) => `${SITIO}/${archivo.replace(/(^|\/)index\.html$/, "$1").replace(/\.html$/, "")}`;
+const paginas = ["index.html", "leyes.html", "estado.html", ...archivos.keys(), ...congreso.keys()].filter((a) => a.endsWith(".html"));
+await writeFile(
+  publico("sitemap.xml"),
+  `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${paginas.map((a) => `<url><loc>${urlDe(a)}</loc></url>`).join("\n")}
+</urlset>
+`,
+);
+
 const fallas = contarFallas(datos) + bitacora.fallas.length;
 console.log(
-  `index.html, estado.html, leyes.html, ${archivos.size} archivos de la bitácora (${bitacora.cambios.length} cambios, ${bitacora.documentos.size} documentos) y ${congreso.size} del Congreso generados${
+  `index.html, estado.html, leyes.html, ${archivos.size} archivos de la bitácora (${bitacora.cambios.length} cambios, ${bitacora.documentos.size} documentos) y ${congreso.size} del Congreso generados, ${tarjetas.total} tarjetas (${tarjetas.nuevas} nuevas) y el sitemap${
     fallas ? ` con ${fallas} fuentes sin responder` : ""
   }`,
 );
