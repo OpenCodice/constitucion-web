@@ -6,7 +6,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { REPOS } from "./lib/comun.mjs";
 import { modelo, paginasBitacora } from "./bitacora.mjs";
-import { leerVinculos } from "./lib/vinculos.mjs";
 
 const SHA = (n) => String(n).padEnd(40, "0");
 
@@ -79,7 +78,7 @@ test("clases: ajustes iniciales, metadatos y correcciones", () => {
 
 test("páginas: listas separadas y cambios.json", async () => {
   const m = modelo(historial());
-  const archivos = paginasBitacora(m, "2026-12-21T00:00:00Z", await leerVinculos());
+  const archivos = paginasBitacora(m, "2026-12-21T00:00:00Z", null);
   const correcciones = archivos.get("bitacora/correcciones.html");
   const metadatos = archivos.get("bitacora/metadatos.html");
   const enlace = (n) => `/bitacora/lgs/${SHA(n).slice(0, 12)}`;

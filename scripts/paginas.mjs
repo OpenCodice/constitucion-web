@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Genera las páginas que dependen de los repos de datos: public/index.html
 // (el inicio), public/leyes.html (/leyes, para el público), public/estado.html
-// (/estado, el status del sistema) y public/bitacora/ (la bitácora de
-// cambios, del historial de git).
+// (/estado, el status del sistema), public/bitacora/ (la bitácora de
+// cambios, del historial de git) y public/congreso/ (votaciones y
+// legisladores, de congreso-mexicano).
 // Corre en cada despliegue para que el sitio siga siendo estático y sin
 // JavaScript en el navegador.
 //
@@ -21,11 +22,15 @@ import { paginaEstado } from "./estado.mjs";
 import { paginaLeyes } from "./leyes.mjs";
 import { paginaInicio } from "./inicio.mjs";
 import { modelo, paginasBitacora } from "./bitacora.mjs";
+import { paginasCongreso } from "./congreso.mjs";
 
 const publico = (archivo) => fileURLToPath(new URL(`../public/${archivo}`, import.meta.url));
 
 const generada = new Date().toISOString();
-const [datos, historial, vinculos] = await Promise.all([leerTodo(generada), leerHistorial(), leerVinculos()]);
+// congreso-mexicano se lee después del historial: sus miles de archivos
+// abiertos a la vez hacen fallar los `git` del historial (spawn EBADF).
+const [datos, historial] = await Promise.all([leerTodo(generada), leerHistorial()]);
+const vinculos = await leerVinculos();
 const bitacora = modelo(historial);
 datos.bitacora = bitacora;
 
@@ -38,6 +43,15 @@ await enParalelo([...archivos], 32, async ([ruta, contenido]) => {
   await writeFile(publico(ruta), contenido);
 });
 
+// /congreso, del mismo modelo de congreso-mexicano que leyó la bitácora
+// (`leerVinculos` lo devuelve tal cual), también entero cada vez.
+const congreso = paginasCongreso(vinculos, generada, { bitacora });
+await rm(publico("congreso"), { recursive: true, force: true });
+await enParalelo([...congreso], 32, async ([ruta, contenido]) => {
+  await mkdir(dirname(publico(ruta)), { recursive: true });
+  await writeFile(publico(ruta), contenido);
+});
+
 await Promise.all([
   writeFile(publico("estado.html"), paginaEstado(datos, generada)),
   writeFile(publico("leyes.html"), paginaLeyes(datos, generada)),
@@ -46,7 +60,7 @@ await Promise.all([
 
 const fallas = contarFallas(datos) + bitacora.fallas.length;
 console.log(
-  `index.html, estado.html, leyes.html y ${archivos.size} archivos de la bitácora (${bitacora.cambios.length} cambios, ${bitacora.documentos.size} documentos) generados${
+  `index.html, estado.html, leyes.html, ${archivos.size} archivos de la bitácora (${bitacora.cambios.length} cambios, ${bitacora.documentos.size} documentos) y ${congreso.size} del Congreso generados${
     fallas ? ` con ${fallas} fuentes sin responder` : ""
   }`,
 );

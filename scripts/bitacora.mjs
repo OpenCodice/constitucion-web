@@ -34,11 +34,13 @@ import {
   fechaLarga,
   diaMexico,
   momento,
+  tabla,
   documento as paginaHtml,
 } from "./lib/comun.mjs";
 import { TIPOS_DOCUMENTO, articulosDe, dirMetadata } from "./lib/historial.mjs";
 import { diferenciaArticulo, encabezado } from "./lib/diferencias.mjs";
 import { vinculosDe } from "./lib/vinculos.mjs";
+import { urlVotacion, urlLegislador, urlExpediente, urlSilExpediente } from "./lib/congreso.mjs";
 
 const SITIO = "https://constitucion.app";
 const BASE = "/bitacora";
@@ -380,6 +382,12 @@ ins::after, del::after { content: "] "; }
 .docs-b { list-style: none; padding: 0; margin: 0 0 2rem; }
 .docs-b li { margin: 0; padding: 0.55rem 0; border-bottom: 1px solid var(--linea); }
 .docs-b .c-titulo a { text-decoration: none; } .docs-b .c-titulo a:hover { text-decoration: underline; }
+.iniciativas { padding-left: 1.2em; font-size: 0.85em; }
+.iniciativas li { margin: 0 0 0.5em; }
+.proceso h4 { margin: 1.5rem 0 0.6rem; font-size: 0.8em; font-weight: 600; }
+.evidencia { margin-top: 0.3em; font-size: 0.9em; color: var(--tenue); }
+.evidencia summary { cursor: pointer; }
+.evidencia ul { padding-left: 1.2em; margin: 0.4em 0; }
 `;
 
 function pagina({ titulo, h1, descripcion, cuerpo, generada, sobre = "" }) {
@@ -710,13 +718,181 @@ function vecinos(c) {
   return `<nav class="vecinos" aria-label="Cambios vecinos del documento">${enlace(anterior, "←")}${enlace(siguiente, "→")}</nav>`;
 }
 
-function seccionVinculos(c, fuente) {
-  const vs = vinculosDe(fuente, c);
-  if (!vs.length) return "";
-  return `<h2 id="proceso">Proceso legislativo</h2>
-<ul>
-${vs.map((v) => `<li><a href="${esc(v.url)}">${esc(v.titulo)}</a>${v.detalle ? ` <span class="tenue">· ${esc(v.detalle)}</span>` : ""}</li>`).join("\n")}
+// ---------------------------------------------- proceso legislativo
+
+const NOMBRE_FUENTE_VOTACION = { senado: "el sitio del Senado", gaceta: "la Gaceta Parlamentaria", sil: "el SIL" };
+const fuenteVotacion = (id) => NOMBRE_FUENTE_VOTACION[id.split("-")[0]] ?? "otra fuente";
+const RESULTADO = { pass: "Aprobada", fail: "Rechazada" };
+const AUTORES_MAX = 8;
+// «OpenCodice/congreso-extractor:resoluciones/decretos/…» → el archivo en GitHub.
+const urlResolucion = (r) => {
+  const [repo, ruta] = r.split(":");
+  return ruta ? `https://github.com/${repo}/blob/main/${ruta}` : null;
+};
+const mayuscula = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
+// El SIL repite los conteos al final del texto de la votación; ya van en sus columnas.
+const queSeVoto = (v) => {
+  const t = (v.motion?.text ?? "").replace(/\s*A favor:.*$/is, "").trim();
+  return t || v.motion?.denominacion || "Votación";
+};
+
+function textoDiscrepancia(d) {
+  const partes = [];
+  if (d.counts_sil) partes.push("en los conteos");
+  if (d.votantes_distintos?.length) partes.push(`en el voto de ${plural(d.votantes_distintos.length, "legislador", "legisladores")}`);
+  const solo = (d.no_listados_en_sil ?? d.votantes_ausentes_en_sil ?? []).length;
+  if (solo) partes.push(`en ${plural(solo, "legislador que el SIL no lista", "legisladores que el SIL no lista")}`);
+  return partes.length ? lista(partes) : "en algún dato";
+}
+
+function notasVotacion(v, otras) {
+  const notas = [];
+  for (const o of otras) {
+    const difiere = o.discrepancias?.length ? `; las dos fuentes difieren ${lista(o.discrepancias.map(textoDiscrepancia))}` : "";
+    notas.push(`También en <a href="${esc(urlVotacion(o.id))}">${fuenteVotacion(o.id)}</a>${difiere}.`);
+  }
+  if (!v.votos_publicados && !otras.some((o) => o.votos_publicados)) notas.push("La fuente no publica el voto de cada legislador.");
+  for (const x of [v, ...otras].filter((x) => x.inconsistencias?.length)) {
+    notas.push(`Lo que publica ${fuenteVotacion(x.id)} no cuadra consigo mismo; los detalles están en <a href="${esc(urlVotacion(x.id))}">la votación</a>.`);
+  }
+  return notas.length ? `<br><span class="tenue">${notas.join(" ")}</span>` : "";
+}
+
+function tablaVotaciones(grupo, id) {
+  const conteo = (v, opcion) => numero(v.counts?.find((x) => x.option === opcion)?.value);
+  return tabla({
+    id,
+    titulo: grupo.nombre ?? "Votaciones",
+    columnas: [
+      { titulo: "Fecha" },
+      { titulo: "Qué se votó" },
+      { titulo: "Resultado" },
+      { titulo: "A favor", num: true },
+      { titulo: "En contra", num: true },
+      { titulo: "Abstenciones", num: true },
+      { titulo: "Ausentes", num: true },
+    ],
+    filas: grupo.votaciones.map(({ votacion: v, otras }) => [
+      v.start_date ? `<span class="fecha">${fechaLarga(v.start_date)}</span>` : "—",
+      `<a href="${esc(urlVotacion(v.id))}">${esc(queSeVoto(v))}</a>${notasVotacion(v, otras)}`,
+      RESULTADO[v.result] ?? "—",
+      conteo(v, "yes"),
+      conteo(v, "no"),
+      conteo(v, "abstain"),
+      conteo(v, "absent"),
+    ]),
+  });
+}
+
+function textoAutor(a) {
+  if (a.tipo === "legislador") return `<a href="${esc(urlLegislador(a.person_id))}">${esc(a.nombre)}</a>${a.partido ? ` (${esc(a.partido)})` : ""}`;
+  // «del PAN», «de Morena».
+  if (a.tipo === "grupo_parlamentario") return `el grupo parlamentario ${/^[A-Z]+$/.test(a.nombre) ? "del" : "de"} ${esc(a.nombre)}`;
+  if (a.tipo === "ejecutivo_federal") return "el Ejecutivo Federal";
+  return esc(a.nombre);
+}
+
+function listaIniciativas(xs) {
+  return `<ul class="iniciativas">
+${xs
+  .map((a) => {
+    let autores;
+    if (!a.autores) autores = "su autor no está registrado";
+    else if (!a.autores.length) autores = "sin autor registrado";
+    else {
+      const nombres = a.autores.slice(0, AUTORES_MAX).map(textoAutor);
+      const resto = a.autores.length - nombres.length;
+      autores = `por ${lista(resto > 0 ? [...nombres, plural(resto, "autor más", "autores más")] : nombres)}`;
+    }
+    const fecha = a.fecha ? `presentada el <span class="fecha">${fechaLarga(a.fecha)}</span>, ` : "";
+    const texto = a.pdf ? ` · <a href="${esc(a.pdf)}">texto</a>` : "";
+    return `<li>${esc(a.denominacion)} <span class="tenue">— ${fecha}${autores}${texto}</span></li>`;
+  })
+  .join("\n")}
 </ul>`;
+}
+
+function textoExpediente(x) {
+  const e = x.expediente;
+  const nombre = e
+    ? `<a href="${esc(urlExpediente(e.id))}">${esc(e.denominacion)}</a> · <a href="${esc(urlSilExpediente(e))}">ficha en el SIL</a>`
+    : `<code>${esc(x.enlace.id)}</code>`;
+  const camaras = e?.camara_origen
+    ? `<br><span class="tenue">Cámara de origen: ${esc(e.camara_origen)}${e.camara_revisora ? `; revisora: ${esc(e.camara_revisora)}` : ""}.</span>`
+    : "";
+  if (!x.enlace.resolucion) return `${nombre}${camaras}`;
+  const registro = urlResolucion(x.enlace.resolucion);
+  const citas = (x.enlace.evidencia ?? [])
+    .map((c) => `<li>${c.fuente === "dof" ? "Del decreto" : "Del expediente"}: «${esc(c.texto)}»</li>`)
+    .join("");
+  return `${nombre}${camaras}
+<br><span class="tenue">Este enlace no lo hizo el programa: lo propuso un agente con citas textuales del decreto y del expediente, un programa comprobó que cada cita esté en su fuente y otro agente lo confirmó.</span>
+<details class="evidencia"><summary>Evidencia</summary><ul>${citas}</ul>${registro ? `<p><a href="${esc(registro)}">Registro de la resolución</a></p>` : ""}</details>`;
+}
+
+function textoCandidatos(p) {
+  if (!p.candidatos.length) return "No se identificó su expediente en el SIL.";
+  const xs = p.candidatos.map((c) => {
+    const nombre = c.expediente ? `<a href="${esc(urlExpediente(c.id))}">${esc(c.expediente.denominacion)}</a>` : `<code>${esc(c.id)}</code>`;
+    return `<li>${nombre}${c.parecido != null ? ` <span class="tenue">(parecido del título: ${numero(Math.round(c.parecido * 100))} %)</span>` : ""}</li>`;
+  });
+  return `No se pudo saber con certeza cuál expediente del SIL le corresponde; ${p.candidatos.length === 1 ? "el posible es" : "los posibles son"}:
+<ul>${xs.join("")}</ul>`;
+}
+
+function textoLegislaturas(l) {
+  const nombres = (l.aprobaron ?? []).map((k) => esc(NOMBRES_ESTADOS[k] ?? k));
+  const n = l.votos_aprobatorios ?? nombres.length;
+  const fecha = l.fecha ? `, según la declaratoria del <span class="fecha">${fechaLarga(l.fecha)}</span>` : "";
+  return `Lo aprobaron ${plural(n, "congreso local", "congresos locales")}${fecha}${nombres.length ? `: ${lista(nombres)}` : ""}.${
+    l.nota ? ` <span class="tenue">${esc(mayuscula(l.nota))}.</span>` : ""
+  }`;
+}
+
+function bloqueProceso(p, h) {
+  const d = p.decreto;
+  const filas = [
+    ["Decreto", d.url ? `<a href="${esc(d.url)}">${esc(d.titulo)}</a>` : esc(d.titulo)],
+    ["Publicado", `DOF, <span class="fecha">${fechaLarga(d.fecha)}</span>`],
+  ];
+  if (p.mismoDia) {
+    filas.push([
+      "Nota",
+      `Ese día el DOF publicó ${plural(p.mismoDia.length, "decreto", "decretos")} sobre este documento y este cambio los trae juntos: no se sabe qué artículos vienen de cada uno.`,
+    ]);
+  }
+  if (p.expedientes.length) {
+    for (const x of p.expedientes) filas.push(["Expediente", textoExpediente(x)]);
+  } else filas.push(["Expediente", textoCandidatos(p)]);
+  if (p.legislaturas) filas.push(["Congresos locales", textoLegislaturas(p.legislaturas)]);
+  const partes = [`<dl class="ficha">\n${filas.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("\n")}\n</dl>`];
+  for (const x of p.expedientes) {
+    const sufijo = p.expedientes.length > 1 ? ` del expediente ${esc(x.enlace.id)}` : "";
+    if (x.iniciativas.length) partes.push(`<${h}>Iniciativas${sufijo}</${h}>\n${listaIniciativas(x.iniciativas)}`);
+    if (x.votaciones.length || x.economicas.length) {
+      partes.push(`<${h}>Votaciones${sufijo}</${h}>`);
+      x.votaciones.forEach((g, i) => partes.push(tablaVotaciones(g, `vot-${d.id}-${x.enlace.id}-${i}`)));
+      if (!x.votaciones.length) partes.push('<p class="tenue">No hubo votaciones nominales registradas.</p>');
+      if (x.economicas.length) {
+        const cuentas = x.economicas.map((e) => `${plural(e.n, "votación económica", "votaciones económicas")}${e.nombre ? ` en ${esc(e.nombre)}` : ""}`);
+        partes.push(`<p class="tenue">Además hubo ${lista(cuentas)}: se votan sin registro nominal, así que no queda constancia de quién votó ni en qué sentido.</p>`);
+      }
+    }
+  }
+  return partes.join("\n");
+}
+
+function seccionVinculos(c, fuente) {
+  const ps = vinculosDe(fuente, c);
+  if (!ps.length) return "";
+  const varios = ps.length > 1;
+  const bloques = ps.map((p, i) =>
+    varios ? `<h3>Decreto ${i + 1} de ${ps.length}</h3>\n<section class="proceso">\n${bloqueProceso(p, "h4")}\n</section>` : bloqueProceso(p, "h3"),
+  );
+  return `<h2 id="proceso">Proceso legislativo</h2>
+<p class="tenue">Del Diario Oficial de la Federación y del Sistema de Información Legislativa (SIL) de Gobernación, según <a href="https://github.com/${ORG}/congreso-mexicano">${ORG}/congreso-mexicano</a>.</p>
+${bloques.join("\n")}`;
 }
 
 function tituloCambio(c) {

@@ -76,12 +76,43 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
       con un solo `git cat-file --batch` por repo.
     - `scripts/lib/diferencias.mjs` hace el diff por párrafos y, dentro de los
       párrafos parecidos, por palabras (`<del>`/`<ins>`), sin dependencias.
-    - `scripts/lib/vinculos.mjs` es el punto de extensión para enlazar cada
-      cambio con su proceso legislativo (decreto, iniciativa, votaciones) por
-      (Documento, Publicacion) o por sha. Hoy no lee nada y la sección se
-      omite; cuando esos datos se publiquen, `leerVinculos` los carga.
+    - `scripts/lib/vinculos.mjs` enlaza cada cambio con su proceso
+      legislativo, de congreso-mexicano (`leerCongreso` de
+      `scripts/lib/congreso.mjs`, que `paginas.mjs` lee después del
+      historial): los decretos del DOF que le tocan por (Documento,
+      Publicacion), solo en reformas, o por el sha que registra el decreto, y
+      de cada uno su expediente del SIL (o sus candidatos sin elegir, o el
+      aviso de que lo resolvió un agente, con su evidencia), las iniciativas
+      con su autor, las votaciones nominales por cámara (con la de otra fuente
+      que apunte a ella, sus discrepancias e inconsistencias), cuántas
+      votaciones económicas hubo y los congresos locales que aprobaron una
+      reforma constitucional. `seccionVinculos` de `bitacora.mjs` lo pinta
+      como «Proceso legislativo», enlazando a /congreso; si congreso-mexicano
+      no se puede leer, la sección se omite. Se prueba en
+      `scripts/vinculos.test.mjs` con un modelo sintético.
     - `/leyes` enlaza «Sus cambios» de cada documento y el inicio toma de aquí
       sus últimas reformas (por fecha de publicación).
+  - `scripts/congreso.mjs` → `/congreso/` («Congreso: quién vota qué»), del
+    mismo modelo de congreso-mexicano que usa la bitácora (`leerVinculos`
+    devuelve el de `leerCongreso`, sin leerlo dos veces): qué es y de dónde
+    salen los datos, cifras (legisladores, votaciones, iniciativas y
+    proposiciones por desenlace) y cuántas votaciones no cuadran;
+    `/congreso/votaciones/` (todas, por mes) y `/congreso/votaciones/{id}`
+    (ficha, conteos de la fuente frente a los votos con nombre y los no
+    atribuidos, resumen por grupo, el voto de cada legislador por sentido y
+    grupo, y a la vista `votos_faltantes` con `nombres_fuente`,
+    `inconsistencias`, `diferencia_conteos`/`_grupos`, `discrepancias` y la
+    misma votación en otra fuente, y `retirada_de_la_fuente`);
+    `/congreso/legisladores/` (por cámara y grupo) y
+    `/congreso/legisladores/{persona}` (mandatos con licencias y comisiones,
+    sus votos y lo que presentó, con estatus y desenlace); y
+    `/congreso/expedientes/` y `/congreso/expedientes/{id}` (cronología,
+    votaciones nominales y económicas, asuntos con autor, decreto del DOF y
+    su documento en la bitácora). No hay una página por asunto (son decenas
+    de miles): se listan en la de su autor y su expediente, con enlace al SIL
+    y al JSON. Las rutas salen de `scripts/lib/congreso.mjs`; se prueba en
+    `scripts/congreso.test.mjs` con un modelo sintético. Si congreso-mexicano
+    no se puede leer, solo sale `/congreso/` con el aviso.
   - La situación de cada constitución estatal (vigilada, en preparación o
     fuera, con su motivo) sale de `estados.json` de `constitucion-extractor`:
     `/leyes` muestra el motivo de las que faltan y `/estado`, una tabla de las 32.

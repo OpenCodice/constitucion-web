@@ -264,6 +264,7 @@ const ICONO =
 const SECCIONES = [
   ["/leyes", "Leyes"],
   ["/bitacora/", "Bitácora"],
+  ["/congreso/", "Congreso"],
   ["/estado", "Status"],
   ["https://github.com/OpenCodice", "GitHub"],
 ];

@@ -128,6 +128,7 @@ export function paginaInicio(datos, generada) {
           <nav aria-label="Secciones">
             <a href="/leyes">Leyes</a>
             <a href="/bitacora/">Bitácora</a>
+            <a href="/congreso/">Congreso</a>
             <a href="/estado">Status</a>
             <a href="https://github.com/${ORG}">GitHub</a>
           </nav>
@@ -171,6 +172,11 @@ ${ultimasReformas(datos.actividad, datos.bitacora)}
       <p>
         La historia de cada documento empieza en su alta. Las reformas anteriores no están como
         commits: solo sus fechas, en <code>metadata/reformas.json</code>.
+      </p>
+
+      <p>
+        <a href="/congreso/">En el Congreso</a>: cada votación nominal con el voto de cada diputado
+        y senador, y lo que presenta cada legislador y en qué quedó.
       </p>
 
       <h2>Cómo se mantiene</h2>

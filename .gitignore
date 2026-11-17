@@ -4,6 +4,7 @@ public/index.html
 public/estado.html
 public/leyes.html
 public/bitacora/
+public/congreso/
 # Clones de los repos de datos que lee la bitácora.
 .datos/
 dist/
