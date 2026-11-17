@@ -3,7 +3,8 @@
 // actualización, sin hablar de repositorios ni de procesos. Lo técnico está en
 // /estado.
 
-import { ORG, REPOS, ESTADOS, TOTAL_INDICE_FEDERAL, esc, numero, fechaLarga, momento, plural, lista, documento, anclaTip } from "./lib/comun.mjs";
+import { historiaDe } from "./bitacora.mjs";
+import { ORG, REPOS, ESTADOS, conArticulo, TOTAL_INDICE_FEDERAL, esc, numero, fechaLarga, momento, plural, lista, documento, anclaTip } from "./lib/comun.mjs";
 
 // Años de la fila de cuadros: desde 2000 hasta el año en curso. En el teléfono
 // se ven solo los últimos AÑOS_EN_TELEFONO para que la fila quepa.
@@ -142,6 +143,7 @@ function itemDocumento(d, hasta) {
   ].filter(Boolean);
   const enlaces = [
     `<a href="${esc(d.texto)}">Leer el texto</a>`,
+    d.historia ? `<a href="${esc(d.historia)}">Sus cambios</a>` : "",
     d.pdf ? `<a href="${esc(d.pdf)}">PDF oficial</a>` : "",
   ].filter(Boolean);
   return `<li class="doc">
@@ -158,7 +160,7 @@ const sinDatos = (que) =>
 
 // ------------------------------------------------------------------ secciones
 
-function documentosCpeum(cpeum, revision) {
+function documentosCpeum(cpeum, revision, b) {
   if (!cpeum.ok) return null;
   return [
     {
@@ -168,15 +170,14 @@ function documentosCpeum(cpeum, revision) {
       reformas: cpeum.datos.reformas,
       revision: enRevision(revision, REPOS.cpeum, "cpeum"),
       texto: textoEnGitHub(REPOS.cpeum, "articulos"),
+      historia: historiaDe(b, "cpeum"),
       pdf: PDF_CPEUM,
     },
   ];
 }
 
-const conArticulo = (entidad) =>
-  entidad === "Ciudad de México" ? "la Ciudad de México" : entidad === "Estado de México" ? "el Estado de México" : entidad;
 
-function documentosEstatales(estatales, revision) {
+function documentosEstatales(estatales, revision, b) {
   if (!estatales.ok) return null;
   return estatales.datos
     .filter((e) => e.articulos != null)
@@ -188,11 +189,12 @@ function documentosEstatales(estatales, revision) {
       reformas: e.reformas,
       revision: enRevision(revision, REPOS.estatales, e.clave),
       texto: textoEnGitHub(REPOS.estatales, `${e.clave}/constitucion/articulos`),
+      historia: historiaDe(b, `${e.clave}/constitucion`),
       pdf: null,
     }));
 }
 
-function documentosFederales(federales, revision) {
+function documentosFederales(federales, revision, b) {
   if (!federales.ok) return null;
   return federales.datos
     .filter((d) => d.estado === "incluida")
@@ -204,6 +206,7 @@ function documentosFederales(federales, revision) {
       reformas: d.reformas,
       revision: enRevision(revision, REPOS.federales, d.clave, Boolean(d.revision_pendiente)),
       texto: textoEnGitHub(REPOS.federales, d.clave),
+      historia: historiaDe(b, d.clave),
       pdf: d.url,
     }))
     .sort((a, b) => a.tema.localeCompare(b.tema, "es"));
@@ -215,7 +218,7 @@ const GRUPOS_FISCALES = [
   ["Reglas y resoluciones del SAT", ["rmf", "anexo-rmf", "criterios", "rfa", "rgce"]],
 ];
 
-function documentosFiscales(fiscal, federales, revision) {
+function documentosFiscales(fiscal, federales, revision, b) {
   if (!fiscal.ok) return null;
   // Los PDF oficiales de las leyes fiscales son los mismos del índice federal.
   const pdfs = federales.ok ? Object.fromEntries(federales.datos.map((d) => [d.clave, d.url])) : {};
@@ -228,6 +231,7 @@ function documentosFiscales(fiscal, federales, revision) {
     reformas: d.reformas,
     revision: enRevision(revision, REPOS.fiscal, d.clave),
     texto: textoEnGitHub(REPOS.fiscal, d.clave),
+    historia: historiaDe(b, d.clave),
     pdf: pdfs[d.clave] ?? null,
   }));
 }
@@ -439,10 +443,11 @@ h3.letra { margin: 1.6rem 0 0.2rem; font-size: 1em; }
 export function paginaLeyes(datos, generada) {
   const revision = documentosEnRevision(datos.prs);
   const hasta = Number(new Date(generada).toLocaleString("en-US", { timeZone: "America/Mexico_City", year: "numeric" }));
-  const cpeum = documentosCpeum(datos.cpeum, revision);
-  const estatales = documentosEstatales(datos.estatales, revision);
-  const federales = documentosFederales(datos.federales, revision);
-  const fiscal = documentosFiscales(datos.fiscal, datos.federales, revision);
+  const b = datos.bitacora;
+  const cpeum = documentosCpeum(datos.cpeum, revision, b);
+  const estatales = documentosEstatales(datos.estatales, revision, b);
+  const federales = documentosFederales(datos.federales, revision, b);
+  const fiscal = documentosFiscales(datos.fiscal, datos.federales, revision, b);
   const excluidas = datos.federales.ok ? datos.federales.datos.filter((d) => d.estado === "excluida").length : 0;
   const faltanFederales = datos.federales.ok
     ? Math.max(TOTAL_INDICE_FEDERAL, datos.federales.datos.length) - datos.federales.datos.length
@@ -451,7 +456,8 @@ export function paginaLeyes(datos, generada) {
   const cuerpo = `      <p>
         Estas son las leyes mexicanas de las que tenemos el texto vigente, artículo por artículo.
         De cada una decimos qué versión está vigente, cuántas veces se ha reformado y si viene una
-        actualización.
+        actualización. En <a href="/bitacora/">la bitácora</a> está cada cambio con la diferencia
+        de su texto.
       </p>
       <p class="generada">Actualizada el ${momento(generada)} (hora de la Ciudad de México).</p>
 
@@ -482,7 +488,7 @@ ${seccionFiscal(fiscal, hasta)}
     estilo: estilo(hasta),
     cuerpo,
     pie: `<p>
-          <a href="/">Inicio</a> · <a href="/estado">Status del sistema</a> ·
+          <a href="/">Inicio</a> · <a href="/bitacora/">Bitácora de reformas</a> · <a href="/estado">Status del sistema</a> ·
           Los datos y su historial están en <a href="https://github.com/${ORG}">GitHub</a>.
         </p>`,
   });

@@ -16,6 +16,7 @@ No hay búsqueda, API ni respuestas generadas: se retiraron a propósito. La IA 
 - Los archivos se nombran con el número de artículo a tres dígitos y su sufijo: `001.md`, `004-a.md`, `077-bis-35-a.md`. Cada uno empieza con el encabezado del artículo (`# Artículo 82.`) y conserva las notas de reforma del PDF en cursiva (`_Párrafo reformado DOF 07-10-2026_`).
 - Los repositorios de datos solo tienen commits de texto legal, uno por documento, y el título dice qué pasó: `Reforma CPEUM (DOF 2026-10-07): arts. 82, 116, 122` cuando cambió la ley; `Corrección de extracción jalisco: 29 artículos` cuando la ley es la misma y mejoró la lectura del PDF; `Alta de LGS` cuando entra un documento; `Retiro de …` cuando sale uno porque su extracción ya no reproduce el PDF. Los commits `Índice y registro de documentos al día` y `Metadata derivada al día` no cambian el texto legal.
 - `git log -- lgs/` es la historia de la Ley General de Salud; `git log -- jalisco/` en leyes-estatales, la de la Constitución de Jalisco.
+- Cada commit de un documento lleva trailers de git que escribe código determinista: `Documento` (`cpeum`, `<estado>/constitucion` o la clave del documento), `Tipo` (`reforma`, `correccion`, `alta`, `retiro`; `indice` para los registros compartidos), `Publicacion` (una línea por fecha), `Medio`, `Articulos-Adicionados`, `-Modificados`, `-Derogados` o `Articulos-Corregidos` (claves de archivo), `Fuente`, `Fuente-Sha256` y `Extractor`. Se leen con `git log --format='%H %s%n%(trailers)'`. La misma ley en fiscal-mexicano y leyes-federales lleva la misma clave: un mismo hecho se reconoce por (Documento, Tipo, Publicacion).
 
 ## Repositorios
 
@@ -27,5 +28,6 @@ No hay búsqueda, API ni respuestas generadas: se retiraron a propósito. La IA 
 ## Más
 
 - [Qué leyes hay](https://constitucion.app/leyes): cada documento con su última reforma.
+- [Bitácora](https://constitucion.app/bitacora/): cada reforma, corrección, alta y retiro, con los artículos que tocó y la diferencia de su texto. La historia de un documento está en `/bitacora/<Documento>/` (por ejemplo `/bitacora/lgs/` o `/bitacora/jalisco/constitucion/`) y cada cambio, en `/bitacora/<Documento>/<sha a 12>`. [`/bitacora/cambios.json`](https://constitucion.app/bitacora/cambios.json) tiene todos los cambios con sus trailers; [`/bitacora/reformas.xml`](https://constitucion.app/bitacora/reformas.xml) es un feed Atom de las reformas.
 - [Status del sistema](https://constitucion.app/estado): las corridas de la vigilancia semanal.
 - [Legislación fiscal](https://sat.constitucion.app): el detalle del corpus fiscal.

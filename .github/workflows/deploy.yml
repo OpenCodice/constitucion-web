@@ -41,9 +41,10 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
-      # Lee los repos públicos de OpenCodice; si alguno no responde, la página
+      # Lee los repos públicos de OpenCodice (la API y, para la bitácora, un
+      # clon --bare de cada repo de datos); si alguno no responde, la página
       # lo dice y el despliegue sigue.
-      - name: Generar el inicio, /leyes y /estado
+      - name: Generar el inicio, /leyes, /estado y /bitacora
         run: npm run paginas
         env:
           GITHUB_TOKEN: ${{ github.token }}

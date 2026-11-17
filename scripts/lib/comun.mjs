@@ -53,6 +53,10 @@ export const ESTADOS = [
   ["zacatecas", "Zacatecas"],
 ];
 
+// «Constitución de la Ciudad de México», no «de Ciudad de México».
+export const conArticulo = (entidad) =>
+  entidad === "Ciudad de México" ? "la Ciudad de México" : entidad === "Estado de México" ? "el Estado de México" : entidad;
+
 // ------------------------------------------------------------------ red
 
 const API = "https://api.github.com";
@@ -259,6 +263,7 @@ const ICONO =
 
 const SECCIONES = [
   ["/leyes", "Leyes"],
+  ["/bitacora/", "Bitácora"],
   ["/estado", "Status"],
   ["https://github.com/OpenCodice", "GitHub"],
 ];

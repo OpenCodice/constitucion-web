@@ -3,6 +3,7 @@
 
 import { ORG, REPOS, esc, numero, plural, fechaLarga, diaMexico, momento } from "./lib/comun.mjs";
 import { ESTILO_SALUD, salud, insignia, cambios } from "./lib/resumen.mjs";
+import { ultimasReformas as reformasBitacora } from "./bitacora.mjs";
 
 const REFORMAS_EN_INICIO = 3;
 
@@ -34,8 +35,27 @@ function corpus({ cpeum, federales, estatales, fiscal }) {
     .join("\n");
 }
 
-// Solo las reformas: las correcciones de extracción no cambian la ley.
-function ultimasReformas(actividad) {
+// Solo las reformas: las correcciones de extracción no cambian la ley. Salen
+// de la bitácora (los trailers de cada commit); si su historial no se pudo
+// leer, de los títulos de los commits recientes.
+function ultimasReformas(actividad, bitacora) {
+  const deBitacora = bitacora ? reformasBitacora(bitacora, REFORMAS_EN_INICIO) : [];
+  if (deBitacora.length) {
+    return `
+      <h2>Últimas reformas</h2>
+      <ul>
+${deBitacora
+  .map(
+    (r) => `        <li>
+          <a href="${esc(r.url)}">${esc(r.nombre)}: ${esc(r.titulo.replace(/^Reforma/, "reforma"))}</a>
+          <span class="tenue">· ${r.resumen.charAt(0).toLowerCase()}${r.resumen.slice(1)} · registrada el ${esc(fechaLarga(r.dia))}</span>
+        </li>`,
+  )
+  .join("\n")}
+      </ul>
+      <p><a href="/bitacora/">Ver todas en la bitácora →</a></p>
+`;
+  }
   const reformas = cambios(actividad)
     .filter((c) => /^Reforma\b/.test(c.titulo))
     .slice(0, REFORMAS_EN_INICIO);
@@ -99,6 +119,7 @@ export function paginaInicio(datos, generada) {
           <p class="marca">OpenCodice</p>
           <nav aria-label="Secciones">
             <a href="/leyes">Leyes</a>
+            <a href="/bitacora/">Bitácora</a>
             <a href="/estado">Status</a>
             <a href="https://github.com/${ORG}">GitHub</a>
           </nav>
@@ -123,7 +144,7 @@ export function paginaInicio(datos, generada) {
 ${corpus(datos)}
       </ul>
       <p><a href="/leyes">Ver todas las leyes y su última reforma →</a></p>
-${ultimasReformas(datos.actividad)}
+${ultimasReformas(datos.actividad, datos.bitacora)}
       <h2>El historial es el producto</h2>
       <p>
         Los repositorios de datos solo tienen commits de texto legal, uno por documento, y el
@@ -134,7 +155,11 @@ ${ultimasReformas(datos.actividad)}
         <li><code>Corrección de extracción jalisco: …</code>: la misma ley, mejor leída del PDF.</li>
         <li><code>Alta de LGS</code> o <code>Retiro de LFPCCS: …</code>: entra o sale un documento.</li>
       </ul>
-      <p>Así, <code>git log -- lgs/</code> es la historia de la Ley General de Salud.</p>
+      <p>
+        Así, <code>git log -- lgs/</code> es la historia de la Ley General de Salud. Sin usar
+        git, <a href="/bitacora/">la bitácora</a> muestra cada cambio con los artículos que tocó
+        y la diferencia de su texto.
+      </p>
       <p>
         La historia de cada documento empieza en su alta. Las reformas anteriores no están como
         commits: solo sus fechas, en <code>metadata/reformas.json</code>.
@@ -178,8 +203,8 @@ ${ultimasReformas(datos.actividad)}
 
       <h2>Lo que sigue</h2>
       <p>
-        Una bitácora: páginas estáticas, generadas del historial, para recorrer las reformas sin
-        usar git.
+        Las demás leyes de cada estado (códigos civiles y penales, leyes orgánicas) y, junto a
+        cada reforma de la bitácora, el decreto que la publicó y su paso por el Congreso.
       </p>
 
       <footer>

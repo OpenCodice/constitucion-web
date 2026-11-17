@@ -3,6 +3,9 @@ node_modules/
 public/index.html
 public/estado.html
 public/leyes.html
+public/bitacora/
+# Clones de los repos de datos que lee la bitácora.
+.datos/
 dist/
 .data/
 .dev.vars
