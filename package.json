@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "paginas": "node scripts/paginas.mjs",
+    "test": "node --test scripts/*.test.mjs",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },

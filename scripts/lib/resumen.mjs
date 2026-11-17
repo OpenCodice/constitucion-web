@@ -90,26 +90,43 @@ export const insignia = ({ clase, veredicto }) => `<span class="insignia ${clase
 
 // Tipo de cambio según el título del commit, que el pipeline escribe con un
 // formato fijo («Reforma …», «Corrección de extracción …», «Alta de …»,
-// «Retiro de …»). Los
+// «Retiro de …», «Metadatos de …»). Una corrección sin artículos («…: solo
+// metadata», anterior a `Tipo: metadatos`) es un cambio de metadatos. Los
 // demás commits son mantenimiento de los propios repositorios.
 const TIPOS = [
-  [/^Reforma\b/, "reforma", "Reforma"],
-  [/^Alta\b/, "alta", "Alta"],
-  [/^Corrección de extracción\b/, "correccion", "Corrección de extracción"],
-  [/^Retiro\b/, "retiro", "Retiro"],
-  [/^Actualización automática\b/, "reforma", "Actualización"],
+  [/^Reforma\b/, "reforma"],
+  [/^Alta\b/, "alta"],
+  [/^Corrección de extracción\b.*: solo metadata$/, "metadatos"],
+  [/^Corrección de extracción\b/, "correccion"],
+  [/^Retiro\b/, "retiro"],
+  [/^Metadatos de\b/, "metadatos"],
+  [/^Actualización automática\b/, "reforma"],
 ];
 
-function tipoCommit(titulo) {
-  const t = TIPOS.find(([re]) => re.test(titulo ?? ""));
-  return t ? { clave: t[1], nombre: t[2] } : null;
+const NOMBRES = {
+  reforma: "Reforma",
+  alta: "Alta",
+  correccion: "Corrección de extracción",
+  retiro: "Retiro",
+  metadatos: "Metadatos",
+  ajuste: "Ajuste inicial",
+};
+
+const shaDe = (url) => /\/commit\/([0-9a-f]{40})/.exec(url ?? "")?.[1] ?? null;
+
+// La bitácora clasifica por los trailers y sabe qué correcciones son ajustes
+// iniciales de un alta (sha → clase); el título queda para los commits que no
+// están en ella.
+function tipoCommit(c, clases) {
+  const clave = clases?.get(shaDe(c.url)) ?? TIPOS.find(([re]) => re.test(c.titulo ?? ""))?.[1];
+  return clave ? { clave, nombre: NOMBRES[clave] } : null;
 }
 
 // Cambios publicados en los repos de datos, del más reciente al más antiguo.
-export function cambios(actividad) {
+export function cambios(actividad, clases) {
   return Object.entries(actividad)
     .filter(([, r]) => r.ok)
-    .flatMap(([repo, r]) => r.datos.commits.map((c) => ({ ...c, repo, tipo: tipoCommit(c.titulo) })))
+    .flatMap(([repo, r]) => r.datos.commits.map((c) => ({ ...c, repo, tipo: tipoCommit(c, clases) })))
     .filter((c) => c.tipo)
     .sort((x, y) => y.fecha.localeCompare(x.fecha));
 }

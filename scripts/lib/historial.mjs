@@ -16,7 +16,9 @@ import { ORG, REPOS, intentar } from "./comun.mjs";
 
 const DATOS = fileURLToPath(new URL("../../.datos/", import.meta.url));
 
-export const TIPOS_DOCUMENTO = ["reforma", "correccion", "alta", "retiro"];
+// `metadatos`: el commit solo cambió la metadata del documento (índices,
+// segmentos, notas de reforma), no el texto de ningún artículo.
+export const TIPOS_DOCUMENTO = ["reforma", "correccion", "alta", "retiro", "metadatos"];
 const LISTAS = ["Articulos-Adicionados", "Articulos-Modificados", "Articulos-Derogados", "Articulos-Corregidos"];
 
 // ------------------------------------------------------------------ git
@@ -141,6 +143,9 @@ function parsearLog(texto, repo) {
     const uno = (k) => trailers[k]?.[0] ?? null;
     commits.push({
       repo,
+      // Posición en el log (0 es el más reciente): las fechas de commit
+      // pueden repetirse, el orden del historial no.
+      orden: commits.length,
       sha,
       padre: padre.split(" ")[0] || null,
       fecha,
@@ -262,7 +267,7 @@ async function leerRepo(repo) {
   for (const c of commits) {
     // Las altas y retiros cuentan sus artículos por los archivos del commit.
     c.articulosArchivo = c.documento ? c.archivos.filter((a) => esArticulo(a.ruta, c.documento)) : [];
-    c.cambioMetadata = c.archivos.some((a) => c.documento && a.ruta.startsWith(dirMetadata(c.documento)));
+    c.archivosMetadata = c.documento ? c.archivos.filter((a) => a.ruta.startsWith(dirMetadata(c.documento))) : [];
   }
   const cabeza = (await git(dir, ["rev-parse", rev])).toString().trim();
   return {

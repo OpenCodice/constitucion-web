@@ -31,11 +31,12 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     el veredicto de salud (según la última corrida de cada `vigilar-*.yml`, que
     viven en los extractores: `VIGILANCIAS` en `scripts/lib/datos.mjs`) con
     la última y la próxima revisión; luego las reformas y correcciones
-    publicadas (por el título del commit), el resumen por repo y, al final,
+    publicadas (por la clase de la bitácora o el título del commit; los
+    ajustes iniciales y metadatos aparte), el resumen por repo y, al final,
     una barra por semana de cada vigilancia y los PR abiertos.
   - `scripts/bitacora.mjs` → `/bitacora/` («Bitácora de reformas»): las
-    reformas por fecha de publicación; `/bitacora/correcciones` y
-    `/bitacora/altas` (por fecha de registro); `/bitacora/documentos`; la
+    reformas por fecha de publicación; `/bitacora/correcciones`,
+    `/bitacora/altas` y `/bitacora/metadatos` (por fecha de registro); `/bitacora/documentos`; la
     historia de cada documento en `/bitacora/{Documento}/` (con las fechas de
     reforma anteriores a su alta, de `reformas.json`) y cada cambio en
     `/bitacora/{Documento}/{sha a 12}`: ficha (tipo, publicación, medio,
@@ -48,6 +49,27 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     registrada y cada página enlaza a la otra. Las altas y retiros no tienen
     diff (serían la ley entera); cada página muestra a lo más 150 artículos y
     unos 120 KB de diff por artículo, y el resto se enlaza al commit.
+    - Cambios menores: `Tipo: metadatos` (solo cambió la metadata del
+      documento) y las `correccion` antiguas sin `Articulos-Corregidos` («…:
+      solo metadata») se listan aparte en `/bitacora/metadatos` (fuera de las
+      pestañas), con su ficha y los archivos de metadata que tocó, sin diff.
+    - Ajustes iniciales: una `correccion` o `metadatos` es ajuste inicial de un
+      alta si es del mismo repo, posterior al alta (la más reciente antes de
+      él) a lo más 7 días por fecha de commit (`DIAS_AJUSTE`) y anterior a
+      cualquier reforma del documento después de esa alta; el orden es el del
+      log, no la fecha. Sin commit de alta no hay plegado. Se muestran bajo su
+      alta (en `/bitacora/altas`, la página del alta y la historia del
+      documento), no en `/bitacora/correcciones` ni en las cuentas de
+      correcciones. En el historial del 2026-11-17: de 200 correcciones, 149
+      son ajustes, 19 metadatos y 32 correcciones reales.
+    - Cada cambio tiene una `clase` (`reforma`, `correccion`, `alta`,
+      `retiro`, `metadatos`, `ajuste`) que decide dónde se lista y cómo se
+      cuenta; `cambios.json` la publica junto con `menor`, `ajuste_inicial`,
+      `alta` (sha del alta) y `archivos_metadata`. `/estado` cuenta por la
+      clase de la bitácora (por sha) y, para lo que no esté en ella, por el
+      título (`Metadatos de …`, `…: solo metadata`).
+    - `npm test` prueba las clases y páginas con un historial sintético
+      (`scripts/bitacora.test.mjs`).
     - `scripts/lib/historial.mjs` clona cada repo de datos `--bare` en
       `.datos/` (o usa `REPOS_DATOS`), lee `git log` con
       `%(trailers:only,unfold)` y `--name-status`, y el texto de los artículos

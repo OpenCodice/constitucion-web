@@ -25,6 +25,7 @@ import {
 } from "./lib/comun.mjs";
 import { SEMANAS, inicioActividad } from "./lib/datos.mjs";
 import { DIAS_ATRASO, FALLAS, ESTILO_SALUD, fechaCorrida, salud, insignia, cambios } from "./lib/resumen.mjs";
+import { clasesPorSha } from "./bitacora.mjs";
 
 const ESTADO_CORRIDA = {
   queued: "En cola",
@@ -324,22 +325,26 @@ ${avisos.join("\n")}`;
 
 const PUBLICADOS_MAX = 12;
 
-function seccionPublicado(actividad) {
+function seccionPublicado(actividad, bitacora) {
   const titulo = '<h2 id="publicado">Lo que ha publicado el sistema</h2>';
   const avisos = Object.entries(actividad)
     .filter(([, r]) => !r.ok)
     .map(([repo, r]) => fallo(`los commits de ${ORG}/${repo}`, r));
-  const publicados = cambios(actividad);
+  const publicados = cambios(actividad, bitacora && clasesPorSha(bitacora));
   const cuenta = (clave) => publicados.filter((c) => c.tipo.clave === clave).length;
   const cifras = [
     [cuenta("reforma"), "reforma incorporada", "reformas incorporadas"],
     [cuenta("correccion"), "corrección de extracción", "correcciones de extracción"],
     [cuenta("alta"), "alta de documento", "altas de documentos"],
     [cuenta("retiro"), "retiro de documento", "retiros de documentos"],
+    [cuenta("ajuste"), "ajuste inicial", "ajustes iniciales"],
+    [cuenta("metadatos"), "cambio de metadatos", "cambios de metadatos"],
   ];
-  // Hay un commit por documento y las altas y retiros llegan por cientos al
-  // incorporar un corpus: taparían la lista, así que basta con su cifra.
-  const filas = publicados.filter((c) => c.tipo.clave !== "alta" && c.tipo.clave !== "retiro").slice(0, PUBLICADOS_MAX).map((c) => [
+  const enLista = ["reforma", "correccion"];
+  // Hay un commit por documento y las altas y retiros (con sus ajustes
+  // iniciales) llegan por cientos al incorporar un corpus: taparían la lista,
+  // así que basta con su cifra. Los cambios de metadatos no tocan el texto.
+  const filas = publicados.filter((c) => enLista.includes(c.tipo.clave)).slice(0, PUBLICADOS_MAX).map((c) => [
     momentoCorto(c.fecha),
     `<span class="tipo t-${c.tipo.clave}">${esc(c.tipo.nombre)}</span>`,
     `<a href="${esc(c.url)}">${esc(c.titulo)}</a>`,
@@ -349,7 +354,9 @@ function seccionPublicado(actividad) {
   Cada cambio al texto llega como un commit con su tipo en el título: una <em>reforma</em> cuando
   cambió la ley, una <em>corrección de extracción</em> cuando la ley es la misma y mejoró la
   lectura del PDF, un <em>alta</em> cuando entra un documento nuevo y un <em>retiro</em> cuando
-  sale uno cuya extracción ya no reproduce el PDF. Ninguno se edita a mano.
+  sale uno cuya extracción ya no reproduce el PDF. Ninguno se edita a mano. Las correcciones de
+  los primeros días de un documento son <em>ajustes iniciales</em> de su alta, y los cambios que
+  solo tocan la metadata (no el texto) se cuentan aparte.
 </p>
 <ul class="cifras">
 ${cifras.map(([n, uno, varios]) => `  <li><span class="cifra">${numero(n)}</span> ${esc(n === 1 ? uno : varios)}</li>`).join("\n")}
@@ -435,7 +442,7 @@ export function paginaEstado(datos, generada) {
         ${momento(generada)}) y las horas son de la Ciudad de México.
       </p>
 
-${seccionPublicado(datos.actividad)}
+${seccionPublicado(datos.actividad, datos.bitacora)}
 
 ${seccionResumen(datos)}
 

@@ -4,6 +4,7 @@
 //
 //   /bitacora/                      reformas, por fecha de publicación
 //   /bitacora/correcciones          correcciones de extracción
+//   /bitacora/metadatos             cambios que solo tocaron la metadata
 //   /bitacora/altas                 altas y retiros de documentos
 //   /bitacora/documentos            todos los documentos con su historia
 //   /bitacora/{documento}/          historia de un documento
@@ -13,6 +14,13 @@
 //
 // Los commits `Tipo: indice` (README, registros compartidos) no son cambios de
 // ningún documento y no aparecen.
+//
+// Cada cambio tiene además una clase, que decide dónde se lista y cómo se
+// cuenta: su Tipo, salvo los cambios menores. Una corrección sin artículos
+// corregidos (antes de que existiera `Tipo: metadatos`) cuenta como
+// `metadatos`, y una corrección o cambio de metadatos de los primeros días de
+// un documento es un `ajuste` inicial, que se pliega bajo su alta (ver
+// ajustesIniciales).
 
 import {
   ORG,
@@ -28,7 +36,7 @@ import {
   momento,
   documento as paginaHtml,
 } from "./lib/comun.mjs";
-import { TIPOS_DOCUMENTO, articulosDe } from "./lib/historial.mjs";
+import { TIPOS_DOCUMENTO, articulosDe, dirMetadata } from "./lib/historial.mjs";
 import { diferenciaArticulo, encabezado } from "./lib/diferencias.mjs";
 import { vinculosDe } from "./lib/vinculos.mjs";
 
@@ -45,7 +53,22 @@ const DIFERENCIAS_MAX = 150;
 
 const REFORMAS_EN_ATOM = 50;
 
-const NOMBRE_TIPO = { reforma: "Reforma", correccion: "Corrección de extracción", alta: "Alta", retiro: "Retiro" };
+const NOMBRE_TIPO = {
+  reforma: "Reforma",
+  correccion: "Corrección de extracción",
+  alta: "Alta",
+  retiro: "Retiro",
+  metadatos: "Metadatos",
+};
+const NOMBRE_CLASE = { ...NOMBRE_TIPO, ajuste: "Ajuste inicial" };
+
+// Ventana de los ajustes iniciales, en días desde el commit de alta. Al dar de
+// alta un corpus se publicaba cada ley y en las horas siguientes se mejoraba
+// el parser con lo que mostraba la verificación: esas correcciones son parte
+// de la puesta en marcha, no de un texto que ya se consultaba. En el
+// historial caen todas en menos de un día; las siguientes son de meses
+// después, así que una semana las separa sin ambigüedad.
+const DIAS_AJUSTE = 7;
 
 // Orden de los repos cuando un mismo documento está en dos: leyes-federales
 // es el registro general; fiscal-mexicano, el corpus especializado.
@@ -146,6 +169,7 @@ export function modelo(historial) {
     // Retirado si su último cambio en cada repo donde estuvo es un retiro.
     d.retirado = [...d.repos].every((repo) => d.cambios.find((c) => c.repo === repo).tipo === "retiro");
     for (const c of d.cambios) c.doc = d;
+    ajustesIniciales(d);
   }
 
   const fallas = Object.entries(historial)
@@ -153,6 +177,40 @@ export function modelo(historial) {
     .map(([repo, r]) => ({ repo, error: r.error }));
   return { cambios, documentos, fallas };
 }
+
+// Una corrección o un cambio de metadatos es un ajuste inicial si es del mismo
+// repo que el alta más reciente anterior a él, a lo más DIAS_AJUSTE días
+// después de ella por fecha de commit y antes de cualquier reforma del
+// documento posterior al alta (una corrección después de una reforma ya
+// corrige lo que se publicó de ella). Sin commit de alta no hay plegado. El
+// orden se toma del log de cada repo, porque las fechas pueden repetirse.
+function ajustesIniciales(d) {
+  for (const c of d.cambios) {
+    c.menor = c.tipo === "metadatos" || (c.tipo === "correccion" && !c.corregidos.length);
+    c.alta = null;
+    if (c.tipo === "alta") c.ajustes = [];
+  }
+  for (const c of d.cambios) {
+    if (c.tipo !== "correccion" && c.tipo !== "metadatos") continue;
+    const delRepo = d.cambios.filter((x) => x.repo === c.repo);
+    const alta = delRepo.filter((x) => x.tipo === "alta" && x.orden > c.orden).sort((a, b) => a.orden - b.orden)[0];
+    if (!alta) continue;
+    const dias = (Date.parse(c.fecha) - Date.parse(alta.fecha)) / 86_400_000;
+    const reformaEntre = delRepo.some((x) => x.tipo === "reforma" && x.orden < alta.orden && x.orden > c.orden);
+    if (dias <= DIAS_AJUSTE && !reformaEntre) {
+      c.alta = alta;
+      alta.ajustes.push(c);
+    }
+  }
+  for (const c of d.cambios) {
+    c.clase = c.alta ? "ajuste" : c.menor ? "metadatos" : c.tipo;
+    c.ajustes?.sort((a, b) => b.orden - a.orden);
+  }
+}
+
+// Clase de cada commit por su sha, para quien cuenta cambios fuera de la
+// bitácora (/estado).
+export const clasesPorSha = (m) => new Map(m.cambios.map((c) => [c.sha, c.clase]));
 
 // ------------------------------------------------------------------ piezas
 
@@ -170,6 +228,14 @@ function textoArticulos(c, claves) {
   return `${claves.length === 1 ? "art." : "arts."} ${lista(ets)}`;
 }
 
+const nombreArchivo = (c, a) => a.ruta.slice(dirMetadata(c.documento).length);
+
+function textoArchivos(c) {
+  const as = c.archivosMetadata;
+  if (as.length > EN_LINEA) return plural(as.length, "archivo", "archivos");
+  return lista(as.map((a) => esc(nombreArchivo(c, a))));
+}
+
 // Qué hizo el cambio, en una línea.
 function resumenCambio(c) {
   if (c.tipo === "reforma") {
@@ -183,14 +249,22 @@ function resumenCambio(c) {
     const t = partes.join("; ") || "solo cambió la metadata";
     return t.charAt(0).toUpperCase() + t.slice(1);
   }
-  if (c.tipo === "correccion") {
-    return c.corregidos.length ? `Corrige la lectura de ${textoArticulos(c, c.corregidos)}` : "Solo cambió la metadata";
-  }
+  if (c.tipo === "correccion" && c.corregidos.length) return `Corrige la lectura de ${textoArticulos(c, c.corregidos)}`;
+  if (c.menor) return `Solo cambió la metadata${c.archivosMetadata.length ? `: ${textoArchivos(c)}` : ""}`;
   const n = c.articulosArchivo.filter((a) => a.estado === (c.tipo === "alta" ? "A" : "D")).length;
   return c.tipo === "alta" ? `Entra con ${plural(n, "artículo", "artículos")}` : `Sale con ${plural(n, "artículo", "artículos")}`;
 }
 
-const etiquetaTipo = (tipo) => `<span class="tipo t-${tipo}">${esc(NOMBRE_TIPO[tipo])}</span>`;
+const etiquetaTipo = (c) => `<span class="tipo t-${c.clase}">${esc(NOMBRE_CLASE[c.clase])}</span>`;
+
+// Los ajustes iniciales de un alta, en una línea de enlaces.
+function lineaAjustes(c) {
+  if (!c.ajustes?.length) return "";
+  const enlaces = c.ajustes.map(
+    (a) => `<a href="${esc(urlCambio(a))}">${a.corregidos.length ? plural(a.corregidos.length, "artículo", "artículos") : "metadata"}</a>`,
+  );
+  return `\n<p class="c-datos">${c.ajustes.length === 1 ? "Ajuste inicial" : `${numero(c.ajustes.length)} ajustes iniciales`}: ${enlaces.join(", ")}</p>`;
+}
 
 const medioYFecha = (c) => {
   const f = fechaPublicacion(c);
@@ -208,8 +282,8 @@ function filaCambio(c, { conDocumento = true, fecha = "registro" } = {}) {
   if (c.doc.repos.size > 1) extra.push(esc(c.repo));
   if (c.otros.length) extra.push(`también en ${lista(c.otros.map((o) => esc(o.repo)))}`);
   return `<li class="cambio">
-<p class="c-titulo">${etiquetaTipo(c.tipo)} <a href="${esc(urlCambio(c))}">${conDocumento ? esc(c.doc.nombre) : cuando}</a></p>
-<p class="c-datos">${conDocumento ? `${cuando} · ` : ""}${resumenCambio(c)}${extra.length ? ` · ${extra.join(" · ")}` : ""}</p>
+<p class="c-titulo">${etiquetaTipo(c)} <a href="${esc(urlCambio(c))}">${conDocumento ? esc(c.doc.nombre) : cuando}</a></p>
+<p class="c-datos">${conDocumento ? `${cuando} · ` : ""}${resumenCambio(c)}${extra.length ? ` · ${extra.join(" · ")}` : ""}</p>${lineaAjustes(c)}
 </li>`;
 }
 
@@ -295,6 +369,7 @@ ins::after, del::after { content: "] "; }
 .anteriores summary { cursor: pointer; }
 .anteriores ul { list-style: none; padding: 0; margin: 0.8rem 0 0; }
 .anteriores li { margin: 0 0 0.3em; }
+.archivos { padding-left: 1.2em; font-size: 0.85em; overflow-wrap: anywhere; }
 .docs-b { list-style: none; padding: 0; margin: 0 0 2rem; }
 .docs-b li { margin: 0; padding: 0.55rem 0; border-bottom: 1px solid var(--linea); }
 .docs-b .c-titulo a { text-decoration: none; } .docs-b .c-titulo a:hover { text-decoration: underline; }
@@ -309,7 +384,7 @@ function pagina({ titulo, h1, descripcion, cuerpo, generada, sobre = "" }) {
     estilo: ESTILO,
     cuerpo: `${sobre}${cuerpo}`,
     pie: `<p>
-          <a href="${BASE}/">Bitácora</a> · <a href="/leyes">Qué leyes hay</a> · <a href="/estado">Status del sistema</a> ·
+          <a href="${BASE}/">Bitácora</a> · <a href="${BASE}/metadatos">Cambios de metadatos</a> · <a href="/leyes">Qué leyes hay</a> · <a href="/estado">Status del sistema</a> ·
           <a href="${BASE}/reformas.xml">Atom de las reformas</a> · <a href="${BASE}/cambios.json">cambios.json</a>
         </p>
         <p>Generada el ${momento(generada)} del historial de git de los repos de datos. No sustituye a la publicación oficial ni es asesoría legal.</p>`,
@@ -324,7 +399,7 @@ function cuentas(m) {
   const principales = m.cambios.filter((c) => c.principal);
   return {
     "": principales.filter((c) => c.tipo === "reforma").length,
-    "/correcciones": m.cambios.filter((c) => c.tipo === "correccion").length,
+    "/correcciones": m.cambios.filter((c) => c.clase === "correccion").length,
     "/altas": principales.filter((c) => c.tipo === "alta" || c.tipo === "retiro").length,
     "/documentos": m.documentos.size,
   };
@@ -364,9 +439,9 @@ ${
   });
 }
 
-function indicePorMes(m, generada, { ruta, tipos, titulo, h1, texto, descripcion, soloPrincipales }) {
+function indicePorMes(m, generada, { ruta, filtro, titulo, h1, texto, descripcion }) {
   const cs = m.cambios
-    .filter((c) => tipos.includes(c.tipo) && (!soloPrincipales || c.principal))
+    .filter(filtro)
     .sort((a, b) => b.fecha.localeCompare(a.fecha));
   const porMes = agrupar(cs, (c) => c.dia.slice(0, 7));
   const cuerpo = `${INTRO}
@@ -395,7 +470,7 @@ function indiceDocumentos(m, generada) {
 <ul class="docs-b">
 ${ds
   .map((d) => {
-    const n = (t) => d.cambios.filter((c) => c.tipo === t).length;
+    const n = (t) => d.cambios.filter((c) => c.clase === t).length;
     const datos = [
       n("reforma") ? plural(n("reforma"), "reforma", "reformas") : "sin reformas registradas",
       n("correccion") ? plural(n("correccion"), "corrección", "correcciones") : "",
@@ -459,11 +534,18 @@ ${porAño
 
 function paginaDocumento(d, generada) {
   const { repo, ruta } = textoVigente(d);
-  const n = (t) => d.cambios.filter((c) => c.tipo === t).length;
+  const n = (t) => d.cambios.filter((c) => c.clase === t).length;
   const resumen = [
     plural(n("reforma"), "reforma", "reformas"),
     plural(n("correccion"), "corrección de extracción", "correcciones de extracción"),
   ];
+  if (n("metadatos")) resumen.push(plural(n("metadatos"), "cambio de metadatos", "cambios de metadatos"));
+  const ajustes =
+    n("ajuste") === 1
+      ? " El ajuste de su lectura en los días siguientes a su alta está bajo ella."
+      : n("ajuste")
+        ? ` Los ${numero(n("ajuste"))} ajustes de su lectura en los días siguientes a su alta están bajo ella.`
+        : "";
   const sobre = `<p class="sobre"><a href="${BASE}/documentos">Bitácora</a>${d.sigla && d.sigla !== d.nombre ? ` · ${esc(d.sigla)}` : ""}${d.retirado ? " · retirado" : ""}</p>`;
   const enlaces = [...d.repos]
     .map((r) => {
@@ -472,12 +554,15 @@ function paginaDocumento(d, generada) {
     })
     .join(" · ");
   const cuerpo = `<p>
-  Desde su alta el ${fechaLarga(d.cambios.at(-1).dia)}, OpenCodice registró ${lista(resumen)}.
+  Desde su alta el ${fechaLarga(d.cambios.at(-1).dia)}, OpenCodice registró ${lista(resumen)}.${ajustes}
   ${d.retirado ? "Ya no se publica: su extracción dejó de reproducir fielmente el PDF oficial." : ""}
 </p>
 <p class="tenue">${enlaces}</p>
 <h2 id="cambios">Cambios registrados</h2>
-${listaCambios(d.cambios, { conDocumento: false, fecha: "registro" })}
+${listaCambios(
+  d.cambios.filter((c) => c.clase !== "ajuste"),
+  { conDocumento: false, fecha: "registro" },
+)}
 ${reformasAnteriores(d)}`;
   return pagina({
     titulo: `${d.nombre}: historia`,
@@ -493,7 +578,14 @@ ${reformasAnteriores(d)}`;
 
 function fichaCambio(c) {
   const filas = [];
-  filas.push(["Tipo", `${esc(NOMBRE_TIPO[c.tipo])}${c.tipo === "correccion" ? ' <span class="tenue">· la ley no cambió: se leyó mejor el mismo PDF</span>' : ""}`]);
+  const nota = {
+    correccion: "la ley no cambió: se leyó mejor el mismo PDF",
+    metadatos: "solo cambió la metadata del documento, no el texto de sus artículos",
+    ajuste: "ajuste inicial: se afinó la lectura del PDF en los días siguientes a su alta",
+  }[c.clase];
+  filas.push(["Tipo", `${esc(NOMBRE_TIPO[c.tipo])}${nota ? ` <span class="tenue">· ${nota}</span>` : ""}`]);
+  if (c.alta) filas.push(["Ajuste de", `<a href="${esc(urlCambio(c.alta))}">${esc(tituloCambio(c.alta))}</a>`]);
+  if (c.ajustes?.length) filas.push(["Ajustes iniciales", `<a href="#ajustes">${plural(c.ajustes.length, "commit", "commits")}</a>`]);
   if (c.publicaciones.length) {
     const origen =
       c.origen === "notas"
@@ -532,6 +624,8 @@ const ESTADO_ARTICULO = [
   ["corregidos", "Corregido", "Corregidos"],
 ];
 
+const ESTADO_ARCHIVO = { A: "agregado", M: "modificado", D: "borrado" };
+
 function seccionArticulos(c) {
   const claves = articulosDe(c);
   if (c.tipo === "alta" || c.tipo === "retiro") {
@@ -544,8 +638,17 @@ function seccionArticulos(c) {
 </p>`;
   }
   if (!claves.length) {
+    const as = c.archivosMetadata;
     return `<h2 id="articulos">Artículos</h2>
-<p>Ningún artículo cambió: solo la metadata del documento (índice, segmentos o notas de reforma).</p>`;
+<p>Ningún artículo cambió: solo la metadata del documento (índice, segmentos o notas de reforma).</p>${
+      as.length
+        ? `
+<h3>Archivos de metadata</h3>
+<ul class="archivos">
+${as.map((a) => `<li><a href="${esc(gh(c.repo, `/blob/${a.estado === "D" ? `${c.sha}^` : c.sha}/${a.ruta}`))}"><code>${esc(a.ruta)}</code></a> <span class="tenue">${ESTADO_ARCHIVO[a.estado] ?? esc(a.estado)}</span></li>`).join("\n")}
+</ul>`
+        : ""
+    }`;
   }
   const grupos = ESTADO_ARTICULO.filter(([k]) => c[k].length)
     .map(
@@ -595,7 +698,7 @@ function vecinos(c) {
   const anterior = cs[i + 1];
   const siguiente = cs[i - 1];
   const enlace = (x, flecha) =>
-    x ? `<a href="${esc(urlCambio(x))}">${flecha === "←" ? "← " : ""}${esc(NOMBRE_TIPO[x.tipo])}, ${fechaLarga(x.dia)}${flecha === "→" ? " →" : ""}</a>` : "<span></span>";
+    x ? `<a href="${esc(urlCambio(x))}">${flecha === "←" ? "← " : ""}${esc(NOMBRE_CLASE[x.clase])}, ${fechaLarga(x.dia)}${flecha === "→" ? " →" : ""}</a>` : "<span></span>";
   return `<nav class="vecinos" aria-label="Cambios vecinos del documento">${enlace(anterior, "←")}${enlace(siguiente, "→")}</nav>`;
 }
 
@@ -611,9 +714,21 @@ ${vs.map((v) => `<li><a href="${esc(v.url)}">${esc(v.titulo)}</a>${v.detalle ? `
 function tituloCambio(c) {
   const f = fechaPublicacion(c);
   if (c.tipo === "reforma") return f ? `Reforma del ${fechaLarga(f)}` : `Reforma registrada el ${fechaLarga(c.dia)}`;
+  if (c.clase === "ajuste") return `Ajuste inicial del ${fechaLarga(c.dia)}`;
+  if (c.clase === "metadatos") return `Cambio de metadatos del ${fechaLarga(c.dia)}`;
   if (c.tipo === "correccion") return `Corrección de extracción del ${fechaLarga(c.dia)}`;
   if (c.tipo === "alta") return `Alta del ${fechaLarga(c.dia)}`;
   return `Retiro del ${fechaLarga(c.dia)}`;
+}
+
+function seccionAjustes(c) {
+  if (!c.ajustes?.length) return "";
+  return `<h2 id="ajustes">Ajustes iniciales</h2>
+<p>
+  En los días siguientes a su alta, y antes de su primera reforma, se afinó la lectura del PDF
+  en ${plural(c.ajustes.length, "commit", "commits")}. La ley no cambió, y no se cuentan como correcciones de extracción.
+</p>
+${listaCambios(c.ajustes, { conDocumento: false })}`;
 }
 
 function paginaCambio(c, generada, vinculos) {
@@ -622,13 +737,14 @@ function paginaCambio(c, generada, vinculos) {
 ${fichaCambio(c)}
 ${seccionVinculos(c, vinculos)}
 ${seccionArticulos(c)}
+${seccionAjustes(c)}
 <h2>En la historia del documento</h2>
 ${vecinos(c)}`;
   const h1 = tituloCambio(c);
   return pagina({
     titulo: `${h1} · ${c.doc.sigla ?? c.doc.nombre}`,
     h1,
-    descripcion: `${NOMBRE_TIPO[c.tipo]} de ${c.doc.nombre}: ${resumenCambio(c).replace(/<[^>]+>/g, "")}.`,
+    descripcion: `${NOMBRE_CLASE[c.clase]} de ${c.doc.nombre}: ${resumenCambio(c).replace(/<[^>]+>/g, "")}.`,
     cuerpo,
     sobre,
     generada,
@@ -641,7 +757,7 @@ function cambiosJson(m, generada) {
   return JSON.stringify(
     {
       generada,
-      nota: "Cambios a documentos de los repos de datos de OpenCodice, leídos de los trailers de cada commit. Un mismo hecho puede estar en dos repos: comparten Documento, Tipo y Publicacion.",
+      nota: "Cambios a documentos de los repos de datos de OpenCodice, leídos de los trailers de cada commit. Un mismo hecho puede estar en dos repos: comparten Documento, Tipo y Publicacion. menor: solo cambió la metadata (Tipo metadatos, o una corrección sin artículos corregidos). ajuste_inicial: corrección o cambio de metadatos de los primeros días del documento (a lo más 7 días después de su alta en el mismo repo y antes de su primera reforma); alta es el sha del alta al que se pliega.",
       cambios: m.cambios
         .slice()
         .sort((a, b) => b.fecha.localeCompare(a.fecha))
@@ -662,6 +778,11 @@ function cambiosJson(m, generada) {
           fuente: c.fuente,
           fuente_sha256: c.sha256,
           extractor: c.extractor,
+          clase: c.clase,
+          menor: c.menor,
+          ajuste_inicial: Boolean(c.alta),
+          alta: c.alta?.sha ?? null,
+          archivos_metadata: c.menor ? c.archivosMetadata.map((a) => a.ruta) : [],
           pagina: `${SITIO}${urlCambio(c)}`,
           commit: urlCommit(c),
         })),
@@ -712,13 +833,33 @@ export function paginasBitacora(m, generada, vinculos) {
     "bitacora/correcciones.html",
     indicePorMes(m, generada, {
       ruta: "/correcciones",
-      tipos: ["correccion"],
+      filtro: (c) => c.clase === "correccion",
       titulo: "Correcciones de extracción",
       h1: "Bitácora: correcciones",
       descripcion: "Las correcciones de extracción de OpenCodice: la misma ley, mejor leída de su PDF oficial.",
       texto: `<p>
   En una corrección la ley no cambió: el mismo PDF oficial se leyó mejor porque se arregló el
   extractor. Se listan por la fecha en que se registraron.
+</p>
+<p class="tenue">
+  No están aquí los ajustes iniciales (las correcciones de los primeros días de cada documento,
+  que se listan con <a href="${BASE}/altas">su alta</a>) ni los cambios que solo tocaron la metadata,
+  que están en <a href="${BASE}/metadatos">su propia lista</a>.
+</p>`,
+    }),
+  );
+  archivos.set(
+    "bitacora/metadatos.html",
+    indicePorMes(m, generada, {
+      ruta: "/metadatos",
+      filtro: (c) => c.clase === "metadatos",
+      titulo: "Cambios de metadatos",
+      h1: "Bitácora: metadatos",
+      descripcion: "Los cambios de OpenCodice que solo tocaron la metadata de un documento, no el texto de sus artículos.",
+      texto: `<p>
+  Cambios menores: solo cambió la metadata de un documento (su índice de artículos, sus segmentos o
+  sus notas de reforma), no el texto de ningún artículo. Los de los primeros días de cada documento
+  están con <a href="${BASE}/altas">su alta</a>.
 </p>`,
     }),
   );
@@ -726,14 +867,14 @@ export function paginasBitacora(m, generada, vinculos) {
     "bitacora/altas.html",
     indicePorMes(m, generada, {
       ruta: "/altas",
-      tipos: ["alta", "retiro"],
-      soloPrincipales: true,
+      filtro: (c) => (c.tipo === "alta" || c.tipo === "retiro") && c.principal,
       titulo: "Altas y retiros",
       h1: "Bitácora: altas y retiros",
       descripcion: "Los documentos que entraron a OpenCodice o salieron de él.",
       texto: `<p>
   Un alta es la entrada de un documento: desde ahí empieza su historia. Un retiro es su salida,
-  cuando su extracción deja de reproducir fielmente el PDF oficial.
+  cuando su extracción deja de reproducir fielmente el PDF oficial. Bajo cada alta están sus
+  ajustes iniciales: las correcciones de su lectura en los días siguientes.
 </p>`,
     }),
   );
