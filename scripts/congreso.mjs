@@ -219,6 +219,12 @@ function lineaResultados(asuntos, genero = "a") {
   return lista(partes);
 }
 
+// "OpenCodice/congreso-extractor:lecturas/…" → el archivo en GitHub.
+const registroLectura = (r) => {
+  const [repo, ruta] = String(r).split(":");
+  return `https://github.com/${repo}/blob/main/${ruta}`;
+};
+
 function filaVotacion(m, v, { conCamara = true } = {}) {
   const res = RESULTADO_VOTACION[v.result] ?? "sin resultado en la fuente";
   const marcas = [];
@@ -227,6 +233,7 @@ function filaVotacion(m, v, { conCamara = true } = {}) {
   if (v.inconsistencias?.length) marcas.push("inconsistencias de la fuente");
   if (v.discrepancias?.length) marcas.push("difiere de otra fuente");
   if (v.retirada_de_la_fuente) marcas.push("retirada de la fuente");
+  if (v.lecturas?.length) marcas.push("leída por agente, verificada");
   const extra = [ordinal(m, v), v.id.startsWith("sil-") ? "" : `según el ${fuenteDe(v)}`].filter(Boolean);
   return `<li>
 <p class="l-titulo"><a href="${esc(urlVotacion(v.id))}">${esc(recortar(tituloVotacion(v)))}</a></p>
@@ -409,6 +416,12 @@ function seccionNoCuadra(m, v) {
         ? "el nombre como lo escribe la fuente no da con un único legislador, o dos filas dan con la misma persona"
         : `el resumen de la fuente ${total === 1 ? "lo cuenta y su lista nominal no lo trae" : "los cuenta y su lista nominal no los trae"}`
     }. Se muestran abajo, en su sentido y grupo, sin adivinar de quién son.</p>`);
+  }
+  if (v.lecturas?.length) {
+    const PAGINA = { votacion: "la página de la votación", tabla: "la tabla de la votación", lista: "la lista nominal" };
+    partes.push(`<div class="aviso"><p>${v.lecturas.map((l) => PAGINA[l.pagina] ?? l.pagina).join(" y ")} ${v.lecturas.length > 1 ? "traían" : "traía"} un formato que el programa todavía no lee: ${v.lecturas.length > 1 ? "las leyó" : "la leyó"} un agente, y su lectura se publica porque pasó una verificación automática:</p>
+<ul>${(v.lecturas[0].verificacion ?? []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+<p class="tenue">Registro: ${v.lecturas.map((l) => `<a href="${esc(registroLectura(l.registro))}">${esc(l.pagina)}</a>`).join(", ")}. Cuando el programa se corrija, su lectura reemplazará a esta.</p></div>`);
   }
   if (v.inconsistencias?.length) {
     partes.push(`<div class="aviso"><p>La fuente no cuadra consigo misma; se publica tal como viene y los conteos no se ajustan:</p>

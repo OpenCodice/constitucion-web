@@ -188,6 +188,17 @@ test("votación de otra fuente: discrepancia, enlace por nombre y retirada", () 
   assert.match(h, /ligado por: apellidos invertidos/);
 });
 
+test("votación leída por el agente lo dice, con su registro", () => {
+  const r = registros();
+  const v = r.votaciones.find((x) => x.id === "senado-77");
+  v.lecturas = [{ pagina: "lista", por: "agente", registro: "OpenCodice/congreso-extractor:lecturas/senado/tabla/abc.json",
+    verificacion: ["cada nombre y cada cifra están en la página"] }];
+  const h = paginasCongreso({ ok: true, ...modeloCongreso(r) }, "2026-11-17T12:00:00Z").get("congreso/votaciones/senado-77.html");
+  assert.match(h, /la lista nominal traía un formato que el programa todavía no lee: la leyó un agente/);
+  assert.match(h, /href="https:\/\/github.com\/OpenCodice\/congreso-extractor\/blob\/main\/lecturas\/senado\/tabla\/abc.json"/);
+  assert.match(h, /cada nombre y cada cifra están en la página/);
+});
+
 test("votación solo con conteos remite a la otra fuente", () => {
   const h = paginas().get("congreso/votaciones/sil-200-2.html");
   assert.match(h, /de esta da solo los conteos/);
