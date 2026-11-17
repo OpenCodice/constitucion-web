@@ -3,9 +3,9 @@ name: Deploy a producción
 # Despliega el sitio estático (public/) y su Worker mínimo en cada push a main.
 # Las páginas se generan aquí desde los repos de datos y las corridas de
 # vigilancia, así que también se despliega cuando una vigilancia termina
-# (`repository_dispatch` datos-actualizados, que mandan los extractores) y una
-# vez al día desde el Worker `scheduler`, para lo que cambia solo con el tiempo
-# (una vigilancia atrasada). El cron de GitHub no se usa: casi no dispara.
+# (`repository_dispatch` datos-actualizados, que mandan los extractores). No hay
+# despliegue por horario: todo lo que muestran las páginas cambia con un push o
+# con una vigilancia, y el cron de GitHub casi no dispara.
 #
 # Secrets requeridos (en este repo):
 #   CLOUDFLARE_API_TOKEN   permisos "Edit Cloudflare Workers"
