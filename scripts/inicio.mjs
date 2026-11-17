@@ -22,13 +22,21 @@ function fueraFederales(d) {
     : "";
 }
 
+// Las demás leyes de los estados viven en el mismo repo que sus constituciones.
+function leyesEstatales(estados) {
+  const leyes = estados.flatMap((e) => e.leyes ?? []).filter((d) => d.estado === "incluida");
+  if (!leyes.length) return "";
+  const n = new Set(leyes.map((d) => d.clave.split("/")[0])).size;
+  return `, y <a href="/leyes#leyes-estados">${plural(leyes.length, "ley", "leyes")} de ${plural(n, "estado", "estados")}</a>`;
+}
+
 // Una línea por corpus; si su fuente no respondió, el nombre va sin cifra.
 function corpus({ cpeum, federales, estatales, fiscal }) {
   const cifra = (r, f, resto = () => "") => (r.ok ? `: <span class="dato">${f(r.datos)}</span>${resto(r.datos)}` : "");
   return [
     `<a href="${repo(REPOS.cpeum)}">Constitución federal</a>${cifra(cpeum, (d) => `${numero(d.articulos)} artículos`)}.`,
     `<a href="${repo(REPOS.federales)}">Leyes federales</a>${cifra(federales, (d) => `${numero(d.filter((x) => x.estado === "incluida").length)} de ${numero(d.length)} leyes`, fueraFederales)}.`,
-    `<a href="${repo(REPOS.estatales)}">Constituciones estatales</a>${cifra(estatales, (d) => `${numero(d.filter((e) => e.articulos != null).length)} de 32 entidades`)}.`,
+    `<a href="${repo(REPOS.estatales)}">Constituciones estatales</a>${cifra(estatales, (d) => `${numero(d.filter((e) => e.articulos != null).length)} de 32 entidades`, leyesEstatales)}.`,
     `<a href="${repo(REPOS.fiscal)}">Legislación fiscal</a>${cifra(fiscal, (d) => `${numero(d.length)} documentos`)}, con la Miscelánea y los criterios del SAT (<a href="https://sat.constitucion.app">detalle</a>).`,
   ]
     .map((l) => `        <li>${l}</li>`)

@@ -85,6 +85,12 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   - La situación de cada constitución estatal (vigilada, en preparación o
     fuera, con su motivo) sale de `estados.json` de `constitucion-extractor`:
     `/leyes` muestra el motivo de las que faltan y `/estado`, una tabla de las 32.
+  - Las demás leyes de cada estado (`{estado}/{ley}/` en leyes-estatales,
+    Documento `<estado>/<ley>`) salen de `fuentes.json` de leyes-estatales:
+    `/leyes` las lista por estado (con el motivo de las que quedaron fuera),
+    la bitácora las agrupa en «Leyes de los estados» y `/estado` cuenta las
+    dos vigilancias de leyes-estatales (`vigilar-estatales.yml` de
+    constitucion-extractor y `vigilar-leyes-estatales.yml` de fiscal-extractor).
   - `scripts/lib/` — lectura de datos y formato compartidos; `resumen.mjs` es
     la salud de las vigilancias y los cambios publicados, que el inicio y
     `/estado` cuentan igual.

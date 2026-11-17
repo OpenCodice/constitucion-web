@@ -39,7 +39,11 @@ function documentosEnRevision(prs) {
 function claveDeRuta(repo, ruta) {
   const partes = ruta.split("/");
   if (repo === REPOS.cpeum) return ["articulos", "metadata", "fuente"].includes(partes[0]) ? "cpeum" : null;
-  if (repo === REPOS.estatales) return partes.length > 2 && partes[1] === "constitucion" ? partes[0] : null;
+  if (repo === REPOS.estatales) {
+    // La constitución se identifica por su estado; las demás leyes, por '<estado>/<ley>'.
+    if (partes.length <= 2 || partes[0].startsWith(".")) return null;
+    return partes[1] === "constitucion" ? partes[0] : `${partes[0]}/${partes[1]}`;
+  }
   if (partes[0] === "metadata") return partes.length > 2 ? partes[1] : null;
   if (partes.length < 2 || partes[0].startsWith(".") || partes[0] === "scripts") return null;
   return partes[0];
@@ -194,6 +198,33 @@ function documentosEstatales(estatales, revision, b) {
     }));
 }
 
+// Las demás leyes de cada estado, por estado: las publicadas y las que quedaron
+// fuera, con su motivo.
+function leyesEstatales(estatales, revision, b) {
+  if (!estatales.ok) return null;
+  return estatales.datos
+    .filter((e) => e.leyes?.length)
+    .map((e) => ({
+      entidad: e.nombre,
+      clave: e.clave,
+      donde: e.periodico ? `${/^gaceta/i.test(e.periodico) ? "la" : "el"} ${e.periodico}` : "su periódico oficial",
+      publicadas: e.leyes
+        .filter((d) => d.estado === "incluida")
+        .map((d) => ({
+          nombre: d.etiqueta,
+          fecha: d.version,
+          donde: d.medio ? `${/^gaceta/i.test(d.medio) ? "la" : "el"} ${d.medio}` : "su periódico oficial",
+          reformas: d.reformas,
+          revision: enRevision(revision, REPOS.estatales, d.clave, Boolean(d.revision_pendiente)),
+          texto: textoEnGitHub(REPOS.estatales, `${d.clave}/articulos`),
+          historia: historiaDe(b, d.clave),
+          pdf: d.url ?? null,
+        }))
+        .sort((x, y) => x.nombre.localeCompare(y.nombre, "es")),
+      fuera: e.leyes.filter((d) => d.estado === "excluida").sort((x, y) => x.etiqueta.localeCompare(y.etiqueta, "es")),
+    }));
+}
+
 function documentosFederales(federales, revision, b) {
   if (!federales.ok) return null;
   return federales.datos
@@ -236,7 +267,7 @@ function documentosFiscales(fiscal, federales, revision, b) {
   }));
 }
 
-function resumen({ cpeum, estatales, federales, fiscal, excluidas, faltanFederales }) {
+function resumen({ cpeum, estatales, leyesEstados, federales, fiscal, excluidas, faltanFederales }) {
   const enRev = (docs) => docs?.filter((d) => d.revision).length ?? 0;
   const items = [];
 
@@ -256,6 +287,16 @@ function resumen({ cpeum, estatales, federales, fiscal, excluidas, faltanFederal
       }.${estatales.length < 32 ? " Las demás todavía no." : ""}</li>`,
     );
   } else items.push('<li><a href="#estados">Constituciones de los estados</a>: no pudimos consultarlas en este momento.</li>');
+
+  if (leyesEstados?.length) {
+    const n = leyesEstados.reduce((s, e) => s + e.publicadas.length, 0);
+    const rev = leyesEstados.reduce((s, e) => s + enRev(e.publicadas), 0);
+    items.push(
+      `<li><a href="#leyes-estados">Leyes de los estados</a>: ${plural(n, "ley", "leyes")} de ${lista(
+        leyesEstados.map((e) => esc(e.entidad)),
+      )}.${rev ? ` ${plural(rev, "tiene", "tienen")} una actualización en revisión.` : ""}</li>`,
+    );
+  }
 
   if (federales) {
     const partes = [`${numero(federales.length)} disponibles`];
@@ -316,6 +357,35 @@ ${fuera.map((e) => `  <li><strong>${esc(e.nombre)}</strong>: ${esc(e.motivo)}</l
 ${listaDocumentos(docs, hasta)}
 ${preparando.length ? `<p class="tenue">Estamos preparando la de ${lista(preparando.map((e) => esc(e.nombre)))}.</p>` : ""}
 ${motivos}`;
+}
+
+function seccionLeyesEstatales(porEstado, hasta) {
+  const titulo = '<h2 id="leyes-estados">Leyes de los estados</h2>';
+  if (!porEstado) return `${titulo}\n${sinDatos("las leyes estatales")}`;
+  if (!porEstado.length) return "";
+  const bloques = porEstado.map((e) => {
+    const fuera = e.fuera.length
+      ? `<ul class="excluidas">
+${e.fuera
+  .map(
+    (d) =>
+      `<li><p class="doc-nombre">${esc(d.etiqueta)}</p><p class="doc-datos">Todavía no la ofrecemos: ${esc(
+        /no reproducen|invariantes|revisión completa/i.test(d.motivo ?? "") ? motivoLlano(d.motivo) : d.motivo ?? "",
+      )}${d.url ? ` · <a href="${esc(d.url)}">PDF oficial</a>` : ""}</p></li>`,
+  )
+  .join("\n")}
+</ul>`
+      : "";
+    return `<h3 id="leyes-${esc(e.clave)}">${esc(e.entidad)}</h3>
+${e.publicadas.length ? listaDocumentos(e.publicadas, hasta) : ""}
+${fuera}`;
+  });
+  return `${titulo}
+<p>
+  Además de su constitución, empezamos con los códigos y leyes orgánicas de algunos estados.
+  Cada una sale del sitio oficial donde el estado publica su texto vigente.
+</p>
+${bloques.join("\n")}`;
 }
 
 function seccionFederales(docs, federales, hasta) {
@@ -446,6 +516,7 @@ export function paginaLeyes(datos, generada) {
   const b = datos.bitacora;
   const cpeum = documentosCpeum(datos.cpeum, revision, b);
   const estatales = documentosEstatales(datos.estatales, revision, b);
+  const leyesEstados = leyesEstatales(datos.estatales, revision, b);
   const federales = documentosFederales(datos.federales, revision, b);
   const fiscal = documentosFiscales(datos.fiscal, datos.federales, revision, b);
   const excluidas = datos.federales.ok ? datos.federales.datos.filter((d) => d.estado === "excluida").length : 0;
@@ -461,7 +532,7 @@ export function paginaLeyes(datos, generada) {
       </p>
       <p class="generada">Actualizada el ${momento(generada)} (hora de la Ciudad de México).</p>
 
-${resumen({ cpeum, estatales, federales, fiscal, excluidas, faltanFederales })}
+${resumen({ cpeum, estatales, leyesEstados, federales, fiscal, excluidas, faltanFederales })}
 
 ${comoLeer(hasta)}
 
@@ -469,6 +540,8 @@ ${comoLeer(hasta)}
 ${cpeum ? listaDocumentos(cpeum, hasta) : sinDatos("la Constitución")}
 
 ${seccionEstados(estatales, datos.estatales, hasta)}
+
+${seccionLeyesEstatales(leyesEstados, hasta)}
 
 ${seccionFederales(federales, datos.federales, hasta)}
 

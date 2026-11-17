@@ -83,12 +83,16 @@ async function leerEstatales() {
   } catch {
     registro = {};
   }
+  // Las demás leyes de cada estado (códigos, leyes orgánicas…): su registro es
+  // fuentes.json de leyes-estatales, que escribe la vigilancia de fiscal-extractor.
+  const leyes = await leerLeyesEstatales();
   const conocidos = new Set(ESTADOS.map(([c]) => c));
   const filas = ESTADOS.map(([clave, nombre]) => ({
     clave,
     nombre,
     situacion: registro[clave]?.situacion ?? null,
     motivo: registro[clave]?.motivo ?? null,
+    leyes: leyes.filter((l) => l.clave.split("/")[0] === clave),
     ...publicados[clave],
   }));
   for (const c of Object.keys(publicados)) {
@@ -96,6 +100,15 @@ async function leerEstatales() {
   }
   filas.sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
   return filas;
+}
+
+async function leerLeyesEstatales() {
+  const fuentes = await crudo(REPOS.estatales, "fuentes.json").catch(() => null);
+  return enParalelo(fuentes?.documentos ?? [], LECTURAS_A_LA_VEZ, async (d) => ({
+    ...d,
+    reformas:
+      d.estado === "incluida" ? await leerReformas(REPOS.estatales, `${d.clave}/metadata/reformas.json`) : null,
+  }));
 }
 
 async function leerFiscal() {
@@ -119,15 +132,25 @@ async function leerFederales() {
 
 // La vigilancia de cada repo de datos vive en su extractor, para que el
 // historial del repo de datos solo tenga cambios de texto legal.
+// leyes-estatales tiene dos: sus constituciones (constitucion-extractor) y sus
+// demás leyes (fiscal-extractor).
 const VIGILANCIAS = {
-  [REPOS.cpeum]: ["constitucion-extractor", "vigilar-cpeum.yml"],
-  [REPOS.estatales]: ["constitucion-extractor", "vigilar-estatales.yml"],
-  [REPOS.fiscal]: ["fiscal-extractor", "vigilar-fiscal.yml"],
-  [REPOS.federales]: ["fiscal-extractor", "vigilar-federal.yml"],
+  [REPOS.cpeum]: [["constitucion-extractor", "vigilar-cpeum.yml"]],
+  [REPOS.estatales]: [
+    ["constitucion-extractor", "vigilar-estatales.yml"],
+    ["fiscal-extractor", "vigilar-leyes-estatales.yml"],
+  ],
+  [REPOS.fiscal]: [["fiscal-extractor", "vigilar-fiscal.yml"]],
+  [REPOS.federales]: [["fiscal-extractor", "vigilar-federal.yml"]],
 };
 
 async function leerVigilancia(repo, desde) {
-  const [extractor, archivo] = VIGILANCIAS[repo];
+  const res = [];
+  for (const [extractor, archivo] of VIGILANCIAS[repo]) res.push(...(await leerWorkflow(repo, extractor, archivo, desde)));
+  return res;
+}
+
+async function leerWorkflow(repo, extractor, archivo, desde) {
   const w = await api(`/repos/${ORG}/${extractor}/actions/workflows/${archivo}`);
   if (!w) throw new ErrorFuente(`no se encontró ${extractor}/${archivo}`);
   const corridas = [];

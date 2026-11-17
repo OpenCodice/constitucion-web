@@ -96,7 +96,7 @@ async function leerBlobs(dir, revisiones) {
 
 export function esquema(documento) {
   if (documento === "cpeum") return "cpeum";
-  if (documento.endsWith("/constitucion")) return "estatal";
+  if (documento.includes("/")) return "estatal";
   return "corpus";
 }
 
@@ -188,15 +188,16 @@ const leerJson = (texto) => {
 // documentos retirados ya no están en ellos y se leen de su último índice.
 async function nombres(dir, rev, repo, commits) {
   const res = {};
-  if (repo === REPOS.federales || repo === REPOS.fiscal) {
-    const registro = repo === REPOS.federales ? "fuentes.json" : "metadata/documentos.json";
+  if (repo === REPOS.federales || repo === REPOS.fiscal || repo === REPOS.estatales) {
+    const registro = repo === REPOS.fiscal ? "metadata/documentos.json" : "fuentes.json";
     const blobs = await leerBlobs(dir, [`${rev}:${registro}`]);
     for (const d of leerJson(blobs.get(`${rev}:${registro}`))?.documentos ?? []) {
       res[d.clave] = { nombre: d.etiqueta, sigla: d.sigla, tipoDocumento: d.tipo };
     }
     const faltan = new Map();
     for (const c of commits) {
-      if (c.documento && !res[c.documento] && !faltan.has(c.documento)) {
+      // Las constituciones estatales se nombran por su estado (bitacora.mjs).
+      if (c.documento && !res[c.documento] && !faltan.has(c.documento) && !c.documento.endsWith("/constitucion")) {
         // El último commit del documento: si es su retiro, el índice está en el padre.
         const r = c.tipo === "retiro" ? `${c.sha}^` : c.sha;
         faltan.set(c.documento, `${r}:${dirMetadata(c.documento)}articulos.json`);

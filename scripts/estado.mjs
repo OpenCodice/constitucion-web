@@ -80,6 +80,16 @@ function seccionResumen({ cpeum, estatales, fiscal, federales, commits }) {
       dia(masReciente(pub.map((e) => e.version))),
       ultimo(REPOS.estatales),
     ]);
+    const leyes = estatales.datos.flatMap((e) => e.leyes ?? []).filter((d) => d.estado === "incluida");
+    if (leyes.length) {
+      filas.push([
+        enlaceRepo(REPOS.estatales, "Leyes estatales"),
+        numero(leyes.length),
+        numero(leyes.reduce((s, d) => s + (d.unidades ?? 0), 0)),
+        dia(masReciente(leyes.map((d) => d.version))),
+        ultimo(REPOS.estatales),
+      ]);
+    }
   } else avisos.push(fallo(`${ORG}/${REPOS.estatales}`, estatales));
 
   if (fiscal.ok) {
@@ -127,6 +137,18 @@ ${avisos.join("\n")}
 
 // Lo que no cabe en la tabla de resumen: estados que faltan y el avance de
 // las leyes federales. Las listas completas están en /leyes.
+// Las demás leyes de cada estado: su registro es fuentes.json de leyes-estatales.
+function leyesEstatales(estados) {
+  const leyes = estados.flatMap((e) => e.leyes ?? []);
+  if (!leyes.length) return "";
+  const pub = leyes.filter((d) => d.estado === "incluida");
+  const conLeyes = estados.filter((e) => e.leyes?.length).map((e) => esc(e.nombre));
+  return ` Además, ${plural(pub.length, "ley estatal publicada", "leyes estatales publicadas")} en
+  <code>{estado}/{ley}/</code> (${conLeyes.join(", ")}) y ${plural(leyes.length - pub.length, "fuera", "fuera")}
+  con su motivo, según <code>fuentes.json</code> del repo; las vigila <code>vigilar-leyes-estatales.yml</code>
+  de fiscal-extractor.`;
+}
+
 function seccionCorpus({ estatales, federales }) {
   const partes = [];
   if (estatales.ok) {
@@ -156,7 +178,7 @@ function seccionCorpus({ estatales, federales }) {
   <strong>Constituciones estatales:</strong> ${numero(pub.length)} de 32 publicadas en
   <code>{estado}/constitucion/</code> de ${enlaceRepo(REPOS.estatales)};
   ${numero(preparando)} en preparación y ${numero(fuera)} fuera por ahora. La situación de cada
-  una sale de <code>estados.json</code> del extractor.
+  una sale de <code>estados.json</code> del extractor.${leyesEstatales(estatales.datos)}
 </p>
 ${tabla({
   id: "t-estados",

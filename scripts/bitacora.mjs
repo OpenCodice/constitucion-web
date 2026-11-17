@@ -93,6 +93,13 @@ function nombreDocumento(doc, historial) {
     const entidad = NOMBRES_ESTADOS[estado] ?? estado;
     return { nombre: `Constitución de ${conArticulo(entidad)}`, sigla: entidad, corpus: "estatal", entidad };
   }
+  if (doc.includes("/")) {
+    // Otra ley de un estado: 'jalisco/codigo-civil', con el nombre de fuentes.json.
+    const estado = doc.split("/")[0];
+    const entidad = NOMBRES_ESTADOS[estado] ?? estado;
+    const n = historial[REPOS.estatales]?.ok && historial[REPOS.estatales].datos.nombres[doc];
+    return { nombre: n?.nombre ?? doc, sigla: n?.sigla ?? doc, corpus: "estatal-ley", entidad };
+  }
   for (const repo of [REPOS.federales, REPOS.fiscal]) {
     const n = historial[repo]?.ok && historial[repo].datos.nombres[doc];
     if (n?.nombre) return { nombre: n.nombre, sigla: n.sigla ?? doc.toUpperCase(), corpus: repo };
@@ -455,6 +462,7 @@ ${porMes.map(([mes, g]) => `<h3 class="grupo">${esc(mesLargo(`${mes}-01`))}</h3>
 const GRUPOS_DOCUMENTOS = [
   ["cpeum", "La Constitución"],
   ["estatal", "Constituciones de los estados"],
+  ["estatal-ley", "Leyes de los estados"],
   [REPOS.federales, "Leyes federales"],
   [REPOS.fiscal, "Legislación fiscal"],
 ];
@@ -500,7 +508,7 @@ ${bloques}`;
 
 function textoVigente(d) {
   const repo = [...d.repos][0];
-  const ruta = d.clave === "cpeum" ? "articulos" : d.corpus === "estatal" ? `${d.clave}/articulos` : d.clave;
+  const ruta = d.clave === "cpeum" ? "articulos" : d.corpus.startsWith("estatal") ? `${d.clave}/articulos` : d.clave;
   return { repo, ruta };
 }
 
