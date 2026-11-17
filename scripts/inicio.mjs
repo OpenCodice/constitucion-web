@@ -223,6 +223,10 @@ ${ultimasReformas(datos.actividad, datos.bitacora)}
 
       <footer>
         <p>
+          <a href="/leyes">Qué leyes hay</a> · <a href="/bitacora/">Bitácora de reformas</a> ·
+          <a href="/estado">Status del sistema</a> · <a href="https://github.com/${ORG}">GitHub</a>
+        </p>
+        <p>
           Los datos son de dominio público
           (<a href="https://creativecommons.org/publicdomain/zero/1.0/deed.es">CC0</a>) y el código
           es MIT: se pueden usar y redistribuir sin restricciones.
