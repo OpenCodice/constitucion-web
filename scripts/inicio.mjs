@@ -160,8 +160,8 @@ ${ultimasReformas(datos.actividad, datos.bitacora)}
       </p>
       <ul>
         <li><code>Reforma CPEUM (DOF 2026-10-07): arts. 82, 116, 122</code>: cambió la ley.</li>
-        <li><code>Corrección de extracción jalisco: …</code>: la misma ley, mejor leída del PDF.</li>
-        <li><code>Alta de LGS</code> o <code>Retiro de LFPCCS: …</code>: entra o sale un documento.</li>
+        <li><code>Corrección de extracción cdmx: 23 artículos</code>: la misma ley, mejor leída del PDF.</li>
+        <li><code>Alta de LGS</code> o <code>Retiro de …</code>: entra o sale un documento.</li>
       </ul>
       <p>
         Así, <code>git log -- lgs/</code> es la historia de la Ley General de Salud. Sin usar
