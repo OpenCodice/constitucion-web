@@ -1,9 +1,11 @@
 name: Deploy a producción
 
 # Despliega el sitio estático (public/) y su Worker mínimo en cada push a main.
-# También cada tres horas, para que las páginas (que se generan aquí desde los repos
-# de datos) se mantengan al día sin commits; no más seguido porque el repo es
-# privado y cada corrida consume minutos de Actions.
+# Las páginas se generan aquí desde los repos de datos y las corridas de
+# vigilancia, así que también se despliega cuando una vigilancia termina
+# (`repository_dispatch` datos-actualizados, que mandan los extractores) y una
+# vez al día desde el Worker `scheduler`, para lo que cambia solo con el tiempo
+# (una vigilancia atrasada). El cron de GitHub no se usa: casi no dispara.
 #
 # Secrets requeridos (en este repo):
 #   CLOUDFLARE_API_TOKEN   permisos "Edit Cloudflare Workers"
@@ -13,8 +15,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  schedule:
-    - cron: "23 */3 * * *"
+  repository_dispatch:
+    types: [datos-actualizados]
 
 concurrency:
   group: deploy
@@ -37,6 +39,12 @@ jobs:
         with:
           node-version: "22"
           cache: npm
+
+      # El aviso sale del último paso de la vigilancia: se le da un momento para
+      # que su corrida conste como terminada y /estado no la muestre en curso.
+      - name: Esperar a que termine la vigilancia que avisó
+        if: github.event_name == 'repository_dispatch'
+        run: sleep 60
 
       - name: Instalar dependencias
         run: npm ci
