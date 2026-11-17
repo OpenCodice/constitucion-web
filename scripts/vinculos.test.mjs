@@ -204,9 +204,13 @@ test("página: sección de proceso legislativo", () => {
   assert.ok(s.includes('href="https://dof.gob.mx/nota_detalle.php?codigo=1"'));
   assert.ok(s.includes(`href="${urlExpediente("sil-100")}"`));
   assert.ok(s.includes("Seguimiento=100"));
-  assert.ok(s.includes(`<a href="${urlLegislador("ana-perez")}">Ana Pérez</a> (Morena)`));
-  assert.ok(s.includes("por <a href=\"/congreso/legisladores/ana-perez\">Ana Pérez</a> (Morena) y el grupo parlamentario del PAN"));
-  assert.ok(s.includes("su autor no está registrado"));
+  // Las iniciativas de un expediente que ligó el programa están en «Quién la
+  // propuso», no se repiten en el detalle.
+  assert.ok(!s.includes("Ana Pérez"));
+  const p3 = pagina(archivos, 3);
+  const quien = p3.slice(p3.indexOf('id="iniciativas-1"'), p3.indexOf('id="proceso"'));
+  assert.ok(quien.includes(`<a href="${urlLegislador("ana-perez")}">Ana Pérez</a> <span class="sigla">Morena</span> y Grupo parlamentario del PAN`));
+  assert.ok(quien.includes("Su autor no está registrado"));
   assert.ok(s.includes(`href="${urlVotacion("sil-200-1")}">Aprobado en lo general.</a>`), "sin los conteos repetidos");
   assert.ok(s.includes(`href="${urlVotacion("senado-77")}">el sitio del Senado</a>; las dos fuentes difieren en los conteos`));
   assert.ok(s.includes("no cuadra consigo mismo"));
@@ -229,11 +233,16 @@ test("página: sin datos del Congreso no hay sección", () => {
   assert.ok(!pagina(archivos, 3).includes('id="proceso"'));
 });
 
-test("página: miniatura del hemiciclo junto a la votación con votos, enlazada a ella", () => {
+test("página: hemiciclo de la votación con votos, en la cadena y en «Cómo votaron»", () => {
   const c = congreso();
   c.votaciones.get("sil-200-1").votes = [{ voter_id: "ana-perez", mandato_id: "sil-1", option: "yes", group_id: "partido-morena", grupo_fuente: "Morena" }];
-  const s = seccion(pagina(paginasBitacora(modelo(historial()), "2026-12-21T00:00:00Z", c), 3));
-  assert.ok(s.includes(`<figure class="mini"><a href="${urlVotacion("sil-200-1")}"><svg class="mini-svg"`));
-  assert.ok(s.includes("1 a favor"));
-  assert.ok(!pagina(paginasBitacora(modelo(historial()), "2026-12-21T00:00:00Z", c), 3).includes("hemiciclo.js"));
+  const html = pagina(paginasBitacora(modelo(historial()), "2026-12-21T00:00:00Z", c), 3);
+  const cadena = html.slice(html.indexOf('id="cadena"'), html.indexOf('id="iniciativas-1"'));
+  assert.ok(cadena.includes('<span class="mini-h"><svg class="mini-svg"'));
+  const votos = html.slice(html.indexOf('id="votos-1"'), html.indexOf('id="proceso"'));
+  assert.ok(votos.includes('<figure class="hemiciclo" data-modo="votacion">'));
+  assert.ok(votos.includes(`href="${urlVotacion("sil-200-1")}">sil-200-1</a>`));
+  assert.ok(html.includes('<script src="/hemiciclo.js" defer></script>'));
+  // El detalle ya no repite la miniatura.
+  assert.ok(!seccion(html).includes('<figure class="mini">'));
 });

@@ -71,13 +71,15 @@ function iniciativas(m, exp) {
         fecha: a.fecha_presentacion ?? delExpediente?.fecha ?? null,
         pdf: delExpediente?.pdf ?? null,
         autores: (a.presentadores ?? []).map((p) => autor(m, p, a, legisladores)),
+        // Los turnos del SIL: a qué comisiones de qué cámara se envió.
+        comisiones: (a.comisiones ?? []).map((c) => ({ camara: c.camara ?? null, comision: c.comision ?? null, turno: c.turno ?? null })),
       };
     });
   // Las que el expediente lista sin registro propio en congreso-mexicano.
   const vistas = new Set(publicadas.map((a) => a.id));
   const sinRegistro = (exp.asuntos ?? [])
     .filter((x) => x.tipo === "Iniciativa" && !vistas.has(`sil-${x.clave}`))
-    .map((x) => ({ id: `sil-${x.clave}`, denominacion: x.denominacion, fecha: x.fecha ?? null, pdf: x.pdf ?? null, autores: null }));
+    .map((x) => ({ id: `sil-${x.clave}`, denominacion: x.denominacion, fecha: x.fecha ?? null, pdf: x.pdf ?? null, autores: null, comisiones: [] }));
   return [...publicadas, ...sinRegistro].sort((a, b) => (a.fecha ?? "").localeCompare(b.fecha ?? ""));
 }
 

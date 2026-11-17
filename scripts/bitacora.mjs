@@ -42,6 +42,8 @@ import { diferenciaArticulo, encabezado } from "./lib/diferencias.mjs";
 import { vinculosDe } from "./lib/vinculos.mjs";
 import { urlVotacion, urlLegislador, urlExpediente, urlSilExpediente } from "./lib/congreso.mjs";
 import { ESTILO_HEMICICLO, asientosVotacion, resumenSentidos, svgMini } from "./lib/hemiciclo.mjs";
+import { ESTILO_CADENA, cadenaDe, htmlCadena, htmlQuien, htmlVotos, htmlCongresos } from "./lib/cadena.mjs";
+import { ESTILO_VIDA, FILAS_VIDA, vidaDocumento, htmlCuadricula, htmlLineaVida, resumenVida } from "./lib/vida.mjs";
 
 const SITIO = "https://constitucion.app";
 const BASE = "/bitacora";
@@ -167,12 +169,14 @@ export function modelo(historial) {
         repos: new Set(),
         cambios: [],
         reformasAnteriores: null,
+        indice: null,
       });
     }
     const d = documentos.get(c.documento);
     d.repos.add(c.repo);
     d.cambios.push(c);
     d.reformasAnteriores ??= historial[c.repo].datos.reformas[c.documento] ?? null;
+    d.indice ??= historial[c.repo].datos.articulos?.[c.documento] ?? null;
   }
   for (const d of documentos.values()) {
     d.cambios.sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -180,6 +184,7 @@ export function modelo(historial) {
     d.retirado = [...d.repos].every((repo) => d.cambios.find((c) => c.repo === repo).tipo === "retiro");
     for (const c of d.cambios) c.doc = d;
     ajustesIniciales(d);
+    d.vida = vidaDocumento(d.reformasAnteriores, d.indice);
   }
 
   const fallas = Object.entries(historial)
@@ -397,8 +402,15 @@ function pagina({ titulo, h1, descripcion, cuerpo, generada, sobre = "" }) {
     titulo: `${titulo} — OpenCodice`,
     h1,
     descripcion,
-    // Solo las páginas con hemiciclos (la sección de proceso legislativo) llevan su estilo.
-    estilo: cuerpo.includes('class="mini-svg') ? `${ESTILO}${ESTILO_HEMICICLO}` : ESTILO,
+    // Cada página lleva solo el estilo de lo que muestra; el script de los
+    // hemiciclos, solo si tiene uno interactivo.
+    estilo: [
+      ESTILO,
+      cuerpo.includes('class="mini-svg') || cuerpo.includes('class="hemiciclo"') ? ESTILO_HEMICICLO : "",
+      cuerpo.includes('class="tira"') || cuerpo.includes('class="estados"') ? ESTILO_CADENA : "",
+      cuerpo.includes('class="cuadricula"') || cuerpo.includes('class="vida"') ? ESTILO_VIDA : "",
+    ].join(""),
+    cabeza: cuerpo.includes('<figure class="hemiciclo"') ? '<script src="/hemiciclo.js" defer></script>' : "",
     cuerpo: `${sobre}${cuerpo}`,
     pie: `<p>
           <a href="${BASE}/">Bitácora</a> · <a href="${BASE}/metadatos">Cambios de metadatos</a> · <a href="/leyes">Qué leyes hay</a> · <a href="/estado">Status del sistema</a> ·
@@ -550,6 +562,20 @@ ${porAño
 </details>`;
 }
 
+// Los artículos del documento por número de reformas, de las notas de reforma
+// de su texto vigente. Sin reformas.json no hay sección.
+function seccionCuadricula(d) {
+  if (!d.vida) return "";
+  const original = d.vida.omitidas ? " Las fechas de 1917 son la publicación original, no reformas, y no se cuentan." : "";
+  return `<h2 id="articulos-reformas">Sus artículos</h2>
+<p>
+  Cada cuadro es un artículo de su texto vigente; más oscuro, más reformas. Las cuenta el propio texto en
+  sus notas de reforma (<code>reformas.json</code>), también las anteriores a su alta.${original}
+</p>
+${htmlCuadricula(d.vida, { nombre: d.nombre })}
+<p class="tenue">${resumenVida(d.vida)}</p>`;
+}
+
 function paginaDocumento(d, generada) {
   const { repo, ruta } = textoVigente(d);
   const n = (t) => d.cambios.filter((c) => c.clase === t).length;
@@ -581,6 +607,7 @@ ${listaCambios(
   d.cambios.filter((c) => c.clase !== "ajuste"),
   { conDocumento: false, fecha: "registro" },
 )}
+${seccionCuadricula(d)}
 ${reformasAnteriores(d)}`;
   return pagina({
     titulo: `${d.nombre}: historia`,
@@ -872,7 +899,7 @@ function textoLegislaturas(l) {
   }`;
 }
 
-function bloqueProceso(p, h, m) {
+function bloqueProceso(p, h, m, { resumido = false } = {}) {
   const d = p.decreto;
   const filas = [
     ["Decreto", d.url ? `<a href="${esc(d.url)}">${esc(d.titulo)}</a>` : esc(d.titulo)],
@@ -891,10 +918,10 @@ function bloqueProceso(p, h, m) {
   const partes = [`<dl class="ficha">\n${filas.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("\n")}\n</dl>`];
   for (const x of p.expedientes) {
     const sufijo = p.expedientes.length > 1 ? ` del expediente ${esc(x.enlace.id)}` : "";
-    if (x.iniciativas.length) partes.push(`<${h}>Iniciativas${sufijo}</${h}>\n${listaIniciativas(x.iniciativas)}`);
+    if (x.iniciativas.length && !resumido) partes.push(`<${h}>Iniciativas${sufijo}</${h}>\n${listaIniciativas(x.iniciativas)}`);
     if (x.votaciones.length || x.economicas.length) {
       partes.push(`<${h}>Votaciones${sufijo}</${h}>`);
-      x.votaciones.forEach((g, i) => partes.push(tablaVotaciones(g, `vot-${d.id}-${x.enlace.id}-${i}`), minisVotaciones(m, g)));
+      x.votaciones.forEach((g, i) => partes.push(tablaVotaciones(g, `vot-${d.id}-${x.enlace.id}-${i}`), resumido ? "" : minisVotaciones(m, g)));
       if (!x.votaciones.length) partes.push('<p class="tenue">No hubo votaciones nominales registradas.</p>');
       if (x.economicas.length) {
         const cuentas = x.economicas.map((e) => `${plural(e.n, "votación económica", "votaciones económicas")}${e.nombre ? ` en ${esc(e.nombre)}` : ""}`);
@@ -905,16 +932,71 @@ function bloqueProceso(p, h, m) {
   return partes.join("\n");
 }
 
+// La cadena de cada decreto (arriba de la página) y, debajo, quién la
+// propuso, cómo votó cada cámara, los congresos locales y el detalle del
+// proceso legislativo. Sin decretos, nada.
 function seccionVinculos(c, fuente) {
   const ps = vinculosDe(fuente, c);
-  if (!ps.length) return "";
+  if (!ps.length) return { cadena: "", html: "" };
   const varios = ps.length > 1;
-  const bloques = ps.map((p, i) =>
-    varios ? `<h3>Decreto ${i + 1} de ${ps.length}</h3>\n<section class="proceso">\n${bloqueProceso(p, "h4", fuente)}\n</section>` : bloqueProceso(p, "h3", fuente),
-  );
-  return `<h2 id="proceso">Proceso legislativo</h2>
+  const cads = ps.map((p) => cadenaDe(fuente, p, c, { articulos: textoArticulos(c, articulosDe(c)) }));
+  const sufijo = (i) => (varios ? `-${i + 1}` : "");
+  const deDecreto = (i) => (varios ? ` <span class="tenue">· decreto ${i + 1} de ${ps.length}</span>` : "");
+
+  const cadena = `<h2 id="cadena">La cadena de la reforma</h2>
+<p class="tenue">Cada paso con su fecha y los días desde el anterior. Un paso sin dato queda vacío, con su motivo.</p>
+${cads
+  .map(
+    (cad, i) =>
+      `${varios ? `<h3>Decreto ${i + 1} de ${ps.length}</h3>\n` : ""}<div class="ancho">\n${htmlCadena(cad, sufijo(i))}\n</div>`,
+  )
+  .join("\n")}`;
+
+  const secciones = cads.flatMap((cad, i) => {
+    const xs = [];
+    const quien = htmlQuien(cad);
+    if (quien) xs.push(`<h2 id="iniciativas${sufijo(i)}">Quién la propuso${deDecreto(i)}</h2>\n${quien}`);
+    const votos = htmlVotos(fuente, cad, sufijo(i));
+    if (votos) xs.push(`<h2 id="votos${sufijo(i)}">Cómo votaron${deDecreto(i)}</h2>\n${votos}`);
+    const estados = htmlCongresos(cad);
+    if (estados) xs.push(`<h2 id="estados${sufijo(i)}">Los congresos locales${deDecreto(i)}</h2>\n${estados}`);
+    return xs;
+  });
+
+  // Lo que ya está arriba (iniciativas y hemiciclos de un expediente que ligó
+  // el programa) no se repite en el detalle.
+  const bloques = ps.map((p, i) => {
+    const opciones = { resumido: Boolean(cads[i].expediente) };
+    return varios
+      ? `<h3>Decreto ${i + 1} de ${ps.length}</h3>\n<section class="proceso">\n${bloqueProceso(p, "h4", fuente, opciones)}\n</section>`
+      : bloqueProceso(p, "h3", fuente, opciones);
+  });
+  const html = `${secciones.join("\n")}
+<h2 id="proceso">Proceso legislativo</h2>
 <p class="tenue">Del Diario Oficial de la Federación y del Sistema de Información Legislativa (SIL) de Gobernación, según <a href="https://github.com/${ORG}/congreso-mexicano">${ORG}/congreso-mexicano</a>.</p>
 ${bloques.join("\n")}`;
+  return { cadena, html };
+}
+
+// La línea de vida de los artículos que tocó una reforma, con ella resaltada.
+function seccionVida(c) {
+  const d = c.doc.vida;
+  if (!d || c.tipo !== "reforma") return "";
+  const claves = [...c.adicionados, ...c.modificados, ...c.derogados];
+  const svg = htmlLineaVida(d, claves, c.publicaciones, { etiquetas: c.etiquetas });
+  if (!svg) return "";
+  const resto = claves.length - FILAS_VIDA;
+  return `<h2 id="vida">La vida de estos artículos</h2>
+<p>
+  Cada marca es una reforma que anota el texto vigente en sus notas de reforma${d.omitidas ? ", sin la publicación original de 1917" : ""};
+  en color, la de esta página. A la derecha, cuántas anota cada artículo.
+</p>
+${svg}
+${resto > 0 ? `<p class="tenue">Se muestran ${numero(FILAS_VIDA)} de ${plural(claves.length, "artículo", "artículos")}; la historia de cada uno está en <a href="${esc(urlDocumento(c.documento))}">la página del documento</a>.</p>` : ""}
+<h3 class="grupo-vida">Dónde están en ${esc(c.doc.sigla ?? c.doc.nombre)}</h3>
+<p>Cada cuadro es un artículo del texto vigente; más oscuro, más reformas. Con borde, los de esta reforma.</p>
+${htmlCuadricula(d, { nombre: c.doc.nombre, resaltar: new Set(claves) })}
+<p class="tenue">${resumenVida(d)}</p>`;
 }
 
 function tituloCambio(c) {
@@ -939,10 +1021,13 @@ ${listaCambios(c.ajustes, { conDocumento: false })}`;
 
 function paginaCambio(c, generada, vinculos) {
   const sobre = `<p class="sobre"><a href="${esc(urlDocumento(c.documento))}">${esc(c.doc.nombre)}</a></p>`;
+  const proceso = seccionVinculos(c, vinculos);
   const cuerpo = `<p>${resumenCambio(c)}.</p>
-${fichaCambio(c)}
-${seccionVinculos(c, vinculos)}
+${proceso.cadena}
+${proceso.html}
+${proceso.cadena ? '<h2 id="registro">El registro</h2>\n' : ""}${fichaCambio(c)}
 ${seccionArticulos(c)}
+${seccionVida(c)}
 ${seccionAjustes(c)}
 <h2>En la historia del documento</h2>
 ${vecinos(c)}`;

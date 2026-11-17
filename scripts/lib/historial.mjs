@@ -237,23 +237,40 @@ async function textos(dir, commits) {
 }
 
 // Fechas de reforma que anota el texto vigente de cada documento
-// (metadata/reformas.json: fecha → artículos). Son las reformas anteriores a
-// su alta, que no están como commits.
+// (metadata/reformas.json: fecha → artículos), con las claves de cada fecha, y
+// su índice de artículos (articulos.json), para contar las reformas de cada
+// artículo. Las fechas anteriores a su alta no están como commits.
 async function reformasVigentes(dir, rev, commits) {
   const docs = [...new Set(commits.map((c) => c.documento).filter(Boolean))];
   const rutas = Object.fromEntries(docs.map((d) => [d, `${rev}:${dirMetadata(d)}reformas.json`]));
+  const indices = Object.fromEntries(docs.map((d) => [d, `${rev}:${dirMetadata(d)}articulos.json`]));
   const blobs = await leerBlobs(dir, Object.values(rutas));
-  const res = {};
+  const reformas = {};
+  const articulos = {};
   for (const d of docs) {
     const r = leerJson(blobs.get(rutas[d]));
     if (r && typeof r === "object") {
-      res[d] = Object.entries(r)
+      reformas[d] = Object.entries(r)
         .filter(([f]) => /^\d{4}-\d{2}-\d{2}$/.test(f))
-        .map(([fecha, arts]) => ({ fecha, articulos: Array.isArray(arts) ? arts.length : 0 }))
+        .map(([fecha, arts]) => {
+          const claves = Array.isArray(arts) ? arts.filter((a) => typeof a === "string") : [];
+          return { fecha, articulos: claves.length, claves };
+        })
         .sort((a, b) => a.fecha.localeCompare(b.fecha));
     }
   }
-  return res;
+  // El índice solo hace falta donde hay reformas.json.
+  const conReformas = Object.keys(reformas);
+  const idx = await leerBlobs(dir, conReformas.map((d) => indices[d]));
+  for (const d of conReformas) {
+    const xs = leerJson(idx.get(indices[d]))?.articulos;
+    if (Array.isArray(xs)) {
+      articulos[d] = xs
+        .filter((a) => typeof a?.clave === "string")
+        .map((a) => ({ clave: a.clave, etiqueta: a.etiqueta ?? null, numero: Number.isInteger(a.articulo) ? a.articulo : null }));
+    }
+  }
+  return { reformas, articulos };
 }
 
 async function leerRepo(repo) {
@@ -274,12 +291,14 @@ async function leerRepo(repo) {
     c.archivosMetadata = c.documento ? c.archivos.filter((a) => a.ruta.startsWith(dirMetadata(c.documento))) : [];
   }
   const cabeza = (await git(dir, ["rev-parse", rev])).toString().trim();
+  const { reformas, articulos } = await reformasVigentes(dir, rev, commits);
   return {
     repo,
     cabeza,
     commits,
     nombres: await nombres(dir, rev, repo, commits),
-    reformas: await reformasVigentes(dir, rev, commits),
+    reformas,
+    articulos,
   };
 }
 

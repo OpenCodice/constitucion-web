@@ -90,6 +90,52 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
       como «Proceso legislativo», enlazando a /congreso; si congreso-mexicano
       no se puede leer, la sección se omite. Se prueba en
       `scripts/vinculos.test.mjs` con un modelo sintético.
+    - `scripts/lib/cadena.mjs`: en la página de un cambio con decreto, arriba,
+      «La cadena de la reforma»: iniciativa (la primera presentada del
+      expediente) → comisión (el primer asunto `Dictamen…` del expediente, con
+      las comisiones de los turnos «para dictamen» de la cámara de origen) →
+      votación de cada cámara, la de origen primero (conteo de la fuente y
+      `svgMini` si hay votos con nombre) → congresos locales (solo `cpeum`) →
+      DOF → commit (`dia` del cambio), con la fecha y los días desde el paso
+      anterior con fecha, y un eje a escala: tramo legislativo hasta el DOF y
+      de registro, punteado, del DOF al commit. En pantallas de menos de 52rem
+      va vertical. Un paso sin dato se dibuja vacío con su motivo, nunca se
+      rellena: sin votación nominal (dice si hubo económicas), sin
+      `legislaturas_estatales`, sin dictamen o iniciativas, y los pasos del
+      SIL (iniciativa, comisión, votaciones) cuando el programa no ligó un
+      único expediente (`candidatos_expediente`, sin expediente, varios, o
+      resuelto por un agente: su evidencia sigue en «Proceso legislativo»).
+      Debajo, solo con un expediente que ligó el programa: «Quién la propuso»
+      (cada iniciativa con su autor, enlazado si tiene `person_id`, partido,
+      fecha y turnos), «Cómo votaron» (el hemiciclo interactivo de la
+      votación principal de cada cámara, lado a lado desde 60rem, y
+      `listaDisidentes`; carga `hemiciclo.js`) y, en reformas
+      constitucionales con datos, «Los congresos locales» (los 32 estados en
+      la cuadrícula `MAPA`: aprobó / sin registro; el SIL solo lista los que
+      aprobaron, así que «sin registro» nunca se presenta como «en contra»).
+      El detalle de «Proceso legislativo» queda abajo, sin repetir las
+      iniciativas ni las miniaturas.
+      - **Votación principal** de una cámara (`votacionPrincipal`): entre
+        sus votaciones nominales del expediente, la primera (por fecha e id)
+        de la última fecha en que votó «en lo general». La última fecha,
+        porque si la minuta regresa (la otra cámara la modificó) cuenta la que
+        aprobó el texto publicado; la primera del día, porque las siguientes
+        son las de los artículos reservados. Sin ninguna «en lo general», la
+        misma regla sobre todas.
+    - `scripts/lib/vida.mjs`: de `reformas.json` (fecha → claves) y
+      `articulos.json` del texto vigente, que `historial.mjs` lee de cada
+      documento. En `/bitacora/{Documento}/`, «Sus artículos»: un cuadro por
+      artículo del índice, más oscuro según cuántas reformas anota (0, 1–2,
+      3–5, 6–10, 11–20, más de 20). En la página de una reforma, «La vida de
+      estos artículos»: una fila por artículo que tocó (a lo más
+      `FILAS_VIDA`), una marca por fecha de reforma y en color las de su
+      Publicacion, y debajo la misma cuadrícula del documento con borde en
+      los artículos que tocó. Las fechas anteriores a 1918 son la publicación original
+      de la Constitución y no se cuentan. Sin `reformas.json` no hay sección.
+    - `scripts/cadena.test.mjs` prueba los dos módulos con un modelo
+      sintético: cadena completa, sin votos nominales, sin congresos locales,
+      ley federal, decreto sin expediente, con candidatos y resuelto por un
+      agente, la votación principal y las páginas.
     - `/leyes` enlaza «Sus cambios» de cada documento y el inicio toma de aquí
       sus últimas reformas (por fecha de publicación).
   - `scripts/congreso.mjs` → `/congreso/` («Congreso: quién vota qué»), del
@@ -154,13 +200,14 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     500 (44 suplentes) y 128 (27 suplentes), sin fórmulas contadas dos veces.
   - Miniaturas sin enlaces por asiento (`svgMini`: un trazo por color, cada
     asiento un punto de trazo redondo, unos 6 KB): las dos cámaras en
-    `/congreso/`, el lugar de cada legislador en su página y cada votación con
-    votos en «Proceso legislativo» de la bitácora, enlazada a su página.
+    `/congreso/`, el lugar de cada legislador en su página y las votaciones
+    de la cadena de una reforma en la bitácora.
   - Colores: una sola tabla en `hemiciclo.mjs` (`PARTIDOS`, `SENTIDOS`), con
     su origen y la versión para modo oscuro; el CSS (`ESTILO_HEMICICLO`) va solo
     en las páginas que tienen un hemiciclo.
   - `public/hemiciclo.js`, cargado con `defer` solo en las páginas con un
-    hemiciclo interactivo (votaciones y cámaras): tooltip propio, filtro por
+    hemiciclo interactivo (votaciones, cámaras y los cambios de la bitácora
+    con «Cómo votaron»): tooltip propio, filtro por
     sentido, grupo y marca al tocar la leyenda, búsqueda por nombre, flechas
     para moverse entre asientos (un solo tab), y en pantallas táctiles el
     primer toque muestra quién es y el segundo abre su página. Sin él, cada
