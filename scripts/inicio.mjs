@@ -9,7 +9,7 @@ const REFORMAS_EN_INICIO = 3;
 
 // Artículo de ejemplo para citar: el 82 de la Constitución en la reforma de
 // octubre de 2026.
-const EJEMPLO = { repo: REPOS.cpeum, ruta: "articulos/082.md", commit: "c5a88de" };
+const EJEMPLO = { repo: REPOS.cpeum, ruta: "articulos/082.md", commit: "260df83" };
 
 const repo = (r) => `https://github.com/${ORG}/${r}`;
 
