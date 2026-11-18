@@ -50,8 +50,7 @@ jobs:
         run: npm ci
 
       # Las tarjetas para redes (public/og/) se nombran por su contenido: con
-      # las de la corrida anterior solo se dibujan las nuevas (la primera vez
-      # son unos minutos).
+      # las de la corrida anterior solo se dibujan las nuevas.
       - name: Recuperar las tarjetas ya dibujadas
         uses: actions/cache@v4
         with:

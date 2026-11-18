@@ -9,7 +9,7 @@
 // hemiciclos ya generados aquí.
 //
 // Los datos se leen sin dependencias (fetch de Node y git); las tarjetas para
-// redes se dibujan con satori y resvg (`lib/tarjeta.mjs`). Si GITHUB_TOKEN existe se usa para la
+// redes se dibujan con resvg (`lib/tarjeta.mjs`). Si GITHUB_TOKEN existe se usa para la
 // API (el límite anónimo es de 60 peticiones por hora). Ninguna falla de red
 // detiene el despliegue: cada fuente que no responde se anota en la página.
 
