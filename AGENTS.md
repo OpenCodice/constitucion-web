@@ -21,9 +21,15 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   `REPOS_DATOS=..` para leer los clones del espacio de trabajo en vez de
   clonar en `.datos/`). Tarda unos 15 s más las tarjetas que no estén en
   `.tarjetas/`.
-  - `scripts/inicio.mjs` → `/`: el tejido, el status de la vigilancia,
-    cifras de cada corpus, últimas reformas, cómo se mantiene, y el historial,
-    cómo citar y cómo lo usa un agente. Es la única página con diseño propio
+  - `scripts/inicio.mjs` → `/`: la portada de OpenCodice como organización.
+    Su meta («que cualquier persona pueda leer la ley mexicana vigente, saber
+    cuándo cambió y quién la cambió») junto al tejido; el status de la
+    vigilancia; «Lo que hacemos», una columna por parte de la meta (las leyes,
+    la bitácora y el Congreso, con sus cifras: documentos del tejido, reformas
+    de la bitácora y votaciones y legisladores de congreso-mexicano, que
+    `paginas.mjs` le pasa en `datos.congreso`); cifras de cada corpus,
+    últimas reformas, cómo se mantiene, y el historial, cómo citar y cómo lo
+    usa un agente. Es la única página con diseño propio
     (no usa `estilo.css`): la fuente Jost, servida desde `public/fuentes/`
     (OFL), y los colores de cada corpus, con su versión para modo oscuro.
     - El tejido (`scripts/lib/tejido.mjs`): un cuadro por documento

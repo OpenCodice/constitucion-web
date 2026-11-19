@@ -37,6 +37,8 @@ const [datos, historial] = await Promise.all([leerTodo(generada), leerHistorial(
 const vinculos = await leerVinculos();
 const bitacora = modelo(historial);
 datos.bitacora = bitacora;
+// El inicio cuenta votaciones y legisladores.
+datos.congreso = vinculos;
 
 // La bitácora se escribe entera cada vez: un documento retirado o un commit
 // que ya no está no debe dejar páginas viejas.

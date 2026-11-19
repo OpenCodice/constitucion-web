@@ -1,5 +1,6 @@
-// Página de inicio. Se genera en cada despliegue para que las cifras, el
-// status, las últimas reformas y el tejido salgan de los repos de datos.
+// Página de inicio: la meta de OpenCodice y lo que hace para cumplirla. Se
+// genera en cada despliegue para que las cifras, el status, las últimas
+// reformas y el tejido salgan de los repos de datos.
 //
 // Es la única página con diseño propio (su tipografía, sus colores y el
 // tejido); las demás usan estilo.css.
@@ -153,6 +154,33 @@ function ultimasReformas(actividad, bitacora) {
     </section>`;
 }
 
+// La meta tiene tres partes y cada una es un producto: qué dice la ley (el
+// texto), cuándo cambió (la bitácora) y quién la cambió (el Congreso).
+function loQueHacemos({ bitacora, congreso }, total) {
+  const reformas = bitacora?.cambios.filter((c) => c.clase === "reforma" && c.principal).length;
+  const m = congreso?.ok ? congreso : null;
+  const col = (pregunta, titulo, enlace, cifra, texto) => `
+            <div class="paso">
+              <span class="num">${pregunta}</span>
+              <h3><a href="${enlace}">${titulo}</a></h3>
+              ${cifra ? `<span class="n">${cifra}</span>` : ""}
+              <p>${texto}</p>
+            </div>`;
+  return [
+    col("Qué dice", "Las leyes", "/leyes", total ? numero(total) : "", "documentos con su texto vigente, un artículo por archivo, extraído del PDF oficial."),
+    col("Cuándo cambió", "La bitácora", "/bitacora/", reformas ? numero(reformas) : "", "reformas registradas desde que cada ley entró al registro, cada una con su fecha de publicación y la diferencia exacta de su texto."),
+    col(
+      "Quién la cambió",
+      "El Congreso",
+      "/congreso/",
+      m ? numero(m.votaciones.size) : "",
+      m
+        ? `votaciones nominales con el voto de cada uno de ${plural(m.personas.size, "legislador", "legisladores")}, y cada iniciativa con su autor y en qué quedó.`
+        : "Cada votación nominal con el voto de cada legislador, y cada iniciativa con su autor y en qué quedó.",
+    ),
+  ].join("");
+}
+
 function status(vigilancia, generada) {
   const s = salud(vigilancia, generada);
   const revision = s.ultimaRevision ? `Última revisión de las fuentes: ${momento(s.ultimaRevision)}` : "";
@@ -259,6 +287,9 @@ h2 { font-weight: 400; font-size: clamp(30px, 3.4vw, 44px); line-height: 1.12; l
 .paso h3 { font-weight: 500; font-size: 21px; margin: 12px 0 8px; }
 .paso p { margin: 0; color: var(--tenue); font-size: 15.5px; }
 .paso p a, .paso p code { color: var(--texto); }
+.paso h3 a { text-decoration: none; }
+.paso h3 a:hover { text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1px; }
+.paso .n { display: block; font-size: 46px; font-weight: 300; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-bottom: 10px; }
 pre { margin: 14px 0 0; padding: 12px 14px; background: color-mix(in srgb, var(--texto) 6%, transparent); overflow-x: auto; font-size: 14px; }
 
 footer { border-top: 1.5px solid var(--texto); padding-block: 40px 48px; font-size: 14px; }
@@ -317,18 +348,18 @@ export function paginaInicio(datos, generada) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>OpenCodice — las leyes de México, versionadas</title>
+    <title>OpenCodice — la ley, abierta y al día</title>
     <meta
       name="description"
-      content="El texto vigente de la Constitución, las leyes federales, las constituciones estatales y la legislación fiscal de México, un archivo por artículo, con cada reforma registrada en git."
+      content="Que cualquier persona pueda leer la ley mexicana vigente, saber cuándo cambió y quién la cambió. El texto de la Constitución y de las leyes federales y estatales, cada reforma y cada votación del Congreso."
     />
     ${metaSocial({
       url: "/",
-      titulo: "OpenCodice — las leyes de México, versionadas",
-      descripcion: "El texto vigente de la ley mexicana, un archivo por artículo, con cada reforma registrada en git.",
+      titulo: "OpenCodice — la ley, abierta y al día",
+      descripcion: "Que cualquier persona pueda leer la ley mexicana vigente, saber cuándo cambió y quién la cambió.",
       tarjeta: {
-        titulo: "Las leyes de México",
-        detalle: "Un cuadro por cada documento publicado, con la Constitución al centro, y cada reforma registrada en git.",
+        titulo: "La ley, abierta y al día",
+        detalle: "Que cualquier persona pueda leer la ley mexicana vigente, saber cuándo cambió y quién la cambió.",
         arte: t.total ? grupoTarjeta(t, ZONA_ARTE) : "",
       },
     })}
@@ -340,7 +371,7 @@ export function paginaInicio(datos, generada) {
   </head>
   <body>
     <header class="ancho barra">
-      <a class="marca" href="/">OpenCodice<br />Leyes de México</a>
+      <a class="marca" href="/">OpenCodice</a>
       <nav aria-label="Secciones">
         <a href="/leyes">Leyes</a>
         <a href="/bitacora/">Bitácora</a>
@@ -353,15 +384,14 @@ export function paginaInicio(datos, generada) {
     <main>
       <section class="ancho portada">
         <div>
-          <h1>Las leyes de México</h1>
+          <h1>La ley, abierta y al día</h1>
           <p class="entrada">
-            El texto vigente de la Constitución y de las leyes federales y estatales, un artículo
-            por archivo. Cada reforma queda registrada con la diferencia exacta y el PDF oficial del
-            que salió.
+            Que cualquier persona pueda leer la ley mexicana vigente, saber cuándo cambió y quién la
+            cambió.
           </p>
           <div class="acciones">
-            <a href="/bitacora/">Ver las reformas</a>
-            <a class="tenue" href="/leyes">Qué leyes hay</a>
+            <a href="/leyes">Leer las leyes</a>
+            <a class="tenue" href="/bitacora/">Ver las reformas</a>
           </div>
         </div>
 ${
@@ -380,6 +410,15 @@ ${
       </section>
 
       <div class="ancho">${status(datos.vigilancia, generada)}</div>
+
+      <section class="banda">
+        <div class="ancho">
+          <p class="antetitulo">Lo que hacemos</p>
+          <h2>Tres preguntas, tres registros públicos.</h2>
+          <div class="pasos lo-que-hacemos">${loQueHacemos(datos, t.total)}
+          </div>
+        </div>
+      </section>
 
       <section class="banda">
         <div class="ancho">
@@ -443,7 +482,7 @@ ${ultimasReformas(datos.actividad, datos.bitacora)}
     <footer>
       <div class="ancho pie">
         <div>
-          <a class="marca" href="/">OpenCodice<br />Leyes de México</a>
+          <a class="marca" href="/">OpenCodice</a>
           <p>Los datos son de dominio público (<a href="https://creativecommons.org/publicdomain/zero/1.0/deed.es">CC0</a>) y el código es MIT. No sustituye a la publicación oficial ni es asesoría legal.</p>
         </div>
         <div>
