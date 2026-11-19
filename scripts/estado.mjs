@@ -498,7 +498,7 @@ export function paginaEstado(datos, generada) {
       <p>
         Un sistema autónomo mantiene al día la ley en los repositorios: cada lunes descarga los
         PDF oficiales, extrae el texto, lo verifica contra el PDF y solo publica lo que queda
-        verificado. Esta página muestra cómo va; se actualiza cada tres horas (la última, el
+        verificado. Esta página muestra cómo va; se vuelve a generar cada vez que cambian los datos (la última, el
         ${momento(generada)}) y las horas son de la Ciudad de México.
       </p>
 
