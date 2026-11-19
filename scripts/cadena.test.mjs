@@ -1,8 +1,8 @@
 // La cadena de una reforma (scripts/lib/cadena.mjs) y la vida de los artículos
 // (scripts/lib/vida.mjs) con un modelo sintético de congreso-mexicano y del
 // historial: cadena completa, sin votos nominales, sin congresos locales, ley
-// federal y decreto sin expediente (sin candidatos, con candidatos y resuelto
-// por un agente).
+// federal, decreto sin expediente (sin candidatos, con candidatos y resuelto
+// por un agente) y decretos sin commit (anteriores al alta de su ley).
 //   node --test scripts/
 
 import { test } from "node:test";
@@ -13,6 +13,7 @@ import { modeloCongreso, urlLegislador } from "./lib/congreso.mjs";
 import { vinculosDe } from "./lib/vinculos.mjs";
 import { cadenaDe, votacionPrincipal, htmlCadena, htmlCongresos, dias } from "./lib/cadena.mjs";
 import { vidaDocumento, htmlLineaVida, nivel } from "./lib/vida.mjs";
+import { temaDecreto, tituloSinDecreto, estadoRegistro } from "./lib/decretos.mjs";
 
 const SHA = (n) => String(n).padEnd(40, "a");
 const GENERADA = "2027-01-01T00:00:00Z";
@@ -66,6 +67,7 @@ function historial() {
       { fecha: "1917-02-05", claves: ["082", "116"] },
       { fecha: "1990-04-06", claves: ["082"] },
       { fecha: "2005-03-01", claves: ["082", "116"] },
+      { fecha: "2026-06-02", claves: ["001"] },
       { fecha: "2026-10-07", claves: ["082", "116"] },
     ],
   };
@@ -177,6 +179,22 @@ function congreso() {
         expedientes: [{ id: "sil-500", criterio: "resuelto por agente", resolucion: "OpenCodice/congreso-extractor:resoluciones/x.json", evidencia: [] }],
       }),
       decreto("dof-21", "lgs", "2026-06-09", { expedientes: [{ id: "sil-503", criterio: "único" }] }),
+      // Sin commit: anteriores al alta de la Constitución (versión del 2026-06-02).
+      decreto("dof-30", "cpeum", "2005-03-01", {
+        titulo: "Decreto por el que se reforman los artículos 82 y 116, en materia de Ley Federal de Algo, Reglamentaria del artículo 1o.",
+        expedientes: [{ id: "sil-503", criterio: "único" }],
+      }),
+      decreto("dof-31", "cpeum", "2026-06-02", {
+        titulo: "Decreto por el que se reforma el artículo 1o., en materia de nacionalidad única.",
+        documentos: [
+          { documento: "cpeum", publicacion: "2026-06-02", commits: [], decretos_mismo_dia: ["dof-31", "dof-32"] },
+          { documento: "lgs", publicacion: "2026-06-02", commits: [] },
+        ],
+      }),
+      decreto("dof-32", "cpeum", "2026-06-02", {
+        titulo: `Decreto por el que se reforman diversas disposiciones de ${"la Ley Uno, ".repeat(12)}y de la Ley Dos.`,
+        documentos: [{ documento: "cpeum", publicacion: "2026-06-02", commits: [], decretos_mismo_dia: ["dof-31", "dof-32"] }],
+      }),
     ],
     iniciativas: [
       {
@@ -360,14 +378,19 @@ test("vida de los artículos: cuadrícula y línea de vida", () => {
   const d = vidaDocumento(historial()[REPOS.cpeum].datos.reformas.cpeum, historial()[REPOS.cpeum].datos.articulos.cpeum);
   assert.equal(d.omitidas, 1, "1917 es la publicación original");
   assert.deepEqual(d.porArticulo.get("082"), ["1990-04-06", "2005-03-01", "2026-10-07"]);
-  assert.deepEqual(d.articulos.map((a) => [a.etiqueta, a.fechas.length]), [["1o", 0], ["82", 3], ["116", 2]]);
+  assert.deepEqual(d.articulos.map((a) => [a.etiqueta, a.fechas.length]), [["1o", 1], ["82", 3], ["116", 2]]);
   assert.equal(vidaDocumento(null, null), null);
   assert.equal(vidaDocumento([{ fecha: "1917-02-05", claves: ["001"] }], null), null);
   assert.deepEqual([0, 1, 2, 3, 5, 6, 10, 11, 20, 21].map(nivel), [0, 1, 1, 2, 2, 3, 3, 4, 4, 5]);
 
-  const svg = htmlLineaVida(d, ["082", "116"], ["2026-10-07"]);
-  assert.equal((svg.match(/class="esta"/g) ?? []).length, 2, "la reforma de la página, resaltada en cada artículo");
-  assert.equal((svg.match(/class="otra"/g) ?? []).length, 3);
+  const svg = htmlLineaVida(d, ["082", "116"], ["2026-10-07"], { sigla: "CPEUM" });
+  const ancha = svg.slice(svg.indexOf('class="vida ancha"'), svg.indexOf('class="vida angosta"'));
+  assert.equal((ancha.match(/class="esta"/g) ?? []).length, 2, "la reforma de la página, resaltada en cada artículo");
+  assert.equal((ancha.match(/class="otra"/g) ?? []).length, 3);
+  assert.equal((ancha.match(/class="(esta|otra) doc"/g) ?? []).length, 4, "arriba, cada fecha de reforma del documento");
+  assert.ok(ancha.includes(">CPEUM</text>"));
+  assert.equal((svg.match(/<svg class="vida /g) ?? []).length, 2, "un dibujo ancho y uno angosto, con los mismos datos");
+  assert.ok(svg.includes("esta reforma") && svg.includes("otras reformas"), "con su leyenda");
 
   const archivos = paginasBitacora(modelo(historial()), GENERADA, congreso());
   // En la página de la reforma, la cuadrícula con borde en los artículos que tocó.
@@ -382,4 +405,65 @@ test("vida de los artículos: cuadrícula y línea de vida", () => {
   assert.equal((doc.match(/class="art-c /g) ?? []).length, 3);
   assert.ok(doc.includes("Las fechas de 1917 son la publicación original"));
   assert.ok(!archivos.get("bitacora/lgs/index.html").includes('class="cuadricula"'), "sin reformas.json no hay cuadrícula");
+});
+
+test("decretos: tema, título y estado frente al registro", () => {
+  assert.equal(temaDecreto("Decreto por el que se reforma el artículo 41, en materia de reforma al Poder Judicial."), "Reforma al Poder Judicial");
+  assert.equal(temaDecreto("Decreto por el que se expide la Ley General para Prevenir la Extorsión, en materia de Extorsión, Reglamentaria del artículo 73."), null);
+  assert.equal(temaDecreto("Decreto por el que se reforma la Ley de Amparo."), null, "sin «en materia de» no hay tema");
+  assert.equal(temaDecreto("Decreto por el que se reforma la Ley General, en materia de igualdad sustantiva, salud y trabajo."), "Igualdad sustantiva, salud y trabajo");
+  assert.equal(temaDecreto("Decreto por el que se expide la Ley de los Delitos en Materia de Extorsión y se reforma la Ley Orgánica del Poder Judicial."), null);
+  assert.equal(tituloSinDecreto("Decreto por el que se reforman y adicionan diversas disposiciones de la Ley de Amparo."), "Reforman y adicionan diversas disposiciones de la Ley de Amparo");
+  assert.equal(estadoRegistro("2025-10-16", "2025-10-16"), "incluido");
+  assert.equal(estadoRegistro("2025-03-13", "2025-10-16"), "anterior");
+  assert.equal(estadoRegistro("2026-01-01", "2025-10-16"), "pendiente");
+  assert.equal(estadoRegistro("2026-01-01", null), null);
+});
+
+test("decretos sin commit: su página, su lista y el índice", () => {
+  const archivos = paginasBitacora(modelo(historial()), GENERADA, congreso());
+  const decreto = (id) => archivos.get(`bitacora/decretos/${id}.html`);
+  for (const id of ["dof-10", "dof-11", "dof-12", "dof-13", "dof-14", "dof-15", "dof-21"]) assert.equal(decreto(id), undefined, `${id} ya tiene commit: su página es la de la reforma`);
+
+  // Anterior al alta: la cadena llega al DOF y el último paso lo dice, sin fecha.
+  const d30 = decreto("dof-30");
+  assert.ok(
+    d30.includes("<h1>Reforman los artículos 82 y 116, en materia de Ley Federal de Algo, Reglamentaria del artículo 1o</h1>"),
+    "sin tema (lo que sigue a «en materia de» es el nombre de una ley), el título corto",
+  );
+  assert.ok(d30.includes('id="cadena"') && d30.includes('<li class="paso reg">'));
+  assert.ok(d30.includes("sin commit") && d30.includes("Anterior al registro"));
+  assert.ok(!d30.includes("del DOF al commit") && !d30.includes('class="tramo reg"'), "el eje termina en el DOF");
+  assert.ok(d30.includes("Es anterior a que OpenCodice registrara esta ley"));
+  assert.ok(d30.includes("2 artículos, según las notas de reforma de su texto vigente: 82 y 116."));
+  assert.ok(d30.includes('class="vida-c"') && d30.includes("Cada punto es una reforma"));
+  assert.ok(d30.includes('id="votos"') && d30.includes('id="proceso"'));
+  assert.ok(!d30.includes('id="estados"'), "el SIL no registra su declaratoria: la sección se omite");
+
+  // Mismo día que otro decreto, y sobre dos leyes.
+  const d31 = decreto("dof-31");
+  assert.ok(d31.includes("<h1>Nacionalidad única</h1>"));
+  assert.ok(d31.includes("Ya incluido"), "el alta de la Constitución es la versión de este decreto");
+  assert.ok(d31.includes("Sin commit todavía en LGS"), "la LGS entró antes y aún no lo registra");
+  assert.ok(d31.includes("sus notas de reforma los juntan en una sola fecha"));
+  assert.ok(d31.includes("Sus notas de reforma no anotan artículos"), "la LGS no tiene reformas.json");
+  assert.ok(d31.includes("no se identificó su expediente en el SIL".replace(/^n/, "N")), "sin expediente, la cadena vacía con su motivo");
+  assert.ok(!d31.includes("Es anterior a que OpenCodice registrara"), "en la LGS sería posterior a su alta");
+
+  assert.ok(decreto("dof-32").includes("<h1>Decreto del 2 de junio de 2026</h1>"), "un título largo no va de h1");
+  assert.ok(decreto("dof-32").includes("«Decreto por el que se reforman diversas disposiciones"), "va completo debajo");
+
+  // En la página del documento: todos sus decretos, con o sin commit.
+  const doc = archivos.get("bitacora/cpeum/index.html");
+  const decs = doc.slice(doc.indexOf('id="decretos"'), doc.indexOf('id="anteriores"') > 0 ? doc.indexOf('id="anteriores"') : undefined);
+  assert.equal((decs.match(/<li>/g) ?? []).length, 9);
+  assert.ok(decs.includes(`href="/bitacora/cpeum/${SHA(10).slice(0, 12)}"`), "el que tiene commit enlaza a su reforma");
+  assert.ok(decs.includes('href="/bitacora/decretos/dof-30"'));
+  assert.ok(decs.includes('Diputados <span class="si">3</span>–<span class="no">1</span>'));
+  assert.ok(decs.includes("reforma también"), "dof-31 también toca la LGS");
+
+  const indice = archivos.get("bitacora/decretos/index.html");
+  assert.equal((indice.match(/<li>/g) ?? []).length, 10);
+  assert.ok(indice.includes('href="/bitacora/decretos/" aria-current="page"'));
+  assert.ok(archivos.get("bitacora/index.html").includes('Decretos <span class="cuenta">10</span>'));
 });

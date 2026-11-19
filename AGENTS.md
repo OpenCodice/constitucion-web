@@ -65,9 +65,10 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
       `scripts/supervisor.test.mjs`.
   - `scripts/bitacora.mjs` → `/bitacora/` («Bitácora de reformas»): las
     reformas por fecha de publicación; `/bitacora/correcciones`,
-    `/bitacora/altas` y `/bitacora/metadatos` (por fecha de registro); `/bitacora/documentos`; la
-    historia de cada documento en `/bitacora/{Documento}/` (con las fechas de
-    reforma anteriores a su alta, de `reformas.json`) y cada cambio en
+    `/bitacora/altas` y `/bitacora/metadatos` (por fecha de registro); `/bitacora/documentos`;
+    `/bitacora/decretos/` (ver `decretos.mjs` abajo); la
+    historia de cada documento en `/bitacora/{Documento}/` (con sus decretos
+    y las fechas de reforma anteriores a su alta, de `reformas.json`) y cada cambio en
     `/bitacora/{Documento}/{sha a 12}`: ficha (tipo, publicación, medio,
     fuente y sha256, extractor, commit), artículos y la diferencia de su texto
     antes/después. También `/bitacora/cambios.json` y el Atom
@@ -127,7 +128,9 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
       `svgMini` si hay votos con nombre) → congresos locales (solo `cpeum`) →
       DOF → commit (`dia` del cambio), con la fecha y los días desde el paso
       anterior con fecha, y un eje a escala: tramo legislativo hasta el DOF y
-      de registro, punteado, del DOF al commit. En pantallas de menos de 52rem
+      de registro, punteado, del DOF al commit. Un decreto sin commit pasa un
+      cambio sin sha: su último paso queda sin fecha, con el texto que le da
+      `bitacora.mjs`, y el eje termina en el DOF. En pantallas de menos de 52rem
       va vertical. Un paso sin dato se dibuja vacío con su motivo, nunca se
       rellena: sin votación nominal (dice si hubo económicas), sin
       `legislaturas_estatales`, sin dictamen o iniciativas, y los pasos del
@@ -157,14 +160,38 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
       artículo del índice, más oscuro según cuántas reformas anota (0, 1–2,
       3–5, 6–10, 11–20, más de 20). En la página de una reforma, «La vida de
       estos artículos»: una fila por artículo que tocó (a lo más
-      `FILAS_VIDA`), una marca por fecha de reforma y en color las de su
-      Publicacion, y debajo la misma cuadrícula del documento con borde en
+      `FILAS_VIDA`; si sobran hasta 20 se nombran), un punto por fecha de
+      reforma y en color las de su Publicacion, arriba una fila con todas las
+      reformas del documento (cada punto del tamaño de cuántos artículos
+      tocó) y su leyenda. Son dos SVG con los mismos datos, uno ancho y otro
+      angosto (menos de 40rem), porque el ancho, reducido, deja el texto
+      ilegible; el CSS muestra uno. Debajo, la misma cuadrícula del documento con borde en
       los artículos que tocó. Las fechas anteriores a 1918 son la publicación original
       de la Constitución y no se cuentan. Sin `reformas.json` no hay sección.
-    - `scripts/cadena.test.mjs` prueba los dos módulos con un modelo
+    - `scripts/lib/decretos.mjs`: los decretos de congreso-mexicano vistos
+      desde el registro. Casi todos son anteriores al alta de su ley, así que
+      no tienen commit; cada uno sin commit tiene su página en
+      `/bitacora/decretos/{id}` (uno por decreto aunque toque varias leyes;
+      el que tiene commit, que liga `vinculosDe`, solo enlaza a su reforma):
+      título y enlace al DOF, las leyes que reforma, la cadena (hasta el DOF;
+      su último paso dice, por cada ley, si el alta ya es la versión de este
+      decreto, si es posterior, o si el alta es anterior y aún no hay
+      commit, por `estadoRegistro` contra la Publicacion del alta), quién la
+      propuso, cómo votaron, congresos locales, «Artículos que tocó» (de las
+      notas de reforma de esa fecha, con aviso si ese día hubo varios decretos
+      sobre la ley: las notas los juntan) con su línea de vida, y el detalle
+      del proceso. El h1 es su tema (`temaDecreto`: lo que sigue al último
+      «en materia de», si no es el nombre de una ley) o, sin él, el título
+      si cabe en 120 caracteres o la fecha; no se resume ni se deduce nada.
+      `/bitacora/decretos/` los lista por año y la página de cada documento,
+      en «Sus decretos», los suyos, con los conteos de la votación principal
+      de cada cámara.
+    - `scripts/cadena.test.mjs` prueba los tres módulos con un modelo
       sintético: cadena completa, sin votos nominales, sin congresos locales,
       ley federal, decreto sin expediente, con candidatos y resuelto por un
-      agente, la votación principal y las páginas.
+      agente, la votación principal, decretos sin commit (anterior al alta,
+      ya incluido en ella, sobre dos leyes y el mismo día que otro) y las
+      páginas.
     - `/leyes` enlaza «Sus cambios» de cada documento y el inicio toma de aquí
       sus últimas reformas (por fecha de publicación).
   - `scripts/congreso.mjs` → `/congreso/` («Congreso: quién vota qué»), del

@@ -91,8 +91,10 @@ const DICTAMEN = /^Dictamen/i;
 
 // La cadena de un proceso (un decreto) de vinculosDe. `m`: el modelo de
 // congreso-mexicano; `cambio`: el commit de la bitácora; `articulos`: el
-// texto de los artículos que tocó.
-export function cadenaDe(m, p, cambio, { articulos = "" } = {}) {
+// texto de los artículos que tocó. Un decreto sin commit (anterior al alta de
+// su ley) pasa un `cambio` sin sha y en `registro` lo que dice su último
+// paso, que queda sin fecha: el eje termina en el DOF.
+export function cadenaDe(m, p, cambio, { articulos = "", registro = "" } = {}) {
   const d = p.decreto;
   const constitucional = cambio.documento === "cpeum";
   const { x, motivo } = expedienteSeguro(p);
@@ -194,15 +196,11 @@ export function cadenaDe(m, p, cambio, { articulos = "" } = {}) {
     quien: "Decreto publicado",
     dato: d.url ? `<a href="${esc(d.url)}">${d.codigo ? `código ${esc(d.codigo)}` : "el decreto"}</a>` : "",
   });
-  pasos.push({
-    clave: "commit",
-    titulo: "Texto vigente",
-    fecha: cambio.dia,
-    enlace: "#articulos",
-    quien: `<code>${esc(cambio.sha.slice(0, 7))}</code>`,
-    dato: articulos,
-    registro: true,
-  });
+  pasos.push(
+    cambio.sha
+      ? { clave: "commit", titulo: "Texto vigente", fecha: cambio.dia, enlace: "#articulos", quien: `<code>${esc(cambio.sha.slice(0, 7))}</code>`, dato: articulos, registro: true }
+      : { clave: "commit", titulo: "Texto vigente", fecha: null, quien: "", dato: registro, registro: true },
+  );
 
   // Días desde el paso anterior que tiene fecha.
   let anterior = null;
@@ -260,7 +258,7 @@ export function htmlCadena(cad, sufijo = "") {
       return `<li class="${clases}">
 <span class="gap">${s.fecha ? gap(s.dias) : ""}</span>
 <span class="nodo" aria-hidden="true"></span>
-<span class="f">${s.fecha ? `<time datetime="${esc(s.fecha)}">${fechaCorta(s.fecha, conAño)}</time>` : "sin fecha"}</span>
+<span class="f">${s.fecha ? `<time datetime="${esc(s.fecha)}">${fechaCorta(s.fecha, conAño)}</time>` : s.registro ? "sin commit" : "sin fecha"}</span>
 ${titulo}
 ${s.mini ? `<span class="mini-h">${s.mini}</span>` : ""}
 ${s.quien ? `<span class="q">${s.quien}</span>` : ""}
@@ -310,13 +308,13 @@ function ejeCadena(cad) {
   }
 
   const dof = cad.decreto.fecha;
-  const fin = cad.pasos.at(-1).fecha;
+  const fin = cad.pasos.at(-1).fecha ?? dof;
   const legis = dias(T0, dof);
   const primero = con[0];
   const desde = primero.clave === "iniciativa" ? "de la iniciativa" : `del primer paso con fecha (${primero.titulo.toLowerCase()})`;
   const tramos = [
     legis > 0 ? `<line x1="${f1(x(T0))}" x2="${f1(x(dof))}" y1="28" y2="28" class="tramo"/>` : "",
-    `<line x1="${f1(x(dof))}" x2="${f1(x(fin))}" y1="28" y2="28" class="tramo reg"/>`,
+    fin !== dof ? `<line x1="${f1(x(dof))}" x2="${f1(x(fin))}" y1="28" y2="28" class="tramo reg"/>` : "",
   ].join("");
   const puntos = con
     .map(
@@ -326,12 +324,12 @@ function ejeCadena(cad) {
     .join("");
   const textos = [
     legis > 0 ? `<text x="${f1(X0)}" y="52" class="tr-t">${esc(`${plural(legis, "día", "días")} ${desde} al DOF`)}</text>` : "",
-    `<text x="${f1(X1)}" y="52" class="tr-t" text-anchor="end">${esc(`${plural(dias(dof, fin), "día", "días")} del DOF al commit`)}</text>`,
+    fin !== dof ? `<text x="${f1(X1)}" y="52" class="tr-t" text-anchor="end">${esc(`${plural(dias(dof, fin), "día", "días")} del DOF al commit`)}</text>` : "",
   ].join("");
   return `<div class="eje-c"><svg class="eje" viewBox="0 0 ${W} 60" role="img" aria-label="${esc(
     `Eje de tiempo a escala, del ${fechaLarga(T0)} al ${fechaLarga(T1)}`,
   )}">${marcas.join("")}${tramos}${puntos}${textos}</svg></div>
-<p class="nota-eje">Eje a escala. Punteado, el tramo entre la publicación en el DOF y el commit que la registra en OpenCodice.</p>`;
+<p class="nota-eje">${fin !== dof ? "Eje a escala. Punteado, el tramo entre la publicación en el DOF y el commit que la registra en OpenCodice." : "Eje a escala, hasta su publicación en el DOF."}</p>`;
 }
 
 // ------------------------------------------------------------------ quién la propuso

@@ -100,9 +100,10 @@ export function resumenVida(vida) {
 
 const año = (f) => Number(f.slice(0, 4)) + (Number(f.slice(5, 7)) - 1) / 12 + (Number(f.slice(8, 10)) - 1) / 365;
 
-// Una fila por artículo con una marca por reforma; las de `actuales` (las
-// fechas de publicación del cambio) resaltadas.
-export function htmlLineaVida(vida, claves, actuales, { etiquetas = {} } = {}) {
+// Una fila por artículo con un punto por reforma; las de `actuales` (las
+// fechas de publicación del cambio) resaltadas. Arriba, una fila con todas
+// las reformas del documento, cada punto del tamaño de cuántos artículos tocó.
+export function htmlLineaVida(vida, claves, actuales, { etiquetas = {}, sigla = null } = {}) {
   const filasArt = claves.slice(0, FILAS_VIDA).map((k) => ({
     clave: k,
     etiqueta: vida.articulos.find((a) => a.clave === k)?.etiqueta ?? etiquetas[k] ?? k,
@@ -112,35 +113,49 @@ export function htmlLineaVida(vida, claves, actuales, { etiquetas = {} } = {}) {
   const todas = [vida.desde, vida.hasta, ...actuales].filter(Boolean).sort();
   const A0 = Math.floor(año(todas[0]));
   const A1 = Math.floor(año(todas.at(-1))) + 1;
-  const W = 1000;
-  const X0 = 64;
-  const X1 = W - 40;
-  const x = (f) => X0 + ((X1 - X0) * (año(f) - A0)) / Math.max(1, A1 - A0);
-  const H = 30;
   const actual = new Set(actuales);
-  const filas = filasArt.map((a, i) => {
-    const y = 18 + i * H;
-    const marcas = a.fechas
-      .map(
-        (f) =>
-          `<line x1="${x(f).toFixed(1)}" x2="${x(f).toFixed(1)}" y1="${y - 9}" y2="${y + 9}" class="${actual.has(f) ? "esta" : "otra"}"><title>${esc(
-            `Artículo ${a.etiqueta}: ${f}`,
-          )}</title></line>`,
-      )
-      .join("");
-    return `<text x="0" y="${y + 4}" class="art">${esc(a.etiqueta.length > 8 ? `${a.etiqueta.slice(0, 7)}…` : a.etiqueta)}</text><line x1="${X0}" x2="${X1}" y1="${y}" y2="${y}" class="base"/>${marcas}<text x="${W}" y="${y + 4}" text-anchor="end" class="n">${numero(a.fechas.length)}</text>`;
-  });
-  const span = A1 - A0;
-  const paso = span > 60 ? 20 : span > 30 ? 10 : span > 12 ? 5 : span > 5 ? 2 : 1;
-  const yEje = 18 + filasArt.length * H;
-  const marcasEje = [];
-  for (let a = Math.ceil(A0 / paso) * paso; a <= A1; a += paso) {
-    marcasEje.push(`<text x="${x(`${a}-01-01`).toFixed(1)}" y="${yEje}" text-anchor="middle" class="dec">${a}</text>`);
-  }
+  const cuenta = new Map();
+  for (const fs of vida.porArticulo.values()) for (const f of fs) cuenta.set(f, (cuenta.get(f) ?? 0) + 1);
+  const maxN = Math.max(...cuenta.values());
   const nombres = filasArt.map((a) => a.etiqueta);
-  return `<div class="vida-c"><svg class="vida" viewBox="0 0 ${W} ${yEje + 6}" role="img" aria-label="${esc(
-    `Fechas de reforma de ${nombres.length === 1 ? "el artículo" : "los artículos"} ${lista(nombres)}, de ${A0} a ${A1}`,
-  )}">${filas.join("")}${marcasEje.join("")}</svg></div>`;
+  const etiqueta = `Fechas de reforma de ${nombres.length === 1 ? "el artículo" : "los artículos"} ${lista(nombres)}, de ${A0} a ${A1}`;
+
+  // Dos dibujos del mismo dato: uno ancho y uno angosto para pantallas
+  // chicas, donde el ancho haría ilegible el texto. El CSS muestra uno.
+  const corto = (t) => (t.length > 9 ? `${t.slice(0, 8)}…` : t);
+  const dibujo = (W, X0, clase) => {
+    const X1 = W - 34;
+    const x = (f) => X0 + ((X1 - X0) * (año(f) - A0)) / Math.max(1, A1 - A0);
+    const H = 30;
+    const yDoc = 26;
+    const docMarcas = [...cuenta]
+      .sort()
+      .map(([f, n]) => `<circle cx="${x(f).toFixed(1)}" cy="${yDoc}" r="${(3 + 9 * Math.sqrt(n / maxN)).toFixed(1)}" class="${actual.has(f) ? "esta" : "otra"} doc"><title>${esc(`${f}: ${plural(n, "artículo", "artículos")}`)}</title></circle>`)
+      .join("");
+    const filaDoc = `<text x="0" y="${yDoc + 5}" class="art">${esc(sigla ? corto(sigla) : "Todas")}</text><line x1="${X0}" x2="${X1}" y1="${yDoc}" y2="${yDoc}" class="base"/>${docMarcas}<text x="${W}" y="${yDoc + 5}" text-anchor="end" class="n">${numero(cuenta.size)}</text><line x1="0" x2="${W}" y1="${yDoc + 22}" y2="${yDoc + 22}" class="sep"/>`;
+    const Y0 = yDoc + 48;
+    const filas = filasArt.map((a, i) => {
+      const y = Y0 + i * H;
+      const marcas = a.fechas
+        .map((f) => `<circle cx="${x(f).toFixed(1)}" cy="${y}" r="${actual.has(f) ? 6.5 : 5}" class="${actual.has(f) ? "esta" : "otra"}"><title>${esc(`Artículo ${a.etiqueta}: ${f}`)}</title></circle>`)
+        .join("");
+      return `<text x="0" y="${y + 5}" class="art">${esc(corto(a.etiqueta))}</text><line x1="${X0}" x2="${X1}" y1="${y}" y2="${y}" class="base"/>${marcas}<text x="${W}" y="${y + 5}" text-anchor="end" class="n">${numero(a.fechas.length)}</text>`;
+    });
+    // Una marca de año cada 60 unidades del dibujo, al menos.
+    const ancho = (X1 - X0) / Math.max(1, A1 - A0);
+    const paso = [1, 2, 5, 10, 20, 50].find((p) => p * ancho >= 60) ?? 50;
+    const yEje = Y0 + filasArt.length * H - 2;
+    const marcasEje = [];
+    for (let a = Math.ceil(A0 / paso) * paso; a <= A1; a += paso) {
+      const xa = x(`${a}-01-01`).toFixed(1);
+      marcasEje.push(`<line x1="${xa}" x2="${xa}" y1="8" y2="${yEje - 16}" class="guia"/><text x="${xa}" y="${yEje}" text-anchor="middle" class="dec">${a}</text>`);
+    }
+    return `<svg class="vida ${clase}" viewBox="0 0 ${W} ${yEje + 6}" role="img" aria-label="${esc(etiqueta)}">${marcasEje.join("")}${filaDoc}${filas.join("")}</svg>`;
+  };
+  const leyenda = `<p class="leyenda-m"><span class="punto esta"></span> esta reforma <span class="punto otra"></span> otras reformas</p>
+<p class="tenue nota-vida">A la derecha, cuántas reformas anota cada artículo. Arriba, todas las reformas de ${esc(sigla ?? "el documento")}: más grande, más artículos tocó.</p>`;
+  return `<div class="vida-c">${dibujo(1000, 90, "ancha")}${dibujo(420, 56, "angosta")}</div>
+${leyenda}`;
 }
 
 export const ESTILO_VIDA = `
@@ -166,10 +181,18 @@ export const ESTILO_VIDA = `
 .cuadro.n5 { background: var(--texto); }
 .cuadro.esta { border: 2.5px solid var(--puesto); }
 .grupo-vida { margin: 2rem 0 0.6rem; font-size: 0.9em; font-weight: 600; }
-.vida { display: block; width: 100%; min-width: 30rem; height: auto; }
-.vida .art { font-size: 13px; font-weight: 600; fill: var(--texto); }
+.vida { display: block; width: 100%; min-width: 0; height: auto; }
+.vida.angosta { display: none; }
+@media (max-width: 40rem) { .vida.ancha { display: none; } .vida.angosta { display: block; } }
+.nota-vida { margin-top: -0.3rem; font-size: 0.78em; }
+.vida .art { font-size: 16px; font-weight: 600; fill: var(--texto); }
 .vida .base { stroke: var(--linea); stroke-width: 1; }
-.vida .otra { stroke: var(--tenue); stroke-width: 1.6; }
-.vida .esta { stroke: var(--puesto); stroke-width: 3.5; }
-.vida .n, .vida .dec { font-size: 12px; fill: var(--tenue); font-variant-numeric: tabular-nums; }
+.vida .otra { fill: var(--tenue); }
+.vida .esta { fill: var(--puesto); }
+.vida .doc { fill-opacity: 0.85; stroke: var(--fondo); stroke-width: 1.5; }
+.vida .guia { stroke: var(--linea); stroke-width: 1; stroke-dasharray: 2 4; }
+.vida .sep { stroke: var(--linea); stroke-width: 1; }
+.punto { display: inline-block; width: 0.75em; height: 0.75em; border-radius: 50%; vertical-align: -0.05em; }
+.punto.esta { background: var(--puesto); } .punto.otra { background: var(--tenue); }
+.vida .n, .vida .dec { font-size: 15px; fill: var(--tenue); font-variant-numeric: tabular-nums; }
 `;

@@ -44,6 +44,7 @@ import { urlVotacion, urlLegislador, urlExpediente, urlSilExpediente } from "./l
 import { ESTILO_HEMICICLO, asientosVotacion, resumenSentidos, svgMini } from "./lib/hemiciclo.mjs";
 import { ESTILO_CADENA, cadenaDe, htmlCadena, htmlQuien, htmlVotos, htmlCongresos } from "./lib/cadena.mjs";
 import { ESTILO_VIDA, FILAS_VIDA, vidaDocumento, htmlCuadricula, htmlLineaVida, resumenVida } from "./lib/vida.mjs";
+import { decretosDelRegistro, tituloSinDecreto } from "./lib/decretos.mjs";
 
 const SITIO = "https://constitucion.app";
 const BASE = "/bitacora";
@@ -85,6 +86,7 @@ const gh = (repo, resto = "") => `https://github.com/${ORG}/${repo}${resto}`;
 const urlCommit = (c) => gh(c.repo, `/commit/${c.sha}`);
 const urlDocumento = (doc) => `${BASE}/${doc}/`;
 const urlCambio = (c) => `${BASE}/${c.documento}/${c.id}`;
+const urlDecreto = (d) => `${BASE}/decretos/${d.id}`;
 
 const mesLargo = (dia) =>
   new Intl.DateTimeFormat("es-MX", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${dia}T00:00:00Z`));
@@ -319,6 +321,7 @@ const PESTAÑAS = [
   ["/correcciones", "Correcciones"],
   ["/altas", "Altas y retiros"],
   ["/documentos", "Documentos"],
+  ["/decretos/", "Decretos"],
 ];
 
 function pestañas(actual, cuentas) {
@@ -394,6 +397,15 @@ ins::after, del::after { content: "] "; }
 .evidencia { margin-top: 0.3em; font-size: 0.9em; color: var(--tenue); }
 .evidencia summary { cursor: pointer; }
 .evidencia ul { padding-left: 1.2em; margin: 0.4em 0; }
+.decretos { list-style: none; padding: 0; margin: 0 0 2rem; }
+.decretos li { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 0.1rem 1rem; margin: 0; padding: 0.7rem 0; border-bottom: 1px solid var(--linea); align-items: baseline; }
+.decretos .f { grid-row: span 2; color: var(--tenue); font-size: 0.8em; font-variant-numeric: tabular-nums; }
+.decretos .q { font-size: 0.95em; line-height: 1.35; }
+.decretos .d { grid-column: 2; font-size: 0.75em; line-height: 1.5; color: var(--tenue); }
+.decretos .si { color: var(--puesto); font-weight: 600; font-variant-numeric: tabular-nums; }
+.decretos .no { color: var(--quitado); font-weight: 600; font-variant-numeric: tabular-nums; }
+@media (max-width: 40rem) { .decretos li { grid-template-columns: minmax(0, 1fr); } .decretos .f { grid-row: auto; } .decretos .d { grid-column: 1; } }
+.titulo-dof { font-size: 0.85em; color: var(--tenue); }
 `;
 
 function pagina({ titulo, h1, descripcion, cuerpo, generada, url, tarjeta, tipo, sobre = "" }) {
@@ -411,7 +423,7 @@ function pagina({ titulo, h1, descripcion, cuerpo, generada, url, tarjeta, tipo,
       ESTILO,
       cuerpo.includes('class="mini-svg') || cuerpo.includes('class="hemiciclo"') ? ESTILO_HEMICICLO : "",
       cuerpo.includes('class="tira"') || cuerpo.includes('class="estados"') ? ESTILO_CADENA : "",
-      cuerpo.includes('class="cuadricula"') || cuerpo.includes('class="vida"') ? ESTILO_VIDA : "",
+      cuerpo.includes('class="cuadricula"') || cuerpo.includes('class="vida-c"') ? ESTILO_VIDA : "",
     ].join(""),
     cabeza: [
       `<link rel="alternate" type="application/atom+xml" href="${BASE}/reformas.xml" title="Reformas registradas en OpenCodice" />`,
@@ -439,6 +451,7 @@ function cuentas(m) {
     "/correcciones": m.cambios.filter((c) => c.clase === "correccion").length,
     "/altas": principales.filter((c) => c.tipo === "alta" || c.tipo === "retiro").length,
     "/documentos": m.documentos.size,
+    "/decretos/": m.decretos?.length ?? 0,
   };
 }
 
@@ -459,8 +472,9 @@ ${pestañas("", cuentas(m))}
 ${avisoFallas(m.fallas)}
 <p>
   Las reformas, por la fecha en que se publicaron en el Diario Oficial o en el periódico oficial
-  del estado. La historia de cada documento empieza en su alta: de las reformas anteriores solo
-  conocemos la fecha, que está en la página de cada documento.
+  del estado. La historia de cada documento empieza en su alta: de las reformas anteriores
+  conocemos la fecha, que está en la página de cada documento, y de las federales más recientes,
+  su <a href="${BASE}/decretos/">decreto</a> con su proceso legislativo.
 </p>
 ${
   porAño.length
@@ -586,7 +600,7 @@ ${htmlCuadricula(d.vida, { nombre: d.nombre })}
 <p class="tenue">${resumenVida(d.vida)}</p>`;
 }
 
-function paginaDocumento(d, generada) {
+function paginaDocumento(m, d, generada) {
   const { repo, ruta } = textoVigente(d);
   const n = (t) => d.cambios.filter((c) => c.clase === t).length;
   const resumen = [
@@ -618,6 +632,7 @@ ${listaCambios(
   { conDocumento: false, fecha: "registro" },
 )}
 ${seccionCuadricula(d)}
+${seccionDecretos(m, d)}
 ${reformasAnteriores(d)}`;
   return pagina({
     url: urlDocumento(d.clave),
@@ -990,21 +1005,32 @@ ${bloques.join("\n")}`;
   return { cadena, html };
 }
 
+const textoVida = (vida) =>
+  `<p>Cada punto es una reforma que anota el texto vigente en sus notas de reforma${vida.omitidas ? ", sin la publicación original de 1917" : ""}.</p>`;
+
+// Los artículos que no caben en la línea de vida: se nombran si son pocos.
+const NOMBRAR_RESTO = 20;
+function restoVida(vida, claves, documento, etiquetas = {}) {
+  const resto = claves.slice(FILAS_VIDA);
+  if (!resto.length) return "";
+  if (resto.length <= NOMBRAR_RESTO) {
+    const nombres = resto.map((k) => vida.articulos.find((a) => a.clave === k)?.etiqueta ?? etiquetas[k] ?? k);
+    return `<p class="tenue">Y ${plural(resto.length, "artículo más", "artículos más")}: ${esc(lista(nombres))}.</p>`;
+  }
+  return `<p class="tenue">Se muestran ${numero(FILAS_VIDA)} de ${plural(claves.length, "artículo", "artículos")}; la historia de cada uno está en <a href="${esc(urlDocumento(documento))}">la página del documento</a>.</p>`;
+}
+
 // La línea de vida de los artículos que tocó una reforma, con ella resaltada.
 function seccionVida(c) {
   const d = c.doc.vida;
   if (!d || c.tipo !== "reforma") return "";
   const claves = [...c.adicionados, ...c.modificados, ...c.derogados];
-  const svg = htmlLineaVida(d, claves, c.publicaciones, { etiquetas: c.etiquetas });
+  const svg = htmlLineaVida(d, claves, c.publicaciones, { etiquetas: c.etiquetas, sigla: c.doc.sigla });
   if (!svg) return "";
-  const resto = claves.length - FILAS_VIDA;
   return `<h2 id="vida">La vida de estos artículos</h2>
-<p>
-  Cada marca es una reforma que anota el texto vigente en sus notas de reforma${d.omitidas ? ", sin la publicación original de 1917" : ""};
-  en color, la de esta página. A la derecha, cuántas anota cada artículo.
-</p>
+${textoVida(d)}
 ${svg}
-${resto > 0 ? `<p class="tenue">Se muestran ${numero(FILAS_VIDA)} de ${plural(claves.length, "artículo", "artículos")}; la historia de cada uno está en <a href="${esc(urlDocumento(c.documento))}">la página del documento</a>.</p>` : ""}
+${restoVida(d, claves, c.documento, c.etiquetas)}
 <h3 class="grupo-vida">Dónde están en ${esc(c.doc.sigla ?? c.doc.nombre)}</h3>
 <p>Cada cuadro es un artículo del texto vigente; más oscuro, más reformas. Con borde, los de esta reforma.</p>
 ${htmlCuadricula(d, { nombre: c.doc.nombre, resaltar: new Set(claves) })}
@@ -1052,6 +1078,187 @@ ${vecinos(c)}`;
     titulo: `${h1} · ${c.doc.sigla ?? c.doc.nombre}`,
     h1,
     descripcion: `${NOMBRE_CLASE[c.clase]} de ${c.doc.nombre}: ${resumen}`,
+    cuerpo,
+    sobre,
+    generada,
+  });
+}
+
+// ------------------------------------------------------------------ decretos
+
+// Los decretos de congreso-mexicano con lo que el registro sabe de cada uno:
+// el commit de reforma que lo registra (si lo hay; si no, su propia página) y
+// su cadena, de la que salen los conteos de las listas.
+function registroDecretos(m, vinculos) {
+  if (!vinculos?.ok) return [];
+  const conCommit = new Map();
+  const reformas = m.cambios.filter((c) => c.tipo === "reforma").sort((a, b) => Number(b.principal) - Number(a.principal));
+  for (const c of reformas) for (const p of vinculosDe(vinculos, c)) if (!conCommit.has(p.decreto.id)) conCommit.set(p.decreto.id, c);
+  const es = decretosDelRegistro(vinculos.decretos, m.documentos, conCommit);
+  for (const e of es) {
+    e.url = e.cambio ? urlCambio(e.cambio) : urlDecreto(e.decreto);
+    const x = e.primario;
+    const cambio = { documento: x.clave, publicaciones: [x.publicacion], tipo: "reforma", sha: null, dia: null };
+    e.proceso = vinculosDe(vinculos, cambio).find((p) => p.decreto.id === e.decreto.id) ?? null;
+    e.cad = e.proceso ? cadenaDe(vinculos, e.proceso, cambio, { registro: textoRegistro(e.docs) }) : null;
+  }
+  return es;
+}
+
+const nombreCorto = (x) => x.doc?.sigla ?? x.doc?.nombre ?? x.clave;
+
+// Lo que dice el último paso de la cadena de un decreto sin commit, de cada
+// documento que toca, agrupados por cómo quedan frente al registro.
+function textoRegistro(docs) {
+  const alta = (x) => (x.alta ? `<a href="${esc(urlCambio(x.alta))}">${esc(nombreCorto(x))}</a>` : esc(nombreCorto(x)));
+  const de = (estado) => docs.filter((x) => x.doc && x.estado === estado);
+  const partes = [];
+  const incluido = de("incluido");
+  if (incluido.length) partes.push(`Ya incluido: el alta de ${lista(incluido.map(alta))} es la versión de este decreto.`);
+  for (const x of de("anterior")) partes.push(`Anterior al registro de ${alta(x)}, que entró con su versión del ${fechaLarga(x.version)}.`);
+  for (const x of de("pendiente")) partes.push(`Sin commit todavía en ${esc(nombreCorto(x))}: su versión en OpenCodice es del ${fechaLarga(x.version)}, anterior a este decreto.`);
+  const fuera = docs.filter((x) => !x.doc);
+  if (fuera.length) partes.push(`${lista(fuera.map((x) => esc(x.clave)))} no ${fuera.length === 1 ? "está" : "están"} en el registro de OpenCodice.`);
+  return partes.join(" ") || "Sin commit.";
+}
+
+const tituloDecreto = (e) => e.tema ?? tituloSinDecreto(e.decreto.titulo);
+
+function conteosDecreto(e) {
+  if (!e.cad) return "";
+  if (!e.cad.expediente) return "sin expediente del SIL identificado con certeza";
+  const xs = e.cad.votos
+    .filter((v) => v.principal)
+    .map((v) => {
+      const k = Object.fromEntries((v.principal.votacion.counts ?? []).map((o) => [o.option, o.value]));
+      return `${esc(v.camara.nombre)} <span class="si">${numero(k.yes)}</span>–<span class="no">${numero(k.no)}</span>`;
+    });
+  return xs.length ? xs.join(" · ") : "sin votación nominal en el SIL";
+}
+
+function filaDecreto(e, { documento = null } = {}) {
+  const d = e.decreto;
+  const otros = e.docs.filter((x) => x.clave !== documento);
+  const leyes = documento
+    ? otros.length
+      ? `reforma también ${lista(otros.map((x) => (x.doc ? `<a href="${esc(urlDocumento(x.clave))}">${esc(nombreCorto(x))}</a>` : esc(x.clave))))}`
+      : ""
+    : lista(e.docs.map((x) => (x.doc ? `<a href="${esc(urlDocumento(x.clave))}">${esc(nombreCorto(x))}</a>` : esc(x.clave))));
+  const datos = [conteosDecreto(e), leyes, e.cambio ? "con su commit en el registro" : ""].filter(Boolean).join(" · ");
+  return `<li><span class="f">${d.fecha ? fechaLarga(d.fecha) : "sin fecha"}</span><a class="q" href="${esc(e.url)}">${esc(tituloDecreto(e))}</a>${
+    datos ? `<span class="d">${datos}</span>` : ""
+  }</li>`;
+}
+
+const listaDecretos = (es, opciones) => `<ul class="decretos">\n${es.map((e) => filaDecreto(e, opciones)).join("\n")}\n</ul>`;
+
+// En la página de cada documento: sus decretos, con o sin commit.
+function seccionDecretos(m, d) {
+  const es = (m.decretos ?? []).filter((e) => e.docs.some((x) => x.clave === d.clave));
+  if (!es.length) return "";
+  const sin = es.filter((e) => !e.cambio).length;
+  return `<h2 id="decretos">Sus decretos</h2>
+<p>
+  ${es.length === 1 ? "El decreto del DOF que lo reformó" : `Los ${numero(es.length)} decretos del DOF que lo reformaron`}, según
+  <a href="https://github.com/${ORG}/congreso-mexicano">${ORG}/congreso-mexicano</a>, con su proceso legislativo.${
+    sin ? ` ${sin === es.length ? (sin === 1 ? "Es anterior" : "Son anteriores") : `${numero(sin)} ${sin === 1 ? "es anterior" : "son anteriores"}`} a su alta: no ${sin === 1 ? "tiene" : "tienen"} commit, pero sí su cadena hasta el DOF.` : ""
+  }
+</p>
+${listaDecretos(es, { documento: d.clave })}`;
+}
+
+function indiceDecretos(m, generada) {
+  const es = m.decretos ?? [];
+  const porAño = agrupar(es, (e) => (e.decreto.fecha ?? "").slice(0, 4));
+  const cuerpo = `${INTRO}
+${pestañas("/decretos/", cuentas(m))}
+${avisoFallas(m.fallas)}
+<p>
+  Los decretos del Diario Oficial de la Federación que reformaron alguna ley del registro, según
+  <a href="https://github.com/${ORG}/congreso-mexicano">${ORG}/congreso-mexicano</a>, cada uno con su proceso
+  legislativo. Casi todos son anteriores al alta de su ley y no tienen commit: su página lleva la
+  cadena de la iniciativa al DOF y los artículos que anotan las notas de reforma de esa fecha.
+</p>
+${
+  porAño.length
+    ? porAño.map(([año, xs]) => `<h3 class="grupo" id="a${año}">${año}</h3>\n${listaDecretos(xs)}`).join("\n")
+    : '<p class="tenue">No se pudieron leer los decretos de congreso-mexicano.</p>'
+}`;
+  return pagina({
+    url: `${BASE}/decretos/`,
+    titulo: "Decretos",
+    h1: "Bitácora: decretos",
+    descripcion: "Los decretos del DOF que reformaron las leyes de OpenCodice, con su proceso legislativo: iniciativa, comisión, votaciones y publicación.",
+    cuerpo,
+    generada,
+  });
+}
+
+// Los artículos de cada documento según sus notas de reforma de esa fecha, y
+// su línea de vida.
+function articulosDecreto(e) {
+  const varios = e.docs.length > 1;
+  return e.docs
+    .map((x) => {
+      const titulo = varios ? `<h3>${x.doc ? `<a href="${esc(urlDocumento(x.clave))}">${esc(x.doc.nombre)}</a>` : esc(x.clave)}</h3>\n` : "";
+      if (!x.doc) return `${titulo}<p class="tenue">No está en el registro de OpenCodice.</p>`;
+      if (!x.claves?.length) return `${titulo}<p class="tenue">Sus notas de reforma no anotan artículos con fecha del ${fechaLarga(x.publicacion)}.</p>`;
+      const vida = x.doc.vida;
+      const nombres = x.claves.map((k) => vida?.articulos.find((a) => a.clave === k)?.etiqueta ?? k);
+      const juntos = x.mismoDia.length
+        ? ` <span class="tenue">Ese día el DOF publicó ${plural(x.mismoDia.length + 1, "decreto", "decretos")} sobre este documento y sus notas de reforma los juntan en una sola fecha: estos artículos son de todos ellos.</span>`
+        : "";
+      const svg = vida ? htmlLineaVida(vida, x.claves, [x.publicacion], { sigla: x.doc.sigla }) : "";
+      return `${titulo}<p>${plural(x.claves.length, "artículo", "artículos")}, según las notas de reforma de su texto vigente: ${esc(lista(nombres))}.${juntos}</p>
+${svg ? `${textoVida(vida)}\n${svg}\n${restoVida(vida, x.claves, x.clave)}` : ""}
+<p class="tenue">Dónde están y cuántas reformas lleva cada artículo: <a href="${esc(urlDocumento(x.clave))}#articulos-reformas">${esc(x.doc.nombre)}</a>.</p>`;
+    })
+    .join("\n");
+}
+
+const TITULO_H1 = 120;
+
+function paginaDecreto(e, m, vinculos, generada) {
+  const d = e.decreto;
+  const cad = e.cad;
+  // Sin tema, el título mismo si es corto; si no, la fecha.
+  const titulo = tituloSinDecreto(d.titulo);
+  const h1 = e.tema ?? (titulo.length <= TITULO_H1 ? titulo : `Decreto del ${fechaLarga(d.fecha)}`);
+  const dof = d.url ? `<a href="${esc(d.url)}">DOF, ${fechaLarga(d.fecha)}</a>` : `DOF, ${fechaLarga(d.fecha)}`;
+  const leyes = e.docs.map((x) => (x.doc ? `<a href="${esc(urlDocumento(x.clave))}">${esc(x.doc.nombre)}</a>` : esc(x.clave)));
+  const sinRegistro = e.docs.every((x) => x.estado === "incluido" || x.estado === "anterior");
+  const secciones = [];
+  if (cad) {
+    secciones.push(`<h2 id="cadena">La cadena del decreto</h2>
+<p class="tenue">Cada paso con su fecha y los días desde el anterior. Un paso sin dato queda vacío, con su motivo.</p>
+<div class="ancho">
+${htmlCadena(cad)}
+</div>`);
+    const quien = htmlQuien(cad);
+    if (quien) secciones.push(`<h2 id="iniciativas">Quién la propuso</h2>\n${quien}`);
+    const votos = htmlVotos(vinculos, cad);
+    if (votos) secciones.push(`<h2 id="votos">Cómo votaron</h2>\n${votos}`);
+    const estados = htmlCongresos(cad);
+    if (estados) secciones.push(`<h2 id="estados">Los congresos locales</h2>\n${estados}`);
+  }
+  secciones.push(`<h2 id="articulos">Artículos que tocó</h2>\n${articulosDecreto(e)}`);
+  if (e.proceso) {
+    secciones.push(`<h2 id="proceso">Proceso legislativo</h2>
+<p class="tenue">Del Diario Oficial de la Federación y del Sistema de Información Legislativa (SIL) de Gobernación, según <a href="https://github.com/${ORG}/congreso-mexicano">${ORG}/congreso-mexicano</a>.</p>
+${bloqueProceso(e.proceso, "h3", vinculos, { resumido: Boolean(cad?.expediente) })}`);
+  }
+  const cuerpo = `<p class="titulo-dof">${h1 === titulo ? dof : `«${esc(d.titulo)}» — ${dof}`}</p>
+<p>${e.docs.length === 1 ? "Reforma" : "Reforma estas leyes"}: ${lista(leyes)}.</p>
+${sinRegistro ? `<p class="tenue">Es anterior a que OpenCodice registrara ${e.docs.length === 1 ? "esta ley" : "estas leyes"}: no tiene commit propio ni texto de antes y después. Su texto está en el decreto del DOF.</p>` : ""}
+${secciones.join("\n")}`;
+  const sobre = `<p class="sobre"><a href="${BASE}/decretos/">Decretos</a> · DOF, ${fechaLarga(d.fecha)}</p>`;
+  return pagina({
+    url: urlDecreto(d),
+    tipo: "article",
+    tarjeta: { etiqueta: "Decreto", detalle: `${tituloSinDecreto(d.titulo)}. DOF, ${fechaLarga(d.fecha)}.` },
+    titulo: `${h1} · DOF ${fechaLarga(d.fecha)}`,
+    h1,
+    descripcion: `Decreto del DOF del ${fechaLarga(d.fecha)} y su proceso legislativo: ${tituloSinDecreto(d.titulo)}.`,
     cuerpo,
     sobre,
     generada,
@@ -1134,6 +1341,7 @@ ${entradas}
 
 // Archivos de la bitácora: ruta relativa a public/ → contenido.
 export function paginasBitacora(m, generada, vinculos) {
+  m.decretos = registroDecretos(m, vinculos);
   const archivos = new Map();
   archivos.set("bitacora/index.html", indiceReformas(m, generada));
   archivos.set(
@@ -1187,9 +1395,11 @@ export function paginasBitacora(m, generada, vinculos) {
   );
   archivos.set("bitacora/documentos.html", indiceDocumentos(m, generada));
   for (const d of m.documentos.values()) {
-    archivos.set(`bitacora/${d.clave}/index.html`, paginaDocumento(d, generada));
+    archivos.set(`bitacora/${d.clave}/index.html`, paginaDocumento(m, d, generada));
     for (const c of d.cambios) archivos.set(`bitacora/${d.clave}/${c.id}.html`, paginaCambio(c, generada, vinculos));
   }
+  archivos.set("bitacora/decretos/index.html", indiceDecretos(m, generada));
+  for (const e of m.decretos) if (!e.cambio) archivos.set(`bitacora/decretos/${e.decreto.id}.html`, paginaDecreto(e, m, vinculos, generada));
   archivos.set("bitacora/cambios.json", cambiosJson(m, generada));
   archivos.set("bitacora/reformas.xml", atom(m, generada));
   return archivos;
