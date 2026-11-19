@@ -32,6 +32,8 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Tarda de 1.5 a 3 minutos; sin tarjetas en caché, medio minuto más.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 
@@ -60,7 +62,8 @@ jobs:
 
       # Lee los repos públicos de OpenCodice (la API y, para la bitácora, un
       # clon --bare de cada repo de datos); si alguno no responde, la página
-      # lo dice y el despliegue sigue.
+      # lo dice y el despliegue sigue. El estado del supervisor se lee igual,
+      # de su repo público.
       - name: Generar el inicio, /leyes, /estado y /bitacora
         run: npm run paginas
         env:
