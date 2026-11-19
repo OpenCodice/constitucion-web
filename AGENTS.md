@@ -21,9 +21,25 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   `REPOS_DATOS=..` para leer los clones del espacio de trabajo en vez de
   clonar en `.datos/`). Tarda unos 15 s más las tarjetas que no estén en
   `.tarjetas/`.
-  - `scripts/inicio.mjs` → `/`: qué es, cifras de cada corpus, últimas
-    reformas, cómo leer el historial, status de la vigilancia, cómo citar,
-    cómo lo usa un agente y lo que sigue.
+  - `scripts/inicio.mjs` → `/`: el tejido, el status de la vigilancia,
+    cifras de cada corpus, últimas reformas, cómo se mantiene, y el historial,
+    cómo citar y cómo lo usa un agente. Es la única página con diseño propio
+    (no usa `estilo.css`): la fuente Jost, servida desde `public/fuentes/`
+    (OFL), y los colores de cada corpus, con su versión para modo oscuro.
+    - El tejido (`scripts/lib/tejido.mjs`): un cuadro por documento
+      publicado, enlazado a su historia en la bitácora. La Constitución va al
+      centro en 2×2 y los demás en órbitas de cuatro (sus reflejos en los
+      cuatro cuadrantes), de adentro hacia afuera, con huecos en escalón como
+      una greca; cada órbita es de un solo corpus, así que el color queda
+      simétrico. Corpus: Constitución, constituciones estatales, leyes
+      federales separadas por su nombre (generales y nacionales; orgánicas,
+      reglamentarias, códigos y reglamentos; las demás), leyes de los estados
+      y lo fiscal que no está en leyes-federales. Las órbitas incompletas (un
+      corpus que no es múltiplo de 4) van al borde. Un documento reformado o
+      corregido en los últimos 30 días lleva un punto y late (salvo con
+      `prefers-reduced-motion`). Es determinista: los mismos documentos dan el
+      mismo dibujo, y la tarjeta para redes del inicio lo lleva a la derecha
+      (`arte` en `tarjeta.mjs`, que entra en el hash).
   - `scripts/leyes.mjs` → `/leyes` («Qué leyes hay»), para el público y sin
     detalles técnicos: por documento, su última reforma, cuántas reformas anota,
     una fila de cuadros por año y si tiene una actualización en revisión (un PR
@@ -295,7 +311,8 @@ Para verlo en local: `npm install && npm run paginas && npm run dev`.
 
 ## Criterios
 
-- **Estilo:** texto plano sobre la página, sobrio y legible, sin animaciones.
+- **Estilo:** texto plano sobre la página, sobrio y legible, sin animaciones
+  (la excepción es el inicio, con su tejido; ver arriba).
   Tipografía del sistema, blanco y negro (el color, solo en los datos: los
   hemiciclos y las gráficas), modo oscuro por `prefers-color-scheme`.
   `estilo.css` es el mismo archivo en `constitucion-web` y `fiscal-web`: un

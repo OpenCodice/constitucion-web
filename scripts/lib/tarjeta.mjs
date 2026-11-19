@@ -21,18 +21,22 @@ export const ANCHO = 1200;
 export const ALTO = 630;
 
 // Cambia con el diseño para que el caché no sirva tarjetas viejas.
-const VERSION = 2;
+const VERSION = 3;
 
 const COLOR = { fondo: "#ffffff", texto: "#111111", tenue: "#6b6b6b", linea: "#e4e4e4" };
 const MARGEN = 84;
 const INTERIOR = ANCHO - 2 * MARGEN;
 const PESOS = [400, 500, 600];
 
+// Una tarjeta puede llevar a la derecha un dibujo (`arte`, un fragmento de SVG
+// que ocupa este rectángulo); su texto se angosta para dejarle lugar.
+export const ZONA_ARTE = { x: 700, y: 84, ancho: ANCHO - 700 - MARGEN, alto: 420 };
+
 const registradas = new Map();
 
-export function idTarjeta({ etiqueta = "", titulo, detalle = "", sitio = "constitucion.app" }) {
+export function idTarjeta({ etiqueta = "", titulo, detalle = "", sitio = "constitucion.app", arte = "" }) {
   return createHash("sha256")
-    .update(JSON.stringify([VERSION, etiqueta, titulo, detalle, sitio]))
+    .update(JSON.stringify([VERSION, etiqueta, titulo, detalle, sitio, arte]))
     .digest("hex")
     .slice(0, 16);
 }
@@ -238,7 +242,8 @@ function bloque({ lineas, tamaño, interlinea, color, m, espaciado = 0 }) {
   };
 }
 
-export function svgTarjeta({ etiqueta = "", titulo, detalle = "", sitio = "constitucion.app" }, { medidas }) {
+export function svgTarjeta({ etiqueta = "", titulo, detalle = "", sitio = "constitucion.app", arte = "" }, { medidas }) {
+  const interior = arte ? ZONA_ARTE.x - MARGEN - 48 : INTERIOR;
   const familia = (peso) => medidas[peso].familia;
   const t = limpiar(titulo);
   const tamaño = tamañoTitulo(t.length);
@@ -248,13 +253,13 @@ export function svgTarjeta({ etiqueta = "", titulo, detalle = "", sitio = "const
   if (etiqueta) {
     const medir = medidor(medidas[500], 28);
     partes.push({
-      ...bloque({ lineas: limitar(partir(limpiar(etiqueta), INTERIOR, medir), 1, INTERIOR, medir), tamaño: 28, interlinea: 1.2, color: COLOR.tenue, m: medidas[500] }),
+      ...bloque({ lineas: limitar(partir(limpiar(etiqueta), interior, medir), 1, interior, medir), tamaño: 28, interlinea: 1.2, color: COLOR.tenue, m: medidas[500] }),
       despues: 18,
     });
   }
   partes.push({
     ...bloque({
-      lineas: limitar(equilibrar(t, INTERIOR, medirTitulo), 3, INTERIOR, medirTitulo),
+      lineas: limitar(equilibrar(t, interior, medirTitulo), 3, interior, medirTitulo),
       tamaño,
       interlinea: 1.15,
       color: COLOR.texto,
@@ -273,7 +278,7 @@ export function svgTarjeta({ etiqueta = "", titulo, detalle = "", sitio = "const
   if (detalle && caben > 0) {
     const medir = medidor(medidas[400], 28);
     partes.push({
-      ...bloque({ lineas: limitar(partir(limpiar(detalle), INTERIOR, medir), caben, INTERIOR, medir), tamaño: 28, interlinea: 1.4, color: COLOR.tenue, m: medidas[400] }),
+      ...bloque({ lineas: limitar(partir(limpiar(detalle), interior, medir), caben, interior, medir), tamaño: 28, interlinea: 1.4, color: COLOR.tenue, m: medidas[400] }),
       despues: 0,
     });
   }
@@ -294,6 +299,7 @@ export function svgTarjeta({ etiqueta = "", titulo, detalle = "", sitio = "const
 <rect x="${MARGEN}" y="77" width="26" height="26" fill="${COLOR.texto}"/>
 <text x="${MARGEN + 42}" y="101" font-family="${familia(600)}" font-size="30" letter-spacing="-0.3" fill="${COLOR.texto}">OpenCodice</text>
 ${cuerpo}
+${arte}
 <rect x="${MARGEN}" y="${abajo}" width="${INTERIOR}" height="1" fill="${COLOR.linea}"/>
 <text x="${MARGEN}" y="564" font-size="24" fill="${COLOR.tenue}">${xml(sitio)}</text>
 <text x="${ANCHO - MARGEN}" y="564" font-size="24" fill="${COLOR.tenue}" text-anchor="end">La ley mexicana, versionada en git</text>
