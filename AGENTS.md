@@ -5,8 +5,8 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
 
 - `public/` — el sitio: `estilo.css`, `llms.txt` (guía para agentes de IA),
   `robots.txt`,
-  `hemiciclo.js` (lo único de JavaScript; ver «Hemiciclos») y las páginas que
-  genera `scripts/paginas.mjs`. Sin framework.
+  `hemiciclo.js` y `supervisor.js` (lo único de JavaScript; ver «Hemiciclos» y
+  `/estado`) y las páginas que genera `scripts/paginas.mjs`. Sin framework.
 - `worker/index.js` — responde `410` en las rutas del servicio de búsqueda que
   se retiró (`/api/*`, `/mcp`, `/openapi.json`, `/pdf/*`) y redirige al inicio
   cualquier otra ruta que no sea un archivo de `public/` (los assets, como
@@ -35,7 +35,34 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     la última y la próxima revisión; luego las reformas y correcciones
     publicadas (por la clase de la bitácora o el título del commit; los
     ajustes iniciales y metadatos aparte), el resumen por repo y, al final,
-    una barra por semana de cada vigilancia y los PR abiertos.
+    una barra por semana de cada vigilancia, los PR abiertos y la sección
+    «Supervisor».
+    - «Supervisor» sale de `estado/` de `OpenCodice/supervisor` (`latido.json`,
+      `huellas.jsonl`, `acciones.jsonl`) y de la última corrida terminada de
+      su `supervisor.yml`: última vuelta y modo, cada invariante con lo que
+      vigila y su estado (`ok`, `rota:N`, `apagada`, `sin-observar` con su
+      motivo), las fallas abiertas con su issue y los arreglos que publicó el
+      agente de infraestructura (`arreglo-publicado` de `acciones.jsonl`; su
+      resultado, del estado de la huella o de un `revertido` posterior).
+      `public/supervisor.js` es un módulo que usan los dos lados:
+      `estado.mjs` lo importa para escribir la sección al generar y la página
+      lo carga (`type="module"`) para volver a leer las mismas fuentes al
+      abrirse, porque el supervisor cambia cada 15 minutos y el sitio solo se
+      despliega con los datos. Si alguna de las tres lecturas de `estado/`
+      falla, queda lo generado con un aviso; sin la API (límite anónimo), vale
+      la corrida que traía la página. Por eso no importa nada de
+      `scripts/lib/`.
+    - `latido.json` no se reescribe en cada vuelta (solo si cambia, o una vez
+      al día): su fecha es «último cambio en su estado», no la última vuelta.
+      «Sin vueltas recientes» sale de la última corrida (más de 60 minutos)
+      y, solo si no se pudo leer, de un latido de más de 25 horas.
+    - Falla abierta es una huella sin resolver con clase, issue, errores,
+      intentos del agente o un estado distinto de `abierta`; las demás
+      abiertas son lanzamientos que esperan resultado (cada cita por horario
+      abre una) y solo se cuentan. Del registro se muestran el paso y la firma
+      del error, no el `motivo`, que puede traer texto de un agente; los
+      enlaces se arman aquí con piezas validadas. Se prueba en
+      `scripts/supervisor.test.mjs`.
   - `scripts/bitacora.mjs` → `/bitacora/` («Bitácora de reformas»): las
     reformas por fecha de publicación; `/bitacora/correcciones`,
     `/bitacora/altas` y `/bitacora/metadatos` (por fecha de registro); `/bitacora/documentos`; la

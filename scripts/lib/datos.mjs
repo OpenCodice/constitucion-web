@@ -9,12 +9,14 @@ import {
   ErrorFuente,
   api,
   crudo,
+  crudoTexto,
   graphql,
   intentar,
   enParalelo,
   diaMexico,
   sumarDias,
 } from "./comun.mjs";
+import { lineas, ultimaCorrida } from "../../public/supervisor.js";
 
 // El registro de estados vive con el código que los extrae.
 const EXTRACTOR_ESTATAL = "constitucion-extractor";
@@ -253,6 +255,32 @@ async function leerActividad(repo, desde) {
   return { conArchivos: false, commits };
 }
 
+// Lo que el reconciliador dice de sí mismo: su carpeta estado/ y su última
+// corrida. Cada fuente por separado, para que la sección de /estado muestre
+// lo que sí se pudo leer; la página las vuelve a leer al abrirse.
+const SUPERVISOR = "supervisor";
+
+async function leerSupervisor() {
+  const jsonl = async (ruta) => {
+    const texto = await crudoTexto(SUPERVISOR, ruta);
+    if (texto == null) throw new ErrorFuente(`no se encontró ${ruta}`);
+    return lineas(texto);
+  };
+  const [latido, huellas, acciones, corrida] = await Promise.all([
+    intentar(async () => {
+      const l = await crudo(SUPERVISOR, "estado/latido.json");
+      if (!l) throw new ErrorFuente("no se encontró estado/latido.json");
+      return l;
+    }),
+    intentar(() => jsonl("estado/huellas.jsonl")),
+    intentar(() => jsonl("estado/acciones.jsonl")),
+    intentar(async () =>
+      ultimaCorrida(await api(`/repos/${ORG}/${SUPERVISOR}/actions/workflows/supervisor.yml/runs?per_page=5`)),
+    ),
+  ]);
+  return { latido, huellas, acciones, corrida };
+}
+
 // Primer lunes de la cuadrícula de cambios y el día de hoy, en hora de la
 // Ciudad de México.
 export function inicioActividad(generada) {
@@ -270,7 +298,7 @@ async function porRepo(fn) {
 export async function leerTodo(generada) {
   // Un día de margen: el día se cuenta en hora de la Ciudad de México y la API filtra en UTC.
   const desde = `${sumarDias(inicioActividad(generada).inicio, -1)}T00:00:00Z`;
-  const [cpeum, estatales, fiscal, federales, vigilancia, prs, commits, actividad] = await Promise.all([
+  const [cpeum, estatales, fiscal, federales, vigilancia, prs, commits, actividad, supervisor] = await Promise.all([
     intentar(leerCpeum),
     intentar(leerEstatales),
     intentar(leerFiscal),
@@ -279,17 +307,18 @@ export async function leerTodo(generada) {
     porRepo(leerPrs),
     porRepo(leerUltimoCommit),
     porRepo((r) => leerActividad(r, desde)),
+    leerSupervisor(),
   ]);
-  return { cpeum, estatales, fiscal, federales, vigilancia, prs, commits, actividad };
+  return { cpeum, estatales, fiscal, federales, vigilancia, prs, commits, actividad, supervisor };
 }
 
 export function contarFallas(datos) {
-  const { cpeum, estatales, fiscal, federales, vigilancia, prs, commits, actividad } = datos;
+  const { cpeum, estatales, fiscal, federales, vigilancia, prs, commits, actividad, supervisor } = datos;
   return [
     cpeum,
     estatales,
     fiscal,
     federales,
-    ...[vigilancia, prs, commits, actividad].flatMap((r) => Object.values(r)),
+    ...[vigilancia, prs, commits, actividad, supervisor ?? {}].flatMap((r) => Object.values(r)),
   ].filter((r) => !r.ok).length;
 }

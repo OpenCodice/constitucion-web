@@ -26,6 +26,7 @@ import {
 import { SEMANAS, inicioActividad } from "./lib/datos.mjs";
 import { DIAS_ATRASO, FALLAS, ESTILO_SALUD, fechaCorrida, salud, insignia, cambios } from "./lib/resumen.mjs";
 import { clasesPorSha } from "./bitacora.mjs";
+import { htmlSupervisor } from "../public/supervisor.js";
 
 const ESTADO_CORRIDA = {
   queued: "En cola",
@@ -320,7 +321,7 @@ function seccionProgreso({ vigilancia, prs }, generada) {
 
   return `<h2 id="progreso">Vigilancia</h2>
 <p>
-  Cada lunes un Worker de Cloudflare lanza la vigilancia de cada repositorio de datos: un
+  Cada lunes el <a href="#supervisor">supervisor</a> lanza la vigilancia de cada repositorio de datos: un
   workflow de su extractor que descarga los PDF oficiales y vuelve a extraer el texto. Si algo cambió, un agente compara cada artículo contra el PDF y corrige el extractor
   si hace falta; luego pasan pruebas que el agente no controla. Solo si todo queda verificado
   se abre un pull request que se fusiona solo. Si no, no se publica nada y la siguiente
@@ -343,6 +344,34 @@ ${tabla({
   vacio: "No hay pull requests abiertos en los repositorios de datos.",
 })}
 ${avisos.join("\n")}`;
+}
+
+// La sección queda escrita con lo que había al generar la página, y
+// /supervisor.js (el mismo módulo que la escribe aquí) la vuelve a leer del
+// repositorio del supervisor al abrirla: el sitio solo se despliega cuando
+// cambian los datos, y el supervisor da una vuelta cada 15 minutos.
+function seccionSupervisor(supervisor, generada) {
+  const dato = (r) => (r?.ok ? r.datos : null);
+  const corrida = dato(supervisor?.corrida);
+  const fuentes = {
+    latido: dato(supervisor?.latido),
+    huellas: dato(supervisor?.huellas),
+    acciones: dato(supervisor?.acciones),
+    corrida,
+  };
+  return `<h2 id="supervisor">Supervisor</h2>
+<p>
+  Ninguna corrida lanza a otra: lo hace el ${enlaceRepo("supervisor", "supervisor")}, un programa
+  sin modelo de lenguaje que cada 15 minutos compara lo que pasó (corridas, pull requests,
+  commits) con lo que debería ser cierto, sus <em>invariantes</em>, y lanza lo que falte. Una
+  invariante rota es algo que encontró pendiente y ya atiende; casi siempre dura una vuelta.
+  Una falla que se repite la toma un agente que repara la infraestructura, y lo que no se
+  logra arreglar queda como constancia en un issue de su repositorio.
+</p>
+<div id="supervisor-vivo" data-corrida="${esc(JSON.stringify(corrida))}">
+${htmlSupervisor(fuentes, generada)}
+</div>
+<p class="tenue" id="supervisor-nota">Leído al generar esta página, el ${momento(generada)}.</p>`;
 }
 
 const PUBLICADOS_MAX = 12;
@@ -450,6 +479,15 @@ ${ESTILO_SALUD}
 .cifras li { margin: 0; }
 .cifra { display: block; color: var(--texto); font-size: 1.8em; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .tipo { white-space: nowrap; }
+#supervisor-vivo .salud-sub { margin-bottom: 1.2rem; }
+.inv { white-space: nowrap; }
+.inv::before { content: ""; display: inline-block; width: 0.55em; height: 0.55em; margin-right: 0.4em; border-radius: 50%; background: var(--tenue); }
+.i-ok::before { background: var(--verde); }
+.i-rota::before { background: var(--rojo); }
+.i-ciega::before { background: var(--ambar); }
+.i-apagada::before { background: transparent; box-shadow: inset 0 0 0 1px var(--tenue); }
+.falla-detalle { color: var(--tenue); overflow-wrap: anywhere; }
+[aria-labelledby="t-fallas"] td:nth-child(2), [aria-labelledby="t-arreglos"] td:nth-child(2) { min-width: 12rem; }
 .tipo::before { content: ""; display: inline-block; width: 0.55em; height: 0.55em; margin-right: 0.4em; border-radius: 50%; background: var(--tenue); }
 .t-reforma::before { background: var(--verde); }
 `;
@@ -470,7 +508,9 @@ ${seccionResumen(datos)}
 
 ${seccionCorpus(datos)}
 
-${seccionProgreso(datos, generada)}`;
+${seccionProgreso(datos, generada)}
+
+${seccionSupervisor(datos.supervisor, generada)}`;
   return documento({
     ruta: "/estado",
     url: "/estado",
@@ -479,6 +519,7 @@ ${seccionProgreso(datos, generada)}`;
     descripcion:
       "Estado técnico de OpenCodice: repositorios de datos, corridas de vigilancia, cambios por día y pull requests abiertos.",
     estilo: ESTILO,
+    cabeza: '<script type="module" src="/supervisor.js"></script>',
     cuerpo,
     pie: `<p>
           <a href="/">Inicio</a> · <a href="/leyes">Qué leyes hay</a> · El código y los datos están en

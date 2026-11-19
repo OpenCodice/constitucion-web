@@ -67,7 +67,7 @@ const TIEMPO_MAX = 20_000;
 
 export class ErrorFuente extends Error {}
 
-async function pedir(url, { api = false, cuerpo } = {}) {
+async function pedir(url, { api = false, cuerpo, texto = false } = {}) {
   const cabeceras = { "User-Agent": "opencodice-paginas" };
   if (api) {
     cabeceras.Accept = "application/vnd.github+json";
@@ -89,7 +89,7 @@ async function pedir(url, { api = false, cuerpo } = {}) {
         continue;
       }
       if (!r.ok) throw new ErrorFuente(`HTTP ${r.status}`);
-      return await r.json();
+      return await (texto ? r.text() : r.json());
     } catch (e) {
       ultimo = e;
     }
@@ -98,6 +98,8 @@ async function pedir(url, { api = false, cuerpo } = {}) {
 }
 
 export const crudo = (repo, ruta) => pedir(`${RAW}/${ORG}/${repo}/main/${ruta}`);
+// Para lo que no es un solo JSON (un .jsonl).
+export const crudoTexto = (repo, ruta) => pedir(`${RAW}/${ORG}/${repo}/main/${ruta}`, { texto: true });
 export const api = (ruta) => pedir(`${API}${ruta}`, { api: true });
 
 export async function graphql(query, variables) {
