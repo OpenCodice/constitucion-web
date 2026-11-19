@@ -921,7 +921,10 @@ function textoLegislaturas(l) {
   const nombres = (l.aprobaron ?? []).map((k) => esc(NOMBRES_ESTADOS[k] ?? k));
   const n = l.votos_aprobatorios ?? nombres.length;
   const fecha = l.fecha ? `, según la declaratoria del <span class="fecha">${fechaLarga(l.fecha)}</span>` : "";
+  const contra = (l.no_aprobaron ?? []).map((k) => esc(NOMBRES_ESTADOS[k] ?? k));
   return `Lo aprobaron ${plural(n, "congreso local", "congresos locales")}${fecha}${nombres.length ? `: ${lista(nombres)}` : ""}.${
+    contra.length ? ` En contra, según el SIL: ${lista(contra)}.` : ""
+  }${
     l.nota ? ` <span class="tenue">${esc(mayuscula(l.nota))}.</span>` : ""
   }`;
 }

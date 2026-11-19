@@ -467,3 +467,15 @@ test("decretos sin commit: su página, su lista y el índice", () => {
   assert.ok(indice.includes('href="/bitacora/decretos/" aria-current="page"'));
   assert.ok(archivos.get("bitacora/index.html").includes('Decretos <span class="cuenta">10</span>'));
 });
+
+test("congresos locales: en contra solo donde el SIL lo dice", () => {
+  const cad = { constitucional: true, legislaturas: { ...LEGISLATURAS, no_aprobaron: ["sonora"] } };
+  const mapa = htmlCongresos(cad);
+  assert.equal((mapa.match(/class="edo ok"/g) ?? []).length, 3);
+  assert.equal((mapa.match(/class="edo no"/g) ?? []).length, 1);
+  assert.equal((mapa.match(/class="edo sr"/g) ?? []).length, 28);
+  assert.ok(mapa.includes("Sonora: votó en contra, según el SIL"));
+  assert.ok(mapa.includes('<span class="cuadro no"></span> En contra'));
+  assert.ok(mapa.includes("uno que votó en contra: Sonora") && mapa.includes("Los otros 28"));
+  assert.ok(!htmlCongresos({ constitucional: true, legislaturas: LEGISLATURAS }).includes("cuadro no"), "sin dato, no hay «en contra»");
+});

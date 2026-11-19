@@ -143,8 +143,10 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
       votación principal de cada cámara, lado a lado desde 60rem, y
       `listaDisidentes`; carga `hemiciclo.js`) y, en reformas
       constitucionales con datos, «Los congresos locales» (los 32 estados en
-      la cuadrícula `MAPA`: aprobó / sin registro; el SIL solo lista los que
-      aprobaron, así que «sin registro» nunca se presenta como «en contra»).
+      la cuadrícula `MAPA`: aprobó / en contra / sin registro; el SIL lista
+      los que aprobaron y solo a veces, en la declaratoria, alguno que votó en
+      contra (`no_aprobaron`): «en contra» sale solo de ahí y «sin registro»
+      nunca se presenta como «en contra»).
       El detalle de «Proceso legislativo» queda abajo, sin repetir las
       iniciativas ni las miniaturas.
       - **Votación principal** de una cámara (`votacionPrincipal`): entre

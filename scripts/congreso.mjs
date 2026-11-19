@@ -347,7 +347,7 @@ ${ultimas.length ? `<ul class="lista">\n${ultimas.map((v) => filaVotacion(m, v))
 <ul>
   <li>Quién votó en las votaciones económicas: se votan sin registro nominal. Cada expediente las lista con su resultado.</li>
   <li>El voto individual de las votaciones que el SIL solo da como conteos (casi siempre las de lo particular), salvo cuando el Senado o la Gaceta las publican con nombres.</li>
-  <li>El sentido del voto de cada congreso local en las reformas constitucionales: el SIL solo lista los que la aprobaron.</li>
+  <li>El sentido del voto de cada congreso local en las reformas constitucionales: el SIL lista los que la aprobaron y solo a veces los que votaron en contra.</li>
   <li>Firmantes adicionales: el SIL registra al autor o autores; una iniciativa suscrita por más legisladores puede listar solo a quien la presentó.</li>
   <li>Cambios de bancada: el partido de cada mandato es el que el SIL muestra hoy; el de cada voto, el que mostró la lista de esa votación.</li>
 </ul>`;
@@ -1025,7 +1025,7 @@ ${
   loc
     ? `<p>Congresos locales que la aprobaron según el SIL (${numero(loc.votos_aprobatorios ?? loc.aprobaron?.length ?? 0)}): ${lista(
         (loc.aprobaron ?? []).map((x) => esc(NOMBRES_ESTADOS[x] ?? x)),
-      )}.${loc.nota ? ` <span class="tenue">${esc(loc.nota.charAt(0).toUpperCase() + loc.nota.slice(1))}.</span>` : ""}</p>`
+      )}.${loc.no_aprobaron?.length ? ` En contra: ${lista(loc.no_aprobaron.map((x) => esc(NOMBRES_ESTADOS[x] ?? x)))}.` : ""}${loc.nota ? ` <span class="tenue">${esc(loc.nota.charAt(0).toUpperCase() + loc.nota.slice(1))}.</span>` : ""}</p>`
     : ""
 }`;
 }

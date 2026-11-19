@@ -183,7 +183,7 @@ export function cadenaDe(m, p, cambio, { articulos = "", registro = "" } = {}) {
         vacio: l.fecha ? null : "el SIL no da la fecha de la declaratoria",
         enlace: "#estados",
         quien: `${numero(n)} de ${LEGISLATURAS} aprobaron`,
-        dato: `se requieren ${MAYORIA_LEGISLATURAS}`,
+        dato: [`se requieren ${MAYORIA_LEGISLATURAS}`, l.no_aprobaron?.length ? `${numero(l.no_aprobaron.length)} en contra` : ""].filter(Boolean).join(" · "),
       });
     }
   }
@@ -436,28 +436,35 @@ export function htmlCongresos(cad) {
   const l = cad.legislaturas;
   if (!cad.constitucional || !l) return "";
   const aprobo = new Set(l.aprobaron ?? []);
+  // En contra solo los que el SIL dice expresamente; el silencio es «sin registro».
+  const contra = new Set((l.no_aprobaron ?? []).filter((k) => !aprobo.has(k)));
   const S = 56;
   const G = 4;
   const celdas = ESTADOS.map(([k, nombre]) => {
     const [c, r] = MAPA[k];
     const x = c * (S + G);
     const y = r * (S + G);
-    const si = aprobo.has(k);
-    return `<g class="edo ${si ? "ok" : "sr"}"><rect x="${x}" y="${y}" width="${S}" height="${S}" rx="3"/><text x="${x + S / 2}" y="${y + S / 2 + 4}" text-anchor="middle">${ABREV[k]}</text><title>${esc(nombre)}: ${si ? "aprobó" : "sin registro en el SIL"}</title></g>`;
+    const [clase, que] = aprobo.has(k) ? ["ok", "aprobó"] : contra.has(k) ? ["no", "votó en contra, según el SIL"] : ["sr", "sin registro en el SIL"];
+    return `<g class="edo ${clase}"><rect x="${x}" y="${y}" width="${S}" height="${S}" rx="3"/><text x="${x + S / 2}" y="${y + S / 2 + 4}" text-anchor="middle">${ABREV[k]}</text><title>${esc(nombre)}: ${que}</title></g>`;
   });
   const n = l.votos_aprobatorios ?? aprobo.size;
-  const sin = ESTADOS.filter(([k]) => !aprobo.has(k)).map(([, nombre]) => esc(nombre));
+  const nombreDe = Object.fromEntries(ESTADOS);
+  const enContra = [...contra].map((k) => esc(nombreDe[k] ?? k));
+  const sin = ESTADOS.filter(([k]) => !aprobo.has(k) && !contra.has(k)).map(([, nombre]) => esc(nombre));
   const mapa = `<svg class="mapa" viewBox="-2 -2 ${9 * (S + G) + 2} ${6 * (S + G) + 2}" role="img" aria-label="${esc(
-    `Congresos locales: ${aprobo.size} aprobaron, ${LEGISLATURAS - aprobo.size} sin registro`,
+    `Congresos locales: ${aprobo.size} aprobaron, ${contra.size ? `${contra.size} en contra, ` : ""}${sin.length} sin registro`,
   )}">${celdas.join("")}</svg>`;
+  const fuente = contra.size
+    ? `El SIL lista los congresos que aprobaron y, en esta reforma, ${contra.size === 1 ? "uno que votó" : "los que votaron"} en contra: ${lista(enContra)}.`
+    : "El SIL solo lista los congresos que aprobaron.";
   return `<div class="estados">
 ${mapa}
 <div class="estados-t">
 <p><span class="grande">${numero(n)}</span> de ${LEGISLATURAS} congresos aprobaron <span class="tenue">(se requieren ${MAYORIA_LEGISLATURAS})</span>.${
     l.fecha ? ` Declaratoria: ${fechaLarga(l.fecha)}.` : ""
   }</p>
-<p class="leyenda-m"><span class="cuadro ok"></span> Aprobó <span class="cuadro sr"></span> Sin registro</p>
-<p class="tenue">El SIL solo lista los congresos que aprobaron.${
+<p class="leyenda-m"><span class="cuadro ok"></span> Aprobó ${contra.size ? '<span class="cuadro no"></span> En contra ' : ""}<span class="cuadro sr"></span> Sin registro</p>
+<p class="tenue">${fuente}${
     sin.length
       ? ` ${sin.length === 1 ? "El otro" : `Los otros ${numero(sin.length)}`} (${lista(sin)}) no ${sin.length === 1 ? "tiene" : "tienen"} registro: no sabemos si votaron en contra, si no votaron o si votaron después de la declaratoria. «Sin registro» no es «en contra».`
       : ""
@@ -531,6 +538,8 @@ a.t:hover { text-decoration: underline; }
 .mapa text { font-size: 13px; font-weight: 600; pointer-events: none; }
 .edo.ok rect { fill: var(--v0); }
 .edo.ok text { fill: var(--fondo); }
+.edo.no rect { fill: var(--v1); }
+.edo.no text { fill: var(--fondo); }
 .edo.sr rect { fill: var(--fondo); stroke: var(--tenue); stroke-width: 1.2; stroke-dasharray: 3 3; }
 .edo.sr text { fill: var(--tenue); font-weight: 400; }
 .estados-t { font-size: 0.88em; }
@@ -538,5 +547,6 @@ a.t:hover { text-decoration: underline; }
 .leyenda-m { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3em 0.6em; font-size: 0.78em; color: var(--tenue); }
 .cuadro { display: inline-block; width: 0.9em; height: 0.9em; border-radius: 2px; vertical-align: -0.1em; }
 .cuadro.ok { background: var(--v0); }
+.cuadro.no { background: var(--v1); }
 .cuadro.sr { border: 1.2px dashed var(--tenue); }
 `;
