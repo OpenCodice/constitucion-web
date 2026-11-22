@@ -88,7 +88,7 @@ export function mdVotaciones(r) {
   if (!r.votaciones.length) return "Ninguna votación coincide.\n";
   const lineas = r.votaciones.map((v) => {
     const leyes = v.leyes.filter((l) => l.nombre).map((l) => l.nombre).join("; ");
-    return `- **${v.fecha ?? "s/f"} · ${v.camara}** · ${v.a_favor} a favor, ${v.en_contra} en contra, ${v.abstenciones} abstenciones, ${v.ausentes} ausentes (división ${v.division})
+    return `- **${v.fecha ?? "s/f"} · ${v.camara}** · ${v.a_favor} a favor, ${v.en_contra} en contra, ${cuenta(v.abstenciones, "abstención", "abstenciones")}, ${cuenta(v.ausentes, "ausente", "ausentes")} (división ${v.division})
   ${v.asunto ?? v.resultado ?? ""}${v.otras_del_asunto ? ` (${v.otras_del_asunto === 1 ? "y otra votación" : `y ${v.otras_del_asunto} votaciones más`} de este asunto en esta cámara)` : ""}${leyes ? `\n  Leyes: ${leyes}` : ""}${resumenGrupos(v) ? `\n  Por grupo (a favor-en contra-abstenciones): ${resumenGrupos(v)}` : ""}
   ${v.url}`;
   });
@@ -134,6 +134,7 @@ export async function legisladores(env, { camara, grupo, entidad, nombre, en_fun
 }
 
 const pct = (x) => (x == null ? "—" : `${(x * 100).toFixed(1)} %`);
+const cuenta = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 
 export function mdLegisladores(r) {
   if (!r.legisladores.length) return "Ningún legislador coincide.\n";
@@ -144,7 +145,7 @@ export function mdLegisladores(r) {
   const lineas = r.legisladores.map(
     (l) =>
       `- **${l.nombre}** · ${l.camara ?? ""} · ${l.grupo ?? "sin grupo"}${l.entidad ? ` · ${l.entidad}` : ""}${l.en_funciones ? "" : ` · ${l.estatus}`}
-  ${l.votaciones} votaciones con nombre: ${l.a_favor} a favor, ${l.en_contra} en contra, ${l.abstenciones} abstenciones, ${l.ausencias} ausencias (${pct(l.ausencia)}). ${l.iniciativas} iniciativas (${l.iniciativas_aprobadas} aprobadas). ${l.url}`,
+  ${cuenta(l.votaciones, "votación", "votaciones")} con nombre: ${l.a_favor} a favor, ${l.en_contra} en contra, ${cuenta(l.abstenciones, "abstención", "abstenciones")}, ${cuenta(l.ausencias, "ausencia", "ausencias")} (${pct(l.ausencia)}). ${cuenta(l.iniciativas, "iniciativa", "iniciativas")} (${cuenta(l.iniciativas_aprobadas, "aprobada", "aprobadas")}). ${l.url}`,
   );
   return `# Legisladores (${r.total}${r.total > r.legisladores.length ? `, se muestran ${r.legisladores.length}` : ""}; orden: ${r.orden})
 
