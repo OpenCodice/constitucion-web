@@ -526,7 +526,7 @@ ${ESTILO_SALUD}
 .salud { margin: 0 0 0.5rem; }
 .salud-sub { margin-bottom: 2rem; color: var(--tenue); font-size: 0.85em; }
 
-.cifras { display: flex; flex-wrap: wrap; gap: 0.5em 2rem; margin: 0 0 0.4em; padding: 0; list-style: none; color: var(--tenue); font-size: 0.85em; }
+.cifras { display: flex; flex-wrap: wrap; gap: 0.5em 2rem; margin: 0 0 2rem; padding: 0; list-style: none; color: var(--tenue); font-size: 0.85em; }
 .cifras li { margin: 0; }
 .cifras .cifra { display: block; color: var(--texto); font-family: var(--mono); font-size: 2em; line-height: 1.15; letter-spacing: -0.02em; }
 .cuadros { margin: 1.5rem 0 0.75rem; }
@@ -579,7 +579,7 @@ ${seccionSupervisor(datos.supervisor, generada)}
   // Un enlace a una sección del detalle técnico (#supervisor, #progreso) lo abre.
   (() => {
     const abrir = () => {
-      const destino = location.hash && document.getElementById(location.hash.slice(1));
+      const destino = location.hash ? document.getElementById(location.hash.slice(1)) : null;
       const detalle = destino?.closest("details");
       if (detalle && !detalle.open) {
         detalle.open = true;
