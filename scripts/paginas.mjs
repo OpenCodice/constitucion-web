@@ -27,7 +27,8 @@ import { paginaInicio } from "./inicio.mjs";
 import { modelo, paginasBitacora } from "./bitacora.mjs";
 import { paginasCongreso } from "./congreso.mjs";
 import { urlFoto } from "./lib/congreso.mjs";
-import { SITIO, escribirTarjetas } from "./lib/tarjeta.mjs";
+import { SITIO, escribirTarjetas, fijarFirma } from "./lib/tarjeta.mjs";
+import { nivel } from "./lib/cuadros.mjs";
 import { leerCorpus, fichaCatalogo, llmsCompleto, archivosDocumento } from "./lib/corpus.mjs";
 import { resumenVotaciones, resumenLegisladores, coleccionesCongreso, archivosVotos, filtrosAsuntos } from "./lib/abiertos.mjs";
 import { indiceBusqueda } from "./lib/busqueda.mjs";
@@ -137,6 +138,14 @@ await Promise.all([
   writeFile(publico("leyes.html"), paginaLeyes(datos, generada)),
   writeFile(publico("index.html"), paginaInicio(datos, generada)),
 ]);
+
+// La tira de las tarjetas: los artículos de la Constitución por su número de
+// reformas, como en su página.
+const vidaCpeum = bitacora.documentos.get("cpeum")?.vida;
+if (vidaCpeum) {
+  const max = Math.max(...vidaCpeum.articulos.map((x) => x.fechas.length), 1);
+  fijarFirma(vidaCpeum.articulos.map((x) => nivel(x.fechas.length, max)));
+}
 
 // Cada página registró su tarjeta al generarse; aquí se dibujan las que no
 // estén en el caché.

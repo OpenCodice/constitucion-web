@@ -1,5 +1,6 @@
 // La imagen que muestran las redes y los mensajeros al compartir una página
-// (og:image): 1200×630, con el mismo estilo del sitio, blanco y negro.
+// (og:image): 1200×630, con el mismo estilo del sitio: IBM Plex, blanco y
+// negro, y el color solo en una tira de cuadros con datos.
 //
 // Cada página registra su tarjeta al generarse (`registrar`) y recibe su URL,
 // que sale de un hash del contenido: las páginas con la misma tarjeta
@@ -21,14 +22,26 @@ export const ANCHO = 1200;
 export const ALTO = 630;
 
 // Cambia con el diseño para que el caché no sirva tarjetas viejas.
-const VERSION = 3;
+const VERSION = 4;
 
 const COLOR = { fondo: "#ffffff", texto: "#111111", tenue: "#6b6b6b", linea: "#e4e4e4" };
+// La escala de cantidad de estilo.css, en el tema claro: sin dato y sus siete pasos.
+const ESCALA = ["#ededed", "#e3f4b1", "#b5e3b5", "#7dcdbb", "#41b6c4", "#1d91c0", "#225ea8", "#0c2c84"];
 const MARGEN = 84;
 const INTERIOR = ANCHO - 2 * MARGEN;
 const PESOS = [400, 500, 600];
 
 const registradas = new Map();
+
+// La tira de todas las tarjetas: un cuadro por artículo de la Constitución,
+// por su número de reformas (un nivel de `ESCALA` por artículo). La fija
+// `paginas.mjs` con los datos de la corrida; sin ella, la tarjeta sale sin
+// tira. No entra en el hash: una reforma no obliga a redibujar miles de
+// tarjetas, y las que ya están en el caché conservan la tira de su día.
+let firma = [];
+export function fijarFirma(niveles) {
+  firma = niveles ?? [];
+}
 
 export function idTarjeta({ etiqueta = "", titulo, detalle = "", sitio = "constitucion.app" }) {
   return createHash("sha256")
@@ -45,7 +58,7 @@ export function registrar(tarjeta) {
 
 // ------------------------------------------------------------------ fuente
 
-// @fontsource publica Inter en WOFF y resvg solo lee TTF/OTF. Un WOFF 1.0 es
+// @fontsource publica IBM Plex en WOFF y resvg solo lee TTF/OTF. Un WOFF 1.0 es
 // el mismo sfnt con cada tabla comprimida aparte con zlib: se descomprime
 // tabla por tabla y se rearma el directorio.
 function woffASfnt(woff) {
@@ -87,7 +100,7 @@ function woffASfnt(woff) {
 // descendente (para colocar la línea base como lo hace CSS) y el avance de
 // cada carácter, de las tablas head, hhea, hmtx y cmap (formato 4); y el
 // nombre de la familia (tabla name), porque @fontsource publica cada peso
-// como una familia aparte («Inter SemiBold») y resvg las busca así. Sin el
+// como una familia aparte («IBM Plex Sans SemiBold») y resvg las busca así. Sin el
 // kerning, que casi siempre acerca las letras: la medida queda un poco más
 // ancha que el texto dibujado, nunca más angosta.
 function metricas(sfnt) {
@@ -146,13 +159,15 @@ async function cargarFuente() {
   const dir = await mkdtemp(join(tmpdir(), "tarjetas-"));
   const archivos = [];
   const medidas = {};
-  for (const peso of PESOS) {
-    const sfnt = woffASfnt(await readFile(requerir.resolve(`@fontsource/inter/files/inter-latin-${peso}-normal.woff`)));
-    const archivo = join(dir, `inter-${peso}.ttf`);
+  const leer = async (paquete, nombre, clave) => {
+    const sfnt = woffASfnt(await readFile(requerir.resolve(`@fontsource/${paquete}/files/${nombre}.woff`)));
+    const archivo = join(dir, `${nombre}.ttf`);
     await writeFile(archivo, sfnt);
     archivos.push(archivo);
-    medidas[peso] = metricas(sfnt);
-  }
+    medidas[clave] = metricas(sfnt);
+  };
+  for (const peso of PESOS) await leer("ibm-plex-sans", `ibm-plex-sans-latin-${peso}-normal`, peso);
+  await leer("ibm-plex-mono", "ibm-plex-mono-latin-400-normal", "mono");
   fuente = { archivos, medidas };
   return fuente;
 }
@@ -264,9 +279,9 @@ export function svgTarjeta({ etiqueta = "", titulo, detalle = "", sitio = "const
     despues: 26,
   });
 
-  // Entre la marca y la línea del pie, con aire arriba y abajo. El detalle
+  // Entre la marca y la tira de cuadros, con aire arriba y abajo. El detalle
   // toma las líneas que dejen libres la etiqueta y el título, a lo más tres.
-  const [arriba, abajo, aire] = [108, 518, 20];
+  const [arriba, abajo, aire] = [108, firma.length ? 470 : 518, 20];
   const usado = partes.reduce((s, p) => s + p.alto + p.despues, 0);
   const lineaDetalle = 28 * 1.4;
   const caben = Math.min(3, Math.floor((abajo - arriba - 2 * aire - usado) / lineaDetalle));
@@ -289,14 +304,24 @@ export function svgTarjeta({ etiqueta = "", titulo, detalle = "", sitio = "const
     })
     .join("");
 
+  // La tira: dos filas de cuadros a todo el ancho interior.
+  const POR_FILA = Math.ceil(firma.length / 2);
+  const paso = POR_FILA ? INTERIOR / POR_FILA : 0;
+  const lado = Math.max(1, paso - 2);
+  const tira = firma
+    .map(
+      (n, i) =>
+        `<rect x="${(MARGEN + (i % POR_FILA) * paso).toFixed(1)}" y="${(abajo + 14 + Math.floor(i / POR_FILA) * paso).toFixed(1)}" width="${lado.toFixed(1)}" height="${lado.toFixed(1)}" rx="2" fill="${ESCALA[n] ?? ESCALA[0]}"/>`,
+    )
+    .join("");
+
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${ANCHO}" height="${ALTO}" viewBox="0 0 ${ANCHO} ${ALTO}" font-family="${familia(400)}">
 <rect width="${ANCHO}" height="${ALTO}" fill="${COLOR.fondo}"/>
-<rect x="${MARGEN}" y="77" width="26" height="26" fill="${COLOR.texto}"/>
-<text x="${MARGEN + 42}" y="101" font-family="${familia(600)}" font-size="30" letter-spacing="-0.3" fill="${COLOR.texto}">OpenCodice</text>
+<text x="${MARGEN}" y="101" font-family="${familia(600)}" font-size="30" letter-spacing="-0.3" fill="${COLOR.texto}">OpenCodice</text>
 ${cuerpo}
-<rect x="${MARGEN}" y="${abajo}" width="${INTERIOR}" height="1" fill="${COLOR.linea}"/>
-<text x="${MARGEN}" y="564" font-size="24" fill="${COLOR.tenue}">${xml(sitio)}</text>
-<text x="${ANCHO - MARGEN}" y="564" font-size="24" fill="${COLOR.tenue}" text-anchor="end">Información oficial de las leyes y del Congreso de México</text>
+${tira || `<rect x="${MARGEN}" y="${abajo}" width="${INTERIOR}" height="1" fill="${COLOR.linea}"/>`}
+<text x="${MARGEN}" y="566" font-family="${familia("mono")}" font-size="22" fill="${COLOR.tenue}">${xml(sitio)}</text>
+<text x="${ANCHO - MARGEN}" y="566" font-size="22" fill="${COLOR.tenue}" text-anchor="end">Información oficial de las leyes y del Congreso de México</text>
 </svg>`;
 }
 

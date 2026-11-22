@@ -370,7 +370,8 @@ export function documento({ titulo, h1, descripcion, estilo, cuerpo, pie, ruta, 
     url,
     titulo: titulo.replace(/ — OpenCodice$/, ""),
     descripcion,
-    tarjeta: { etiqueta: seccion, titulo: h1, ...tarjeta },
+    // En la portada de una sección la etiqueta repetiría el título.
+    tarjeta: { etiqueta: seccion === h1 ? "" : seccion, titulo: h1, ...tarjeta },
     tipo,
   });
   return `<!doctype html>

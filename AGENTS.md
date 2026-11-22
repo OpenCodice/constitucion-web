@@ -340,8 +340,10 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   - **Buscadores y redes:** cada página lleva su URL canónica, Open Graph y
     tarjeta de Twitter (`metaSocial` de `scripts/lib/comun.mjs`; `documento()`
     la pone sola si recibe `url`) y su imagen de 1200×630 en `/og/{hash}.png`
-    (`scripts/lib/tarjeta.mjs`: un SVG que resvg pasa a PNG, con la fuente
-    Inter de `@fontsource/inter`; resvg no parte el texto en líneas, así que
+    (`scripts/lib/tarjeta.mjs`: un SVG que resvg pasa a PNG, con IBM Plex
+    de `@fontsource/ibm-plex-sans` y `-mono`, y abajo una tira con un cuadro
+    por artículo de la Constitución en la escala de los datos, que
+    `paginas.mjs` fija con `fijarFirma`; resvg no parte el texto en líneas, así que
     el módulo lo mide con los anchos de la propia fuente, equilibra las líneas
     del título y recorta con «…» lo que no cabe). La tarjeta es la sección, el h1 y la descripción,
     salvo las páginas que pasan su propia `tarjeta` (un cambio de la
