@@ -136,6 +136,18 @@ function armar(d, repo, a, rutas, blobs) {
     }
   }
 
+  // Las fechas de reforma que anotan las notas del texto vigente de cada
+  // artículo (metadata/reformas.json): su historia anterior al alta, que no
+  // está como commits. Las de 1917 de la Constitución son su publicación.
+  const fechas = new Map();
+  for (const r of d.reformasAnteriores ?? []) {
+    if (r.fecha < "1918-01-01") continue;
+    for (const k of r.claves) {
+      if (!fechas.has(k)) fechas.set(k, []);
+      fechas.get(k).push(r.fecha);
+    }
+  }
+
   const articulos = claves.map((k) => {
     const t = (blobs.get(`${a.rev}:${presentes.get(k)}`) ?? "").replace(/\s+$/, "");
     const e = entradas.get(k) ?? {};
@@ -145,6 +157,7 @@ function armar(d, repo, a, rutas, blobs) {
       ubicacion: ubicacion(e),
       derogado: e.derogado === true || undefined,
       ultima_reforma: e.ultima_reforma ?? undefined,
+      reformas_segun_notas: fechas.get(k)?.sort() ?? (d.reformasAnteriores ? [] : undefined),
       url: `${SITIO}/ley/${d.clave}/${k}`,
       cambios: tocan.get(k) ?? [],
       texto: t,

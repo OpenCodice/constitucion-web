@@ -67,7 +67,9 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     armado con las mismas funciones que escriben los archivos.
 - `scripts/lib/corpus.mjs` — escribe `public/ley/` por documento vigente:
   `{Documento}.md` (el texto completo con su ficha), `{Documento}.json` (el
-  índice: cada artículo con etiqueta, ubicación, URL y cambios, sin texto) y,
+  índice: cada artículo con etiqueta, ubicación, URL, cambios y
+  `reformas_segun_notas`, las fechas de `reformas.json` que lo nombran, sin
+  texto) y,
   para el Worker, `_/{Documento}/i.json` y `_/{Documento}/{n}.json` (los
   artículos en trozos de ~96 KB); más `catalogo.json` y `public/llms-full.txt`.
   No un archivo por artículo: son 67 mil y crecen con cada estado, y un Worker

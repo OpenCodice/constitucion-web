@@ -37,6 +37,7 @@ function documento(clave, extra, textos) {
         ubicacion: i < 2 ? "Título Primero / Capítulo I" : "Título Segundo",
         url: `https://constitucion.app/ley/${clave}/${k}`,
         cambios: k === "004" ? [0, 1] : [1],
+        reformas_segun_notas: k === "004" ? ["1974-12-31", "2019-06-06"] : [],
         texto: t,
       })),
       cambios: cambios(clave),
@@ -203,6 +204,16 @@ test("/ley: índice, JSON, historia, versión, estados y lo que no existe", asyn
   assert.equal(a.status, 404);
   assert.match(await a.text(), /no tiene un artículo `999`/);
   assert.equal((await pedir("/ley/nada", md)).status, 404);
+});
+
+test("reformas según las notas: las fechas de cada artículo en el índice y en su historia", async () => {
+  const i = await (await pedir("/ley/cpeum", md)).text();
+  assert.match(i, /## Artículos con más reformas según las notas de su texto\n\nArtículo 4o \(2\)\./);
+  assert.match(i, /\[Artículo 4o\.\]\(https:\/\/constitucion.app\/ley\/cpeum\/004\) · 2 reformas según sus notas, la última 2019-06-06/);
+  assert.deepEqual((await api("indice_documento?documento=cpeum")).articulos.map((a) => a.reformas_segun_notas.length), [0, 2, 0]);
+  const h = await api("historia_articulo?documento=cpeum&articulo=4");
+  assert.deepEqual(h.reformas_segun_notas, ["1974-12-31", "2019-06-06"]);
+  assert.match(await (await pedir("/ley/cpeum/4/historia", md)).text(), /anotan 2 fechas de reforma: 1974-12-31, 2019-06-06/);
 });
 
 test("buscar: literal en leyes y Congreso, con palabras comunes ignoradas", async () => {

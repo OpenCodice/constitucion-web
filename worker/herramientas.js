@@ -108,7 +108,7 @@ export const HERRAMIENTAS = [
   {
     name: "indice_documento",
     title: "Índice de una ley",
-    description: "Los artículos de un documento en orden, agrupados por título y capítulo, con la URL de cada uno, su fuente oficial y sus últimos cambios.",
+    description: "Los artículos de un documento en orden, agrupados por título y capítulo, con la URL de cada uno, su fuente oficial, sus últimos cambios y, de cada artículo, las fechas de reforma que anotan las notas de su texto (`reformas_segun_notas`): con ellas se ve qué artículos se han reformado más en toda su historia, no solo desde que OpenCodice los registra.",
     inputSchema: { type: "object", properties: { documento }, required: ["documento"] },
     async run(env, { documento: k }) {
       const d = await documentoOError(env, k);
@@ -144,7 +144,7 @@ export const HERRAMIENTAS = [
   {
     name: "historia_articulo",
     title: "Historia de un artículo",
-    description: "Los cambios registrados de un artículo (reformas, correcciones de extracción, alta), con su fecha de publicación, su página en la bitácora y la URL del texto en cada versión.",
+    description: "Los cambios registrados de un artículo (reformas, correcciones de extracción, alta), con su fecha de publicación, su página en la bitácora y la URL del texto en cada versión, y las fechas de reforma anteriores al registro que anotan las notas de su texto.",
     inputSchema: { type: "object", properties: { documento, articulo: { type: "string" } }, required: ["documento", "articulo"] },
     async run(env, { documento: k, articulo }) {
       const d = await documentoOError(env, k);

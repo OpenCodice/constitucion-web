@@ -145,6 +145,7 @@ export function datosHistoria(minimo, a) {
     etiqueta: a.etiqueta,
     url: urlArticulo(minimo.documento, a.clave),
     ultima_reforma: a.ultima_reforma ?? null,
+    reformas_segun_notas: a.reformas_segun_notas ?? null,
     cambios: a.cambios.map((i) => {
       const c = minimo.cambios[i];
       return { ...c, texto_en_esa_version: `${urlArticulo(minimo.documento, a.clave)}@${corto(c.sha)}` };
@@ -173,7 +174,7 @@ export function mdHistoria(minimo, a) {
 
 ${h.cambios.map((c) => lineaCambio(c, ` · [texto en esa versión](${c.texto_en_esa_version})`)).join("\n") || "Sin cambios registrados."}
 
-La historia de cada documento en OpenCodice empieza en su alta. Las reformas anteriores no están como commits; sus fechas están en las notas del texto (por ejemplo _Párrafo reformado DOF 07-10-2026_)${h.ultima_reforma ? ` y la más reciente según esas notas es del ${h.ultima_reforma}` : ""}. Lo que cambió en cada reforma, con la diferencia de su texto y su proceso legislativo, está en su página de la bitácora (detalle_cambio en el MCP).
+La historia de cada documento en OpenCodice empieza en su alta. Las reformas anteriores no están como commits; sus fechas están en las notas del texto (por ejemplo _Párrafo reformado DOF 07-10-2026_)${h.ultima_reforma ? ` y la más reciente según esas notas es del ${h.ultima_reforma}` : ""}.${h.reformas_segun_notas?.length ? ` Las notas de su texto vigente anotan ${h.reformas_segun_notas.length === 1 ? "una fecha" : `${h.reformas_segun_notas.length} fechas`} de reforma: ${h.reformas_segun_notas.join(", ")}. Una nota que la reforma siguiente sustituyó ya no está en el texto, así que pueden faltar fechas.` : ""} Lo que cambió en cada reforma, con la diferencia de su texto y su proceso legislativo, está en su página de la bitácora (detalle_cambio en el MCP).
 `;
 }
 
@@ -185,8 +186,13 @@ export function mdIndice(indice) {
       lugar = a.ubicacion;
       lineas.push(`\n## ${lugar}\n`);
     }
-    lineas.push(`- [${a.etiqueta}](${a.url})${a.derogado ? " (derogado)" : ""}`);
+    const n = a.reformas_segun_notas?.length;
+    lineas.push(`- [${a.etiqueta}](${a.url})${a.derogado ? " (derogado)" : ""}${n ? ` · ${n === 1 ? "1 reforma" : `${n} reformas`} según sus notas, la última ${a.reformas_segun_notas.at(-1)}` : ""}`);
   }
+  const conNotas = indice.articulos.filter((a) => a.reformas_segun_notas?.length).sort((x, y) => y.reformas_segun_notas.length - x.reformas_segun_notas.length);
+  const masReformados = conNotas.length
+    ? `\n## Artículos con más reformas según las notas de su texto\n\n${conNotas.slice(0, 15).map((a) => `${sinPunto(a.etiqueta)} (${a.reformas_segun_notas.length})`).join(", ")}. Cuenta las fechas de reforma que anota el texto vigente de cada artículo, desde su publicación; una nota que una reforma posterior sustituyó ya no se cuenta. Las fechas de cada uno, en el JSON (\`reformas_segun_notas\`) y en historia_articulo.\n`
+    : "";
   const ultimos = indice.cambios.filter((c) => c.clase !== "metadatos" && c.clase !== "ajuste").slice(0, 5);
   return `${yaml({
     documento: indice.documento,
@@ -210,7 +216,7 @@ ${indice.articulos.length} artículos. Cada uno en \`${SITIO}/ley/${indice.docum
 ## Últimos cambios
 
 ${ultimos.map((c) => lineaCambio(c)).join("\n") || "Ninguno."}
-
+${masReformados}
 ## Artículos
 ${lineas.join("\n")}
 `;
