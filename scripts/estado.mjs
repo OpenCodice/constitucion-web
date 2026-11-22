@@ -530,11 +530,6 @@ ${ESTILO_SALUD}
 .cifras li { margin: 0; }
 .cifras .cifra { display: block; color: var(--texto); font-family: var(--mono); font-size: 2em; line-height: 1.15; letter-spacing: -0.02em; }
 .cuadros { margin: 1.5rem 0 0.75rem; }
-.tecnico { margin-top: 4.5rem; padding-top: 1.25rem; border-top: 1px solid var(--linea); }
-.tecnico > summary { cursor: pointer; font-size: 0.833em; font-weight: 500; color: var(--tenue); }
-.tecnico > summary:hover { color: var(--texto); }
-.tecnico[open] > summary { margin-bottom: 1.5rem; }
-.tecnico h2:first-of-type { margin-top: 2.5rem; }
 .tipo { white-space: nowrap; }
 #supervisor-vivo .salud-sub { margin-bottom: 1.2rem; }
 .inv { white-space: nowrap; }
@@ -563,9 +558,6 @@ ${seccionPublicadoHoy(datos)}
 
 ${seccionPublicado(datos.actividad, datos.bitacora)}
 
-<details class="tecnico" id="tecnico">
-<summary>Detalle técnico: repositorios, vigilancias y supervisor</summary>
-
 <h2 id="repositorios">Repositorios de datos</h2>
 ${seccionResumen(datos)}
 
@@ -574,22 +566,7 @@ ${seccionCorpus(datos)}
 ${seccionProgreso(datos, generada)}
 
 ${seccionSupervisor(datos.supervisor, generada)}
-</details>
-<script>
-  // Un enlace a una sección del detalle técnico (#supervisor, #progreso) lo abre.
-  (() => {
-    const abrir = () => {
-      const destino = location.hash ? document.getElementById(location.hash.slice(1)) : null;
-      const detalle = destino?.closest("details");
-      if (detalle && !detalle.open) {
-        detalle.open = true;
-        destino.scrollIntoView();
-      }
-    };
-    abrir();
-    addEventListener("hashchange", abrir);
-  })();
-</script>`;
+`;
   return documento({
     ruta: "/estado",
     url: "/estado",
