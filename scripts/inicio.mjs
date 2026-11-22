@@ -294,6 +294,54 @@ function status(vigilancia, generada) {
   return `<p class="status">${insignia(s)}<span class="tenue">${revision}</span></p>`;
 }
 
+// Cómo se agrega el servidor en cada cliente, en orden alfabético: un comando
+// o archivo (`codigo`) o una instrucción (`texto`).
+const CLIENTES = [
+  { clave: "chatgpt", nombre: "ChatGPT", texto: "En Configuración → Conectores, con el modo de desarrollador activo, se crea un conector con la URL, sin autenticación." },
+  { clave: "claude", nombre: "Claude", texto: "En Configuración → Conectores se agrega un conector personalizado con la URL, sin autenticación." },
+  { clave: "claude-code", nombre: "Claude Code", codigo: `claude mcp add --transport http opencodice ${MCP}` },
+  { clave: "codex", nombre: "Codex", codigo: `codex mcp add opencodice --url ${MCP}` },
+  { clave: "cursor", nombre: "Cursor", nota: "En <code>~/.cursor/mcp.json</code>:", codigo: `{
+  "mcpServers": {
+    "opencodice": { "url": "${MCP}" }
+  }
+}` },
+  { clave: "gemini", nombre: "Gemini CLI", codigo: `gemini mcp add --transport http opencodice ${MCP}` },
+  { clave: "vscode", nombre: "VS Code", codigo: `code --add-mcp '{"name":"opencodice","type":"http","url":"${MCP}"}'` },
+];
+
+// Pestañas sin JavaScript: un grupo de radios, y el CSS muestra el panel del
+// marcado. Sin CSS se leen todos los paneles, cada uno con su nombre.
+function clientesMcp() {
+  const radios = CLIENTES.map(
+    (c, i) => `<input type="radio" name="cliente" id="cl-${c.clave}"${i ? "" : " checked"} /><label for="cl-${c.clave}">${c.nombre}</label>`,
+  ).join("\n        ");
+  const paneles = CLIENTES.map(
+    (c) =>
+      `<div class="panel" id="p-${c.clave}"><strong class="panel-nombre">${c.nombre}. </strong>${c.texto ? `<p>${c.texto}</p>` : ""}${c.nota ? `<p>${c.nota}</p>` : ""}${
+        c.codigo ? `<pre class="cmd"><code>${esc(c.codigo)}</code></pre>` : ""
+      }</div>`,
+  ).join("\n        ");
+  return `<div class="clientes" role="group" aria-label="Cliente de MCP">
+        ${radios}
+        ${paneles}
+      </div>`;
+}
+
+const ESTILO_CLIENTES = `
+.clientes { display: flex; flex-wrap: wrap; gap: 0 1.25rem; margin: 1rem 0 1.75rem; }
+.clientes input { position: absolute; opacity: 0; pointer-events: none; }
+.clientes label { padding: 0.375rem 0; font-size: 0.89em; color: var(--tenue); border-bottom: 2px solid transparent; cursor: pointer; }
+.clientes label:hover { color: var(--texto); }
+.clientes input:checked + label { color: var(--texto); font-weight: 500; border-bottom-color: var(--texto); }
+.clientes input:focus-visible + label { outline: 2px solid var(--enlace); outline-offset: 3px; }
+.clientes .panel { display: none; order: 1; flex: 0 0 100%; min-width: 0; padding-top: 1rem; border-top: 1px solid var(--linea); margin-top: -1px; }
+.clientes .panel-nombre { display: none; }
+.clientes .panel p { margin: 0 0 0.75rem; }
+.clientes .panel pre { margin: 0; }
+${CLIENTES.map((c) => `#cl-${c.clave}:checked ~ #p-${c.clave}`).join(", ")} { display: block; }
+`;
+
 const ESTILO_INICIO = `
 main > header { margin-bottom: 1.5rem; }
 .intro p { margin-bottom: 1.25rem; }
@@ -338,7 +386,7 @@ export function paginaInicio(datos, generada) {
     <link rel="alternate" type="text/plain" href="/llms.txt" title="Guía para agentes" />
     <link rel="alternate" type="text/markdown" href="/llms.txt" title="Esta página en Markdown" />
     <link rel="stylesheet" href="/estilo.css" />
-    <style>${ESTILO_SALUD}${ESTILO_INICIO}</style>
+    <style>${ESTILO_SALUD}${ESTILO_INICIO}${ESTILO_CLIENTES}</style>
   </head>
   <body>
     <main>
@@ -386,15 +434,10 @@ ${historial(datos.bitacora?.documentos.get("cpeum")?.vida, generada)}${quePublic
         en el Congreso, leer un artículo, ver qué cambió en una reforma y cómo se votó, y consultar a cada
         legislador. La búsqueda es literal y cada respuesta trae el texto publicado con su enlace.
       </p>
-      <p>El servidor MCP, para cualquier cliente (Streamable HTTP):</p>
+      <p>El servidor MCP es de protocolo abierto (Streamable HTTP) y lo usa cualquier cliente con esta URL:</p>
       <pre class="cmd"><code>${MCP}</code></pre>
-      <p>
-        En ChatGPT (modo de desarrollador) o en Claude se agrega como conector con esa URL. Desde la terminal:
-      </p>
-      <pre class="cmd"><code># Claude Code
-claude mcp add --transport http opencodice ${MCP}
-# Codex
-codex mcp add opencodice --url ${MCP}</code></pre>
+      <p>Cómo se agrega en algunos clientes:</p>
+      ${clientesMcp()}
       <ul>
         <li>
           Cada artículo en Markdown, con su fuente, su versión y su URL para citar:

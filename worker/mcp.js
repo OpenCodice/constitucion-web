@@ -93,7 +93,7 @@ export async function rutaMcp(request, env) {
     // conectarse.
     const cliente = (request.headers.get("Accept") ?? "").includes("text/event-stream") || request.method !== "GET";
     return new Response(
-      `Servidor MCP de OpenCodice (Streamable HTTP, solo POST, sin autenticación).\n\nAgrégalo a tu cliente con la URL ${SITIO}/mcp. En Claude Code:\n\n  claude mcp add --transport http opencodice ${SITIO}/mcp\n\nEn Codex:\n\n  codex mcp add opencodice --url ${SITIO}/mcp\n\nEn ChatGPT (modo de desarrollador) o en Claude, como conector personalizado con esa URL, sin autenticación.\n\nHerramientas: ${HERRAMIENTAS.map((h) => h.name).join(", ")}.\nLas mismas, como API REST: ${SITIO}/api (OpenAPI en ${SITIO}/openapi.json).\nGuía: ${SITIO}/llms.txt\n`,
+      `Servidor MCP de OpenCodice (Streamable HTTP, solo POST, sin autenticación).\n\nAgrégalo a tu cliente con la URL ${SITIO}/mcp. En Claude Code:\n\n  claude mcp add --transport http opencodice ${SITIO}/mcp\n\nEn Codex:\n\n  codex mcp add opencodice --url ${SITIO}/mcp\n\nEn Gemini CLI:\n\n  gemini mcp add --transport http opencodice ${SITIO}/mcp\n\nEn Cursor, en ~/.cursor/mcp.json:\n\n  { "mcpServers": { "opencodice": { "url": "${SITIO}/mcp" } } }\n\nEn ChatGPT (modo de desarrollador) o en Claude, como conector personalizado con esa URL, sin autenticación.\n\nHerramientas: ${HERRAMIENTAS.map((h) => h.name).join(", ")}.\nLas mismas, como API REST: ${SITIO}/api (OpenAPI en ${SITIO}/openapi.json).\nGuía: ${SITIO}/llms.txt\n`,
       { status: cliente ? 405 : 200, headers: { ...CORS, Allow: "POST, OPTIONS", "Content-Type": "text/plain; charset=utf-8" } },
     );
   }
