@@ -337,13 +337,6 @@ main > header { margin-bottom: 1.5rem; }
 .figura .desliza { direction: rtl; }
 .figura .desliza > * { direction: ltr; }
 .figura figcaption { max-width: calc(var(--columna) - 2.5rem); margin: 0.75rem auto 0; }
-.filas { margin-top: -0.75rem; }
-.fila { display: grid; grid-template-columns: 6rem 1fr auto; gap: 0.25rem 1.25rem; align-items: baseline; padding: 1.125rem 0; border-bottom: 1px solid var(--linea); color: var(--texto); text-decoration: none; }
-.fila:hover { color: var(--texto); }
-.fila:hover strong { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.18em; }
-.fila .cifra { font-family: var(--mono); font-size: 1.875rem; line-height: 2.125rem; letter-spacing: -0.02em; }
-.fila strong { font-weight: 600; }
-.fila .flecha { color: var(--tenue); }
 .reforma { margin-bottom: 2rem; }
 .reforma p { margin-bottom: 0.625rem; }
 .reforma p a, .fuerte { font-weight: 500; }
@@ -352,11 +345,6 @@ main > header { margin-bottom: 1.5rem; }
 .status { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3em 0.6em; font-size: 0.85em; }
 .status .insignia { font-size: 0.82em; }
 pre.cmd { white-space: pre-wrap; overflow-wrap: anywhere; }
-@media (max-width: 30rem) {
-  .fila { grid-template-columns: 4.25rem 1fr; }
-  .fila .cifra { font-size: 1.5rem; }
-  .fila .flecha { display: none; }
-}
 `;
 
 export function paginaInicio(datos, generada) {

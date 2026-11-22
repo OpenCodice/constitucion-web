@@ -164,8 +164,8 @@ test("genera índice, votaciones, legisladores y expedientes", () => {
   ]) {
     assert.ok(p.has(r), r);
   }
-  assert.match(p.get("congreso/index.html"), /3 votaciones nominales/);
-  assert.match(p.get("congreso/index.html"), /3 iniciativas<\/li>|3 iniciativas: 2 pendientes, 1 aprobada/);
+  assert.match(p.get("congreso/index.html"), /<span class="cifra">3<\/span><span><strong>Votaciones nominales/);
+  assert.match(p.get("congreso/index.html"), /<span class="cifra">3<\/span><span><strong>Iniciativas\.<\/strong> 2 pendientes, 1 aprobada/);
 });
 
 test("votación con votos sin atribuir, inconsistencias y otra fuente", () => {

@@ -286,41 +286,54 @@ function paginaIndice(m, generada) {
   const decretosConExp = m.decretos.filter((d) => d.expedientes?.length).length;
   const ultimas = vs.sort(porFechaDesc).slice(0, ULTIMAS_EN_INDICE);
 
+  const fila = (href, cifra, nombre, frase) =>
+    href
+      ? `<a class="fila" href="${href}"><span class="cifra">${numero(cifra)}</span><span><strong>${nombre}.</strong> ${frase}</span><span class="flecha" aria-hidden="true">→</span></a>`
+      : `<div class="fila"><span class="cifra">${numero(cifra)}</span><span><strong>${nombre}.</strong> ${frase}</span><span></span></div>`;
   const cuerpo = `<p>
-  Quién vota qué en el Congreso de la Unión y qué presenta cada legislador${
+  Cada votación nominal del Congreso de la Unión con el voto de cada diputado o senador, y cada
+  iniciativa y proposición con su autor y en qué quedó${
     legislaturas.length ? ` (${lista(legislaturas.map((l) => `${esc(l)} Legislatura`))})` : ""
-  }: cada votación nominal con el voto de cada diputado o senador, y cada iniciativa y proposición
-  con su autor y en qué quedó.
+  }.
 </p>
-<p>
+<p class="tenue">
   Los datos salen del <a href="http://sil.gobernacion.gob.mx">Sistema de Información Legislativa</a>
   (SIL) de Gobernación, del sitio de votaciones del Senado, de la Gaceta Parlamentaria de la Cámara
   de Diputados y del Diario Oficial de la Federación. Están en ${`<a href="https://github.com/${ORG}/${REPO}">${ORG}/${REPO}</a>`},
   un registro por archivo, cada uno con la página oficial de la que salió, su fecha de consulta y su
-  SHA-256. Los genera un programa (<a href="https://github.com/${ORG}/congreso-extractor">congreso-extractor</a>);
-  nadie los edita a mano.
+  SHA-256. Los genera un programa (<a href="https://github.com/${ORG}/congreso-extractor">congreso-extractor</a>).
+</p>
+<p class="botones">
+  <a class="boton" href="${BASE_CONGRESO}/votaciones/">Ver las votaciones</a>
+  <a class="boton boton-borde" href="${BASE_CONGRESO}/legisladores/">Ver legisladores</a>
+  <a href="${BASE_CONGRESO}/camaras">Quién ocupa cada lugar →</a>
 </p>
 
 <h2>Qué hay</h2>
-<ul>
-  <li><a href="${BASE_CONGRESO}/legisladores/">${plural(m.personas.size, "legislador", "legisladores")}</a>: ${plural(
-    porCamara("camara-de-diputados"),
-    "mandato de diputado",
-    "mandatos de diputado",
-  )} y ${plural(porCamara("senado"), "de senador", "de senador")}, con propietarios y suplentes.</li>
-  <li><a href="${BASE_CONGRESO}/votaciones/">${plural(vs.length, "votación nominal", "votaciones nominales")}</a>: ${numero(
-    conVotos,
-  )} con el voto de cada legislador y ${numero(vs.length - conVotos)} solo con conteos. ${lista(
-    [...porFuente].map(([f, xs]) => `${numero(xs.length)} del ${esc(f)}`),
-  )}.</li>
-  <li>${plural(ini.length, "iniciativa", "iniciativas")}: ${lineaResultados(ini)}.</li>
-  <li>${plural(pro.length, "proposición con punto de acuerdo", "proposiciones con punto de acuerdo")}: ${lineaResultados(pro)}.</li>
-  <li><a href="${BASE_CONGRESO}/expedientes/">${plural(m.expedientes.size, "expediente", "expedientes")}</a> del SIL (los asuntos que llegaron a votación nominal) y ${plural(
-    m.decretos.length,
-    "decreto del DOF",
-    "decretos del DOF",
-  )}, ${numero(decretosConExp)} ligados a su expediente.</li>
-</ul>
+<div class="filas">
+${[
+  fila(
+    `${BASE_CONGRESO}/legisladores/`,
+    m.personas.size,
+    "Legisladores",
+    `${plural(porCamara("camara-de-diputados"), "mandato de diputado", "mandatos de diputado")} y ${plural(porCamara("senado"), "de senador", "de senador")}, con propietarios y suplentes.`,
+  ),
+  fila(
+    `${BASE_CONGRESO}/votaciones/`,
+    vs.length,
+    "Votaciones nominales",
+    `${numero(conVotos)} con el voto de cada legislador y ${numero(vs.length - conVotos)} solo con conteos. ${lista([...porFuente].map(([f, xs]) => `${numero(xs.length)} del ${esc(f)}`))}.`,
+  ),
+  fila(null, ini.length, "Iniciativas", `${lineaResultados(ini).replace(/^./, (l) => l.toUpperCase())}.`),
+  fila(null, pro.length, "Proposiciones con punto de acuerdo", `${lineaResultados(pro).replace(/^./, (l) => l.toUpperCase())}.`),
+  fila(
+    `${BASE_CONGRESO}/expedientes/`,
+    m.expedientes.size,
+    "Expedientes",
+    `Los asuntos del SIL que llegaron a votación nominal, y ${plural(m.decretos.length, "decreto del DOF", "decretos del DOF")}, ${numero(decretosConExp)} ligados a su expediente.`,
+  ),
+].join("\n")}
+</div>
 
 ${
   m.composiciones.length
@@ -332,7 +345,7 @@ ${m.composiciones.map(miniComposicion).join("\n")}
 `
     : ""
 }
-<h2>Lo que no cuadra, a la vista</h2>
+<h2>Lo que no cuadra entre fuentes</h2>
 <p>
   Lo que una fuente publica se conserva aunque no cuadre consigo misma o con otra fuente; nada se
   ajusta. En cada votación se explica qué pasa:
@@ -359,7 +372,7 @@ ${ultimas.length ? `<ul class="lista">\n${ultimas.map((v) => filaVotacion(m, v))
   return pagina({
     url: `${BASE_CONGRESO}/`,
     titulo: "Congreso",
-    h1: "Congreso: quién vota qué",
+    h1: "Congreso",
     descripcion: "Cada votación nominal del Congreso de la Unión con el voto de cada legislador, y lo que presenta cada diputado y senador, de fuentes oficiales.",
     cuerpo,
     generada,
@@ -371,7 +384,7 @@ function paginaSinDatos(congreso, generada) {
   return pagina({
     url: `${BASE_CONGRESO}/`,
     titulo: "Congreso",
-    h1: "Congreso: quién vota qué",
+    h1: "Congreso",
     descripcion: "Las votaciones y legisladores del Congreso de la Unión, de congreso-mexicano.",
     cuerpo: `<p class="aviso">No se pudieron leer los datos del Congreso (${esc(congreso?.error ?? "sin datos")}). Esta versión del sitio sale sin ellos; los datos siguen en <a href="https://github.com/${ORG}/${REPO}">${ORG}/${REPO}</a>.</p>`,
     generada,
