@@ -49,8 +49,15 @@ const existe = (ruta) =>
   );
 
 // Carpeta de git del repo, al día con main. Los clones son --bare: solo hace
-// falta el historial, no los decenas de miles de archivos de texto.
-async function clon(repo) {
+// falta el historial, no los decenas de miles de archivos de texto. Se abre
+// una vez por corrida: la bitácora y el corpus leen el mismo clon.
+const clones = new Map();
+export function clon(repo) {
+  if (!clones.has(repo)) clones.set(repo, abrir(repo));
+  return clones.get(repo);
+}
+
+async function abrir(repo) {
   if (process.env.REPOS_DATOS) {
     const dir = join(process.env.REPOS_DATOS, repo);
     if (!(await existe(dir))) throw new Error(`no existe ${dir}`);
@@ -69,7 +76,7 @@ async function clon(repo) {
 // Lee muchos blobs con un solo `git cat-file --batch`. Devuelve un Map
 // revisión → texto (o null si no existe, como el padre del primer commit o un
 // artículo que aún no estaba).
-async function leerBlobs(dir, revisiones) {
+export async function leerBlobs(dir, revisiones) {
   const unicas = [...new Set(revisiones)];
   const resultado = new Map();
   if (!unicas.length) return resultado;
@@ -89,6 +96,12 @@ async function leerBlobs(dir, revisiones) {
     i += tam + 1;
   }
   return resultado;
+}
+
+// Rutas de todos los archivos del repo en la revisión.
+export async function arbol(dir, rev) {
+  const salida = await git(dir, ["ls-tree", "-r", "--name-only", rev]);
+  return salida.toString("utf8").split("\n").filter(Boolean);
 }
 
 // ------------------------------------------------------------------ disposición
@@ -112,7 +125,7 @@ export function dirMetadata(documento) {
 
 const rutaArticulo = (documento, clave) => `${dirArticulos(documento)}${clave}.md`;
 
-function esArticulo(ruta, documento) {
+export function esArticulo(ruta, documento) {
   const base = dirArticulos(documento);
   if (!ruta.startsWith(base)) return false;
   const resto = ruta.slice(base.length);

@@ -3,7 +3,7 @@
 // actualización, sin hablar de repositorios ni de procesos. Lo técnico está en
 // /estado.
 
-import { historiaDe } from "./bitacora.mjs";
+import { historiaDe, enLey } from "./bitacora.mjs";
 import { ORG, REPOS, ESTADOS, conArticulo, TOTAL_INDICE_FEDERAL, esc, numero, fechaLarga, momento, plural, lista, documento, anclaTip } from "./lib/comun.mjs";
 
 // Años de la fila de cuadros: desde 2000 hasta el año en curso. En el teléfono
@@ -148,6 +148,7 @@ function itemDocumento(d, hasta) {
   const enlaces = [
     `<a href="${esc(d.texto)}">Leer el texto</a>`,
     d.historia ? `<a href="${esc(d.historia)}">Sus cambios</a>` : "",
+    d.ley ? `<a href="${esc(d.ley)}" title="El texto en Markdown, un artículo por URL">Para agentes</a>` : "",
     d.pdf ? `<a href="${esc(d.pdf)}">PDF oficial</a>` : "",
   ].filter(Boolean);
   return `<li class="doc">
@@ -175,6 +176,7 @@ function documentosCpeum(cpeum, revision, b) {
       revision: enRevision(revision, REPOS.cpeum, "cpeum"),
       texto: textoEnGitHub(REPOS.cpeum, "articulos"),
       historia: historiaDe(b, "cpeum"),
+      ley: enLey(b, "cpeum"),
       pdf: PDF_CPEUM,
     },
   ];
@@ -194,6 +196,7 @@ function documentosEstatales(estatales, revision, b) {
       revision: enRevision(revision, REPOS.estatales, e.clave),
       texto: textoEnGitHub(REPOS.estatales, `${e.clave}/constitucion/articulos`),
       historia: historiaDe(b, `${e.clave}/constitucion`),
+      ley: enLey(b, `${e.clave}/constitucion`),
       pdf: null,
     }));
 }
@@ -218,6 +221,7 @@ function leyesEstatales(estatales, revision, b) {
           revision: enRevision(revision, REPOS.estatales, d.clave, Boolean(d.revision_pendiente)),
           texto: textoEnGitHub(REPOS.estatales, `${d.clave}/articulos`),
           historia: historiaDe(b, d.clave),
+          ley: enLey(b, d.clave),
           pdf: d.url ?? null,
         }))
         .sort((x, y) => x.nombre.localeCompare(y.nombre, "es")),
@@ -238,6 +242,7 @@ function documentosFederales(federales, revision, b) {
       revision: enRevision(revision, REPOS.federales, d.clave, Boolean(d.revision_pendiente)),
       texto: textoEnGitHub(REPOS.federales, d.clave),
       historia: historiaDe(b, d.clave),
+      ley: enLey(b, d.clave),
       pdf: d.url,
     }))
     .sort((a, b) => a.tema.localeCompare(b.tema, "es"));
@@ -263,6 +268,7 @@ function documentosFiscales(fiscal, federales, revision, b) {
     revision: enRevision(revision, REPOS.fiscal, d.clave),
     texto: textoEnGitHub(REPOS.fiscal, d.clave),
     historia: historiaDe(b, d.clave),
+    ley: enLey(b, d.clave),
     pdf: pdfs[d.clave] ?? null,
   }));
 }
@@ -553,6 +559,7 @@ ${seccionFiscal(fiscal, hasta)}
 </p>`;
 
   return documento({
+    cabeza: '<link rel="alternate" type="text/markdown" href="/ley" title="Las leyes, en Markdown" />',
     ruta: "/leyes",
     url: "/leyes",
     titulo: "Qué leyes hay — OpenCodice",
@@ -564,6 +571,7 @@ ${seccionFiscal(fiscal, hasta)}
     pie: `<p>
           <a href="/">Inicio</a> · <a href="/bitacora/">Bitácora de reformas</a> · <a href="/estado">Status del sistema</a> ·
           Los datos y su historial están en <a href="https://github.com/${ORG}">GitHub</a>.
+          Para agentes de IA: <a href="/llms.txt">la guía</a>, <a href="/ley">el texto por URL</a> y el servidor MCP en <code>https://constitucion.app/mcp</code>.
         </p>`,
   });
 }

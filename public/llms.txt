@@ -1,34 +1,53 @@
 # OpenCodice
 
-> El texto vigente de la ley mexicana en repositorios públicos de git, un archivo Markdown por artículo. Cada reforma es un commit: el historial de un archivo es el historial de ese artículo. Todo sale de los PDF oficiales con un extractor; nada se edita a mano. No hay API: se leen los archivos directamente.
+> El texto vigente de la ley mexicana (la Constitución, las leyes federales, la legislación fiscal y las constituciones y leyes de los estados), extraído de los PDF oficiales, un artículo por archivo, con cada reforma registrada como un commit de git. Se lee por URL en Markdown, por un servidor MCP de solo lectura o clonando los repositorios.
 
-Los datos son de dominio público (CC0 1.0) y los extractores, MIT: se pueden usar y redistribuir sin restricciones. No es la publicación oficial ni asesoría legal. Para efectos jurídicos, la fuente es el Diario Oficial de la Federación o el periódico oficial de cada estado.
+Los datos son de dominio público (CC0 1.0) y los extractores, MIT. No es la publicación oficial ni asesoría legal: para efectos jurídicos, la fuente es el Diario Oficial de la Federación o el periódico oficial de cada estado. Lo que se publica es texto extraído del PDF oficial por un programa, nunca editado a mano ni generado; la IA solo se usa al mantenerlo (un agente revisa cada cambio contra el PDF y repara el extractor). Nada responde con texto generado: no hay búsqueda semántica ni respuestas de un modelo.
 
-La historia de cada documento empieza en su alta (el commit `Alta de …`). Las reformas anteriores no están como commits: solo sus fechas, en `metadata/reformas.json` (fecha → artículos).
+## Leer un artículo por URL
 
-No hay búsqueda, API ni respuestas generadas: se retiraron a propósito. La IA solo se usa al escribir (un agente revisa cada cambio contra el PDF y repara el extractor); lo publicado es texto extraído del PDF oficial.
+- `https://constitucion.app/ley/{documento}/{artículo}`: el artículo en Markdown, con un frontmatter con su documento, su ubicación (título, capítulo), su última reforma según las notas del texto, su URL para citar, su versión (commit), su enlace permanente y su fuente oficial. Ejemplos: [/ley/cpeum/123](https://constitucion.app/ley/cpeum/123), [/ley/lft/87](https://constitucion.app/ley/lft/87), [/ley/jalisco/constitucion/4](https://constitucion.app/ley/jalisco/constitucion/4), [/ley/rmf-2026/2.1.1](https://constitucion.app/ley/rmf-2026/2.1.1).
+- El artículo se escribe como sea: `4`, `4o`, `004`, `Artículo 4o.`, `77 Bis 35 A`, `Regla 2.1.1`. La clave del documento acepta mayúsculas o su sigla (`LFT`). La URL canónica va en el frontmatter (`url`).
+- `https://constitucion.app/ley/{documento}`: el índice del documento, con cada artículo enlazado y agrupado por título y capítulo, su fuente y sus últimos cambios. `/ley/{documento}.md` es el texto completo; `/ley/{documento}.json` y `/ley/{documento}/{artículo}.json`, lo mismo en JSON.
+- `https://constitucion.app/ley/{documento}/{artículo}/historia`: los cambios registrados de ese artículo, cada uno con su página en la bitácora y la URL de su texto en esa versión (`/ley/{documento}/{artículo}@{sha}`, que lleva al archivo en ese commit).
+- `https://constitucion.app/ley/buscar?q={palabras}&documento={clave}`: búsqueda literal (sin acentos ni mayúsculas, todas las palabras en el mismo artículo) en hasta 5 documentos separados por coma. Sin `documento`, busca en los nombres de los documentos. Es literal: busca las palabras que usaría la ley.
+- `https://constitucion.app/ley`: todos los documentos, por ámbito. `/ley/{estado}` (por ejemplo [/ley/jalisco](https://constitucion.app/ley/jalisco)), los de un estado. [/llms-full.txt](https://constitucion.app/llms-full.txt) es el mismo catálogo en una sola página, y [/ley/catalogo.json](https://constitucion.app/ley/catalogo.json), en JSON.
 
-## Cómo leerlo
+Claves de documento: `cpeum` (la Constitución), la de LeyesBiblio de la Cámara de Diputados para las leyes federales (`lft`, `lgs`, `cff`, `lisr`, `ccf`…), la del SAT para lo fiscal (`rmf-2026`, `criterios-normativos`, `anexo2-2026`…) y `{estado}/{ley}` para los estados (`jalisco/constitucion`, `cdmx/codigo-penal`, `nuevo-leon/ley-electoral`).
 
-- Clonar un repositorio (`git clone https://github.com/OpenCodice/<repo>`) da todo el texto y, con `git log -p <archivo>`, la historia de cada artículo.
-- Un archivo suelto está en `https://raw.githubusercontent.com/OpenCodice/<repo>/main/<ruta>`.
-- El servidor MCP de GitHub (https://github.com/github/github-mcp-server) lee archivos y commits de estos repositorios públicos.
-- Los archivos se nombran con el número de artículo a tres dígitos y su sufijo: `001.md`, `004-a.md`, `077-bis-35-a.md`. Cada uno empieza con el encabezado del artículo (`# Artículo 82.`) y conserva las notas de reforma del PDF en cursiva (`_Párrafo reformado DOF 07-10-2026_`).
-- Los repositorios de datos solo tienen commits de texto legal, uno por documento, y el título dice qué pasó: `Reforma CPEUM (DOF 2026-10-07): arts. 82, 116, 122` cuando cambió la ley; `Corrección de extracción cdmx: 23 artículos` cuando la ley es la misma y mejoró la lectura del PDF; `Alta de LGS` cuando entra un documento; `Retiro de …` cuando sale uno porque su extracción ya no reproduce el PDF. Los commits `Índice y registro de documentos al día` y `Registro de las leyes estatales` (`Tipo: indice`) y `Metadatos de …` (`Tipo: metadatos`) no cambian el texto legal.
-- `git log -- lgs/` es la historia de la Ley General de Salud; `git log -- jalisco/constitucion/` en leyes-estatales, la de la Constitución de Jalisco.
-- Cada commit de un documento lleva trailers de git que escribe código determinista: `Documento` (`cpeum`, `<estado>/constitucion` o la clave del documento), `Tipo` (`reforma`, `correccion`, `alta`, `retiro`; `indice` para los registros compartidos), `Publicacion` (una línea por fecha), `Medio`, `Articulos-Adicionados`, `-Modificados`, `-Derogados` o `Articulos-Corregidos` (claves de archivo), `Fuente`, `Fuente-Sha256` y `Extractor`. Se leen con `git log --format='%H %s%n%(trailers)'`. La misma ley en fiscal-mexicano y leyes-federales lleva la misma clave: un mismo hecho se reconoce por (Documento, Tipo, Publicacion).
+## Servidor MCP
 
-## Repositorios
+`https://constitucion.app/mcp` (Streamable HTTP, sin autenticación). En Claude Code: `claude mcp add --transport http opencodice https://constitucion.app/mcp`. Herramientas, todas de solo lectura y deterministas:
 
-- [constitucion-mexicana](https://github.com/OpenCodice/constitucion-mexicana): Constitución Política de los Estados Unidos Mexicanos. Artículos en `articulos/NNN.md`; índice (Título, Capítulo, fechas de reforma) en `metadata/articulos.json`; fecha de reforma → artículos en `metadata/reformas.json`.
-- [leyes-federales](https://github.com/OpenCodice/leyes-federales): las leyes federales que publica la Cámara de Diputados (LeyesBiblio), con códigos y reglamentos. La clave de cada ley es el nombre de su página en LeyesBiblio (`ref/lgs.htm` → `lgs`). Artículos en `{ley}/NNN.md` (por ejemplo `lft/353-u.md`); índice en `metadata/{ley}/articulos.json` y reformas en `metadata/{ley}/reformas.json`. `fuentes.json` es el registro de cada ley: nombre, sigla, PDF de origen, versión y si está publicada o se dejó fuera y por qué.
-- [leyes-estatales](https://github.com/OpenCodice/leyes-estatales): constituciones de las 32 entidades y, poco a poco, las demás leyes de cada estado. Constituciones en `{estado}/constitucion/articulos/NNN.md` (por ejemplo `jalisco/constitucion/articulos/004.md`), con su metadata en `{estado}/constitucion/metadata/` y el PDF de origen en `{estado}/constitucion/fuente/`; la situación de cada entidad (vigilada, en preparación o fuera, con su motivo) está en [`estados.json`](https://github.com/OpenCodice/constitucion-extractor/blob/main/estados.json) de constitucion-extractor. Las demás leyes van en `{estado}/{ley}/` (por ejemplo `cdmx/codigo-penal/`) y su registro, con las que quedaron fuera y por qué, en `fuentes.json`.
-- [fiscal-mexicano](https://github.com/OpenCodice/fiscal-mexicano): legislación fiscal federal, con la Resolución Miscelánea Fiscal, sus anexos y los criterios del SAT. Unidades en `{documento}/` (artículos como `cff/001.md`, reglas como `rmf-2026/1.1.md`); lista de documentos en `metadata/documentos.json` y metadata de cada uno en `metadata/{documento}/`.
+- `buscar_documentos`: leyes por nombre, sigla, ámbito o estado; da la clave de cada una.
+- `indice_documento`: los artículos de un documento, con su URL.
+- `leer_articulo`: el texto de hasta 20 artículos, con su URL, versión y fuente.
+- `buscar_en_documento`: búsqueda literal en hasta 5 documentos.
+- `historia_articulo`: los cambios registrados de un artículo.
+- `cambios_recientes`: las reformas, altas y correcciones más recientes.
+
+## Las páginas, en Markdown
+
+El inicio, `/leyes` y la bitácora responden en Markdown a quien pide `Accept: text/markdown`, y cada página de la bitácora enlaza su versión con `<link rel="alternate" type="text/markdown">` (la misma URL con `.md`). Un cambio de la bitácora en Markdown trae su ficha (publicación, fuente y su sha256, extractor, commit) y la diferencia de cada artículo como diff.
+
+- [Bitácora](https://constitucion.app/bitacora/): cada reforma, corrección, alta y retiro. La historia de un documento en `/bitacora/{documento}/` y cada cambio en `/bitacora/{documento}/{sha a 12}`. [/bitacora/cambios.json](https://constitucion.app/bitacora/cambios.json) tiene todos los cambios con sus trailers; [/bitacora/reformas.xml](https://constitucion.app/bitacora/reformas.xml) es un feed Atom. Los decretos del DOF anteriores al registro, con su proceso legislativo, en [/bitacora/decretos/](https://constitucion.app/bitacora/decretos/).
+- [Congreso](https://constitucion.app/congreso/): votaciones nominales con el voto de cada legislador, iniciativas y expedientes, de [congreso-mexicano](https://github.com/OpenCodice/congreso-mexicano) (Popolo). Cada votación en `/congreso/votaciones/{id}`, cada legislador en `/congreso/legisladores/{persona}`. Para procesar estos datos, mejor clonar el repo.
+- [Status del sistema](https://constitucion.app/estado): las corridas de la vigilancia semanal.
+
+## Los repositorios de git
+
+Para todo el texto o su historia completa, clonar (`git clone https://github.com/OpenCodice/{repo}`); `git log -p {archivo}` es la historia de un artículo.
+
+- [constitucion-mexicana](https://github.com/OpenCodice/constitucion-mexicana): la Constitución. Artículos en `articulos/NNN.md`; índice (título, capítulo, fechas de reforma) en `metadata/articulos.json`; fecha de reforma → artículos en `metadata/reformas.json`.
+- [leyes-federales](https://github.com/OpenCodice/leyes-federales): las leyes federales de LeyesBiblio, con códigos y reglamentos. Artículos en `{ley}/NNN.md` (`lft/353-u.md`); índice en `metadata/{ley}/articulos.json`; `fuentes.json` registra cada ley, su PDF y si quedó fuera y por qué.
+- [leyes-estatales](https://github.com/OpenCodice/leyes-estatales): las 32 constituciones estatales en `{estado}/constitucion/articulos/NNN.md` y las demás leyes de cada estado en `{estado}/{ley}/articulos/`, con su registro en `fuentes.json`.
+- [fiscal-mexicano](https://github.com/OpenCodice/fiscal-mexicano): legislación fiscal federal, la Resolución Miscelánea Fiscal, sus anexos y los criterios del SAT. Unidades en `{documento}/` (`cff/001.md`, `rmf-2026/1.1.md`); lista en `metadata/documentos.json`. La misma ley que en leyes-federales lleva la misma clave y el mismo texto.
+
+Cada archivo empieza con el encabezado del artículo (`# Artículo 82.`) y conserva las notas de reforma del PDF en cursiva (`_Párrafo reformado DOF 07-10-2026_`). La historia de cada documento empieza en su alta (el commit `Alta de …`); las reformas anteriores no están como commits, solo sus fechas en `reformas.json`.
+
+Cada commit de un documento lleva trailers que escribe código determinista: `Documento`, `Tipo` (`reforma`, `correccion`, `alta`, `retiro`, `metadatos`; `indice` para los registros compartidos), `Publicacion` (una línea por fecha), `Medio`, `Articulos-Adicionados`, `-Modificados`, `-Derogados` o `Articulos-Corregidos` (claves de archivo), `Fuente`, `Fuente-Sha256` y `Extractor`. Se leen con `git log --format='%H %s%n%(trailers)'`. Un mismo hecho se reconoce por (Documento, Tipo, Publicacion).
 
 ## Más
 
-- [Qué leyes hay](https://constitucion.app/leyes): cada documento con su última reforma.
-- [Bitácora](https://constitucion.app/bitacora/): cada reforma, corrección, alta y retiro, con los artículos que tocó y la diferencia de su texto. La historia de un documento está en `/bitacora/<Documento>/` (por ejemplo `/bitacora/lgs/` o `/bitacora/jalisco/constitucion/`) y cada cambio, en `/bitacora/<Documento>/<sha a 12>`. Los decretos del DOF que reformaron cada ley (casi todos anteriores a su alta, sin commit) están en [`/bitacora/decretos/`](https://constitucion.app/bitacora/decretos/), cada uno en `/bitacora/decretos/<id>` (por ejemplo `/bitacora/decretos/dof-5770217`) con su proceso legislativo: iniciativa, comisión, votación de cada cámara, congresos locales y DOF. [`/bitacora/cambios.json`](https://constitucion.app/bitacora/cambios.json) tiene todos los cambios con sus trailers; [`/bitacora/reformas.xml`](https://constitucion.app/bitacora/reformas.xml) es un feed Atom de las reformas.
-- [Congreso](https://constitucion.app/congreso/): quién vota qué y qué presenta cada legislador, de [congreso-mexicano](https://github.com/OpenCodice/congreso-mexicano) (Popolo: personas, mandatos, votaciones con el voto de cada quien; más asuntos, expedientes y decretos del DOF). Cada votación en `/congreso/votaciones/<id>` (por ejemplo `/congreso/votaciones/sil-5135887-1`), con los votos que la fuente no atribuye a nadie, sus inconsistencias y las diferencias con otra fuente; cada legislador en `/congreso/legisladores/<persona>`, cada expediente del SIL en `/congreso/expedientes/<id>` y la composición de cada cámara (quién está en funciones hoy, por grupo) en `/congreso/camaras`. Los hemiciclos de las votaciones y las cámaras son SVG con un enlace por asiento; los mismos datos están en texto en cada página. Para procesar los datos, mejor clonar el repo.
-- [Status del sistema](https://constitucion.app/estado): las corridas de la vigilancia semanal.
+- [Qué leyes hay](https://constitucion.app/leyes): cada documento con su última reforma, para personas.
 - [Legislación fiscal](https://sat.constitucion.app): el detalle del corpus fiscal.

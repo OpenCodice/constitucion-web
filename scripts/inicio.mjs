@@ -39,9 +39,19 @@ const JSON_LD = JSON.stringify({
   ],
 });
 
-// Artículo de ejemplo para citar: el 82 de la Constitución en la reforma de
-// octubre de 2026.
-const EJEMPLO = { repo: REPOS.cpeum, ruta: "articulos/082.md", commit: "260df83" };
+// Artículo de ejemplo para citar: el 82 de la Constitución, con el enlace
+// permanente a la versión de su reforma más reciente en la bitácora.
+function ejemploCita(bitacora) {
+  const cambio = bitacora?.documentos.get("cpeum")?.cambios.find((c) => c.tipo === "reforma" && c.modificados.includes("082"));
+  return {
+    vigente: "/ley/cpeum/082",
+    historia: "/ley/cpeum/082/historia",
+    version: cambio ? `/ley/cpeum/082@${cambio.id}` : null,
+    fecha: cambio?.publicaciones.at(-1) ?? null,
+  };
+}
+
+const MCP = "https://constitucion.app/mcp";
 
 const repo = (r) => `https://github.com/${ORG}/${r}`;
 
@@ -291,6 +301,8 @@ h2 { font-weight: 400; font-size: clamp(30px, 3.4vw, 44px); line-height: 1.12; l
 .paso h3 a:hover { text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1px; }
 .paso .n { display: block; font-size: 46px; font-weight: 300; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-bottom: 10px; }
 pre { margin: 14px 0 0; padding: 12px 14px; background: color-mix(in srgb, var(--texto) 6%, transparent); overflow-x: auto; font-size: 14px; }
+pre.cmd { white-space: pre-wrap; overflow-wrap: anywhere; }
+.aparte { margin: 28px 0 0; color: var(--tenue); font-size: 15.5px; max-width: 70ch; }
 
 footer { border-top: 1.5px solid var(--texto); padding-block: 40px 48px; font-size: 14px; }
 .pie { display: grid; grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)); gap: 32px; }
@@ -340,8 +352,7 @@ const GUION = `
 // ------------------------------------------------------------------ página
 
 export function paginaInicio(datos, generada) {
-  const { commit, ruta } = EJEMPLO;
-  const base = repo(EJEMPLO.repo);
+  const cita = ejemploCita(datos.bitacora);
   const t = tejer(documentosTejido(datos, generada));
   return `<!doctype html>
 <html lang="es-MX">
@@ -367,6 +378,7 @@ export function paginaInicio(datos, generada) {
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%23D6322A'/%3E%3Crect x='8' width='8' height='8' fill='%230F6B45'/%3E%3Crect y='8' width='8' height='8' fill='%233A6FB0'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23161616'/%3E%3C/svg%3E" />
     <link rel="preload" href="/fuentes/jost.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="alternate" type="text/plain" href="/llms.txt" title="Guía para agentes" />
+    <link rel="alternate" type="text/markdown" href="/llms.txt" title="Esta página en Markdown" />
     <style>${ESTILO_SALUD}${ESTILO}</style>
   </head>
   <body>
@@ -377,6 +389,7 @@ export function paginaInicio(datos, generada) {
         <a href="/bitacora/">Bitácora</a>
         <a href="/congreso/">Congreso</a>
         <a href="/estado">Status</a>
+        <a href="#agentes">Agentes</a>
         <a href="https://github.com/${ORG}">GitHub</a>
       </nav>
     </header>
@@ -453,6 +466,32 @@ ${ultimasReformas(datos.actividad, datos.bitacora)}
         </div>
       </section>
 
+      <section class="banda" id="agentes">
+        <div class="ancho">
+          <p class="antetitulo">Para agentes de IA</p>
+          <h2>Lista para que la lea un agente.</h2>
+          <div class="pasos">
+            <div class="paso">
+              <span class="num">Servidor MCP</span>
+              <h3>Conéctalo en un paso</h3>
+              <p>Herramientas de solo lectura para buscar una ley, leer sus artículos, buscar dentro de ella y ver su historia. Sirve con cualquier cliente que acepte un servidor MCP remoto.</p>
+              <pre class="cmd"><code>claude mcp add --transport http opencodice ${MCP}</code></pre>
+            </div>
+            <div class="paso">
+              <span class="num">Una URL por artículo</span>
+              <h3>Markdown listo para citar</h3>
+              <p>Cada artículo con su texto, su fuente oficial, su versión y su URL: <a href="/ley/cpeum/123"><code>/ley/cpeum/123</code></a>, <a href="/ley/lft/87"><code>/ley/lft/87</code></a>, <a href="/ley/jalisco/constitucion/4"><code>/ley/jalisco/constitucion/4</code></a>. Cada ley, su índice: <a href="/ley/lgs"><code>/ley/lgs</code></a>.</p>
+            </div>
+            <div class="paso">
+              <span class="num">Para empezar</span>
+              <h3>Una guía y un catálogo</h3>
+              <p><a href="/llms.txt"><code>/llms.txt</code></a> explica las rutas y <a href="/llms-full.txt"><code>/llms-full.txt</code></a> lista cada ley${datos.corpus ? ` (${numero(datos.corpus.documentos)} documentos, ${numero(datos.corpus.articulos)} artículos)` : ""}. Búsqueda literal: <a href="/ley/buscar?q=aguinaldo&amp;documento=lft"><code>/ley/buscar?q=aguinaldo&amp;documento=lft</code></a>.</p>
+            </div>
+          </div>
+          <p class="aparte">Sin respuestas generadas: lo que recibe el agente es el texto publicado, el mismo de los repositorios, con su enlace para verificarlo.</p>
+        </div>
+      </section>
+
       <section class="banda">
         <div class="ancho">
           <p class="antetitulo">Para quien la usa</p>
@@ -466,13 +505,13 @@ ${ultimasReformas(datos.actividad, datos.bitacora)}
             <div class="paso">
               <span class="num">Para citar</span>
               <h3>Enlaces que no cambian</h3>
-              <p>Cada artículo tiene una dirección fija y cada versión, un enlace permanente. El artículo 82: <a href="${base}/blob/main/${ruta}">vigente</a>, <a href="${base}/commits/main/${ruta}">su historial</a> y <a href="${base}/blob/${commit}/${ruta}">la versión de octubre de 2026</a>.</p>
+              <p>Cada artículo tiene una dirección fija y cada versión, un enlace permanente. El artículo 82 de la Constitución: <a href="${cita.vigente}">vigente</a>, <a href="${cita.historia}">su historia</a>${cita.version ? ` y <a href="${cita.version}">la versión de su reforma del ${fechaLarga(cita.fecha)}</a>` : ""}.</p>
             </div>
             <div class="paso">
-              <span class="num">Para agentes de IA</span>
-              <h3>Archivos Markdown</h3>
-              <p>Un agente puede clonar el repositorio o leer cada artículo por su URL; <a href="/llms.txt"><code>/llms.txt</code></a> explica las rutas. No hay respuestas generadas: la IA solo mantiene los datos.</p>
-              <pre><code>git clone https://github.com/${ORG}/${REPOS.federales}</code></pre>
+              <span class="num">Datos abiertos</span>
+              <h3>Todo, para descargar</h3>
+              <p>Dominio público. El <a href="/ley/catalogo.json">catálogo</a> y <a href="/bitacora/cambios.json">cada cambio</a> en JSON, las reformas en <a href="/bitacora/reformas.xml">Atom</a>, y cada repositorio entero con su historia:</p>
+              <pre class="cmd"><code>git clone https://github.com/${ORG}/${REPOS.federales}</code></pre>
             </div>
           </div>
         </div>
@@ -495,7 +534,7 @@ ${ultimasReformas(datos.actividad, datos.bitacora)}
         </div>
         <div>
           <h4>Proyecto</h4>
-          <ul><li><a href="/estado">Status del sistema</a></li><li><a href="/llms.txt">Guía para agentes</a></li><li><a href="https://github.com/${ORG}">GitHub</a></li></ul>
+          <ul><li><a href="/estado">Status del sistema</a></li><li><a href="/llms.txt">Guía para agentes</a></li><li><a href="/mcp">Servidor MCP</a></li><li><a href="https://github.com/${ORG}">GitHub</a></li></ul>
         </div>
       </div>
     </footer>

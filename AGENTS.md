@@ -3,14 +3,46 @@
 Landing estático de [constitucion.app](https://constitucion.app). Presenta el proyecto y enlaza a los
 repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
 
-- `public/` — el sitio: `estilo.css`, `llms.txt` (guía para agentes de IA),
-  `robots.txt`,
+- `public/` — el sitio: `estilo.css`, `llms.txt` (guía para agentes de IA:
+  primero las URL de `/ley` y el MCP, luego los repos), `robots.txt` (con
+  `Content-Signal`: los datos son CC0),
   `hemiciclo.js` y `supervisor.js` (lo único de JavaScript; ver «Hemiciclos» y
   `/estado`) y las páginas que genera `scripts/paginas.mjs`. Sin framework.
-- `worker/index.js` — responde `410` en las rutas del servicio de búsqueda que
-  se retiró (`/api/*`, `/mcp`, `/openapi.json`, `/pdf/*`) y redirige al inicio
-  cualquier otra ruta que no sea un archivo de `public/` (los assets, como
-  `/leyes`, `/estado` y `/bitacora/…`, se sirven antes de llegar al Worker).
+- `worker/` — lo que no es un archivo de `public/` (`run_worker_first` en
+  `wrangler.jsonc`). Lee solo los archivos del propio despliegue
+  (`env.ASSETS`), nunca otro servicio:
+  - `ley.js` → `/ley/…`, el texto vigente para agentes (y para quien cite un
+    artículo con una URL): `/ley` (catálogo), `/ley/{Documento}` (índice por
+    título y capítulo), `/ley/{Documento}.md` (texto completo),
+    `/ley/{Documento}/{artículo}` (el artículo con un frontmatter: ubicación,
+    URL canónica, versión, enlace permanente y fuente), `…/historia` (sus
+    commits) y `…@{sha}` (302 al archivo en ese commit, solo si el commit es
+    del documento); con `.json`, lo mismo en JSON; `/ley/{estado}`, las leyes
+    de un estado, y `/ley/buscar?q=&documento=`, búsqueda literal (sin acentos
+    ni mayúsculas, todas las palabras en el mismo artículo; sin `documento`,
+    en los nombres). El artículo se acepta como se escriba (`4o`, `77 Bis 35
+    A`, `Regla 2.1.1`: `claves.js`) y se sirve sin redirigir, con la URL
+    canónica en el frontmatter y en `Link`. Al navegador le llega como
+    `text/plain`, que muestra; a los demás, `text/markdown`.
+  - `mcp.js` → `/mcp`: servidor MCP (Streamable HTTP, sin sesiones ni SSE)
+    con herramientas de solo lectura sobre lo mismo que `/ley` y
+    `bitacora/cambios.json`: `buscar_documentos`, `indice_documento`,
+    `leer_articulo`, `buscar_en_documento`, `historia_articulo` y
+    `cambios_recientes`. Un GET del navegador explica cómo conectarse.
+  - `index.js` enruta, responde la versión en Markdown de `/` (`llms.txt`),
+    `/leyes` (el catálogo) y la bitácora (los `.md` que genera
+    `bitacora.mjs`) a quien la prefiere en `Accept`, `410` en las rutas del
+    servicio de búsqueda que se retiró (`/api/*`, `/pdf/*`) y redirige al
+    inicio lo que no existe.
+  - Se prueba en `scripts/agentes.test.mjs` con un despliegue sintético.
+- `scripts/lib/corpus.mjs` — escribe `public/ley/`: por documento vigente,
+  `_/{Documento}.md` (sus artículos de main tal cual, en el orden de su
+  índice) y `_/{Documento}.json` (dónde empieza y acaba cada artículo en ese
+  texto, su etiqueta y ubicación, y qué commits lo tocaron, de la bitácora);
+  más `catalogo.json` y `public/llms-full.txt`. Dos archivos por documento en
+  lugar de uno por artículo (son 67 mil) para no topar el límite de archivos
+  de un Worker. La misma ley de leyes-federales y fiscal-mexicano (mismo
+  texto) se sirve de leyes-federales. Lee los mismos clones que el historial.
 - `scripts/paginas.mjs` — genera en cada despliegue (`deploy.yml` despliega
   también al terminar cada vigilancia) las páginas, que dependen de los repos de datos; el
   HTML no se versiona. Lee la API de GitHub (REST y GraphQL),
@@ -28,8 +60,11 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     la bitácora y el Congreso, con sus cifras: documentos del tejido, reformas
     de la bitácora y votaciones y legisladores de congreso-mexicano, que
     `paginas.mjs` le pasa en `datos.congreso`); cifras de cada corpus,
-    últimas reformas, cómo se mantiene, y el historial, cómo citar y cómo lo
-    usa un agente. Es la única página con diseño propio
+    últimas reformas, cómo se mantiene, «Para agentes de IA» (`#agentes`: el
+    MCP, las URL de `/ley` y `llms.txt`, con la cuenta de documentos y
+    artículos de `datos.corpus`), y el historial, cómo citar (con las URL de
+    `/ley` del artículo 82 de la Constitución y la versión de su última
+    reforma, de la bitácora) y los datos abiertos. Es la única página con diseño propio
     (no usa `estilo.css`): la fuente Jost, servida desde `public/fuentes/`
     (OFL), y los colores de cada corpus, con su versión para modo oscuro.
     - El tejido (`scripts/lib/tejido.mjs`): un cuadro por documento
@@ -94,7 +129,11 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     `/bitacora/{Documento}/{sha a 12}`: ficha (tipo, publicación, medio,
     fuente y sha256, extractor, commit), artículos y la diferencia de su texto
     antes/después. También `/bitacora/cambios.json` y el Atom
-    `/bitacora/reformas.xml`. Todo sale de los **trailers** de cada commit,
+    `/bitacora/reformas.xml`. Cada página de un documento o de un cambio, y
+    el índice, tiene su versión en Markdown (`index.md`, `{sha a 12}.md`:
+    ficha en frontmatter y la diferencia de cada artículo como diff de
+    párrafos, `diferenciaTexto`), enlazada con `rel="alternate"`; la de un
+    documento vigente lleva además JSON-LD `Legislation`. Todo sale de los **trailers** de cada commit,
     nunca del título; los commits `Tipo: indice` no aparecen. Una reforma o
     alta de la misma ley en fiscal-mexicano y leyes-federales (misma clave) se
     agrupa por (Documento, Tipo, Publicacion): el índice muestra la primera
@@ -330,4 +369,9 @@ Para verlo en local: `npm install && npm run paginas && npm run dev`.
   él), sin dependencias ni compilación, sin servicios en tiempo de lectura.
 - **Sin LLM ni servicios en tiempo de lectura.** Aquí hubo un chat con búsqueda
   semántica y se retiró a propósito. La bitácora también es estática: se
-  genera del historial de git en cada despliegue.
+  genera del historial de git en cada despliegue. `/ley` y el MCP no lo
+  contradicen: el Worker solo corta y formatea los archivos generados al
+  desplegar (búsqueda literal, nunca semántica ni texto generado), y lo que
+  devuelve es exactamente lo publicado en main.
+- **Para agentes:** todo lo nuevo que sirva a una persona debe poder leerlo un
+  agente: una URL estable, Markdown o JSON, y enlazado desde `llms.txt`.

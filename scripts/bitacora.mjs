@@ -38,7 +38,7 @@ import {
   documento as paginaHtml,
 } from "./lib/comun.mjs";
 import { TIPOS_DOCUMENTO, articulosDe, dirMetadata } from "./lib/historial.mjs";
-import { diferenciaArticulo, encabezado } from "./lib/diferencias.mjs";
+import { diferenciaArticulo, diferenciaTexto, encabezado } from "./lib/diferencias.mjs";
 import { vinculosDe } from "./lib/vinculos.mjs";
 import { urlVotacion, urlLegislador, urlExpediente, urlSilExpediente } from "./lib/congreso.mjs";
 import { ESTILO_HEMICICLO, asientosVotacion, resumenSentidos, svgMini } from "./lib/hemiciclo.mjs";
@@ -408,7 +408,7 @@ ins::after, del::after { content: "] "; }
 .titulo-dof { font-size: 0.85em; color: var(--tenue); }
 `;
 
-function pagina({ titulo, h1, descripcion, cuerpo, generada, url, tarjeta, tipo, sobre = "" }) {
+function pagina({ titulo, h1, descripcion, cuerpo, generada, url, tarjeta, tipo, sobre = "", markdown, jsonld }) {
   const html = paginaHtml({
     ruta: `${BASE}/`,
     url,
@@ -427,6 +427,8 @@ function pagina({ titulo, h1, descripcion, cuerpo, generada, url, tarjeta, tipo,
     ].join(""),
     cabeza: [
       `<link rel="alternate" type="application/atom+xml" href="${BASE}/reformas.xml" title="Reformas registradas en OpenCodice" />`,
+      markdown ? `<link rel="alternate" type="text/markdown" href="${markdown}" title="Esta página en Markdown" />` : "",
+      jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld).replace(/</g, "\\u003c")}</script>` : "",
       cuerpo.includes('<figure class="hemiciclo"') ? '<script src="/hemiciclo.js" defer></script>' : "",
     ]
       .filter(Boolean)
@@ -637,6 +639,8 @@ ${reformasAnteriores(d)}`;
   return pagina({
     url: urlDocumento(d.clave),
     tarjeta: { titulo: d.nombre, detalle: "Su historia: el alta, las reformas y las correcciones de su extracción, con la diferencia de su texto." },
+    markdown: `${urlDocumento(d.clave)}index.md`,
+    jsonld: d.retirado ? null : jsonldDocumento(d),
     titulo: `${d.nombre}: historia`,
     h1: d.nombre,
     descripcion: `Historia de ${d.nombre} en OpenCodice: reformas, correcciones de extracción y la diferencia de su texto.`,
@@ -1077,6 +1081,7 @@ ${vecinos(c)}`;
   return pagina({
     url: urlCambio(c),
     tipo: "article",
+    markdown: `${urlCambio(c)}.md`,
     tarjeta: { etiqueta: c.doc.nombre, detalle: resumen },
     titulo: `${h1} · ${c.doc.sigla ?? c.doc.nombre}`,
     h1,
@@ -1400,12 +1405,137 @@ export function paginasBitacora(m, generada, vinculos) {
   for (const d of m.documentos.values()) {
     archivos.set(`bitacora/${d.clave}/index.html`, paginaDocumento(m, d, generada));
     for (const c of d.cambios) archivos.set(`bitacora/${d.clave}/${c.id}.html`, paginaCambio(c, generada, vinculos));
+    archivos.set(`bitacora/${d.clave}/index.md`, mdDocumento(d));
+    for (const c of d.cambios) archivos.set(`bitacora/${d.clave}/${c.id}.md`, mdCambio(c));
   }
+  archivos.set("bitacora/index.md", mdReformas(m));
   archivos.set("bitacora/decretos/index.html", indiceDecretos(m, generada));
   for (const e of m.decretos) if (!e.cambio) archivos.set(`bitacora/decretos/${e.decreto.id}.html`, paginaDecreto(e, m, vinculos, generada));
   archivos.set("bitacora/cambios.json", cambiosJson(m, generada));
   archivos.set("bitacora/reformas.xml", atom(m, generada));
   return archivos;
+}
+
+// ------------------------------------------------------------------ markdown
+
+// La versión en Markdown de cada página de la bitácora, para agentes: la
+// sirve el Worker a quien pide `Accept: text/markdown` y la enlaza cada página
+// con `rel="alternate"`. Los mismos datos que el HTML, sin el proceso
+// legislativo (está en congreso-mexicano) y con el diff como texto.
+
+const sinHtml = (s) =>
+  String(s ?? "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+
+const frente = (campos) =>
+  `---\n${Object.entries(campos)
+    .filter(([, v]) => v != null && v !== "" && !(Array.isArray(v) && !v.length))
+    .map(([k, v]) => `${k}: ${Array.isArray(v) ? `[${v.map((x) => JSON.stringify(x)).join(", ")}]` : JSON.stringify(v)}`)
+    .join("\n")}\n---\n`;
+
+const urlLey = (doc, clave) => `${SITIO}/ley/${doc}${clave ? `/${clave}` : ""}`;
+
+const lineaMd = (c, conDocumento) =>
+  `- ${fechaPublicacion(c) ?? c.dia} · ${conDocumento ? `${c.doc.nombre} · ` : ""}${tituloCambio(c)} · ${sinHtml(resumenCambio(c))} · ${SITIO}${urlCambio(c)}`;
+
+function mdCambio(c) {
+  const claves = articulosDe(c);
+  const estado = Object.fromEntries(ESTADO_ARTICULO.flatMap(([k, uno]) => c[k].map((a) => [a, uno])));
+  const partes = [
+    frente({
+      documento: c.documento,
+      nombre: c.doc.nombre,
+      tipo: c.tipo,
+      clase: c.clase,
+      publicacion: c.publicaciones,
+      medio: c.medio,
+      registrado: c.dia,
+      fuente: c.fuente,
+      fuente_sha256: c.sha256,
+      extractor: c.extractor,
+      commit: urlCommit(c),
+      pagina: `${SITIO}${urlCambio(c)}`,
+      texto_vigente: c.doc.retirado ? null : urlLey(c.documento),
+    }),
+    `# ${tituloCambio(c)}: ${c.doc.nombre}`,
+    `${sinHtml(resumenCambio(c))}.`,
+  ];
+  if (c.otros.length) partes.push(`El mismo hecho está registrado también en ${c.otros.map((o) => `${o.repo} (${SITIO}${urlCambio(o)}.md)`).join(", ")}.`);
+  if (c.alta) partes.push(`Ajuste inicial del alta: ${SITIO}${urlCambio(c.alta)}.md`);
+  if (c.tipo === "alta" || c.tipo === "retiro" || !claves.length) {
+    if (!c.doc.retirado) partes.push(`Índice y texto vigente: ${urlLey(c.documento)}`);
+    return `${partes.join("\n\n")}\n`;
+  }
+  const mostrados = claves.slice(0, DIFERENCIAS_MAX);
+  for (const k of mostrados) {
+    const t = c.textos[k];
+    const enlace = estado[k] === "Derogado" || c.doc.retirado ? "" : `\n\nTexto vigente: ${urlLey(c.documento, k)}`;
+    const titulo = (encabezado(t?.despues) ?? encabezado(t?.antes) ?? c.etiquetas[k] ?? k).replace(/[.\s]+$/, "");
+    partes.push(`## ${titulo} (${(estado[k] ?? "").toLowerCase()})${enlace}
+
+\`\`\`\`diff
+${t ? diferenciaTexto(t.antes, t.despues) : "(sin texto)"}
+\`\`\`\``);
+  }
+  if (claves.length > mostrados.length) partes.push(`Y ${claves.length - mostrados.length} artículos más, en el commit: ${urlCommit(c)}`);
+  return `${partes.join("\n\n")}\n`;
+}
+
+function mdDocumento(d) {
+  return `${frente({
+    documento: d.clave,
+    nombre: d.nombre,
+    sigla: d.sigla,
+    retirado: d.retirado || null,
+    texto_vigente: d.retirado ? null : urlLey(d.clave),
+    pagina: `${SITIO}${urlDocumento(d.clave)}`,
+  })}
+# ${d.nombre}: historia en OpenCodice
+
+Cada cambio desde su alta, del más reciente al más antiguo. Cada uno tiene su página en Markdown (la URL con \`.md\`) con la diferencia de su texto.
+
+${d.cambios
+  .filter((c) => c.clase !== "ajuste")
+  .map((c) => lineaMd(c, false))
+  .join("\n")}
+`;
+}
+
+function mdReformas(m) {
+  const xs = m.cambios.filter((c) => c.tipo === "reforma" && c.principal).sort(porPublicacion);
+  return `# Bitácora de reformas de OpenCodice
+
+Las reformas registradas, de la publicación más reciente a la más antigua (${xs.length}). Todos los cambios con sus trailers: ${SITIO}${BASE}/cambios.json. Historia de un documento: ${SITIO}${BASE}/{documento}/index.md.
+
+${xs.map((c) => lineaMd(c, true)).join("\n")}
+`;
+}
+
+// schema.org/Legislation de un documento vigente, en su página de historia.
+function jsonldDocumento(d) {
+  const alta = d.cambios.at(-1);
+  const ultimo = d.cambios.find((c) => c.fuente) ?? d.cambios[0];
+  return {
+    "@context": "https://schema.org",
+    "@type": "Legislation",
+    name: d.nombre,
+    alternateName: d.sigla && d.sigla !== d.nombre ? d.sigla : undefined,
+    legislationIdentifier: d.clave,
+    legislationJurisdiction: d.entidad ? { "@type": "AdministrativeArea", name: d.entidad, containedInPlace: "México" } : "MX",
+    legislationLegalForce: { "@id": "https://schema.org/InForce" },
+    inLanguage: "es-MX",
+    url: urlLey(d.clave),
+    encoding: { "@type": "MediaObject", encodingFormat: "text/markdown", contentUrl: `${urlLey(d.clave)}.md` },
+    isBasedOn: ultimo?.fuente ?? undefined,
+    dateModified: fechaPublicacion(d.cambios.find((c) => c.tipo === "reforma") ?? alta) ?? undefined,
+    publisher: { "@type": "Organization", name: "OpenCodice", url: SITIO },
+    license: "https://creativecommons.org/publicdomain/zero/1.0/",
+  };
 }
 
 // Las reformas publicadas más recientemente, para el inicio.
@@ -1418,3 +1548,6 @@ export function ultimasReformas(m, n) {
 }
 
 export const historiaDe = (m, clave) => (m?.documentos.has(clave) ? urlDocumento(clave) : null);
+
+// Su texto vigente en /ley (el Worker lo sirve de public/ley/), si se publica.
+export const enLey = (m, clave) => (m?.documentos.get(clave) && !m.documentos.get(clave).retirado ? `/ley/${clave}` : null);

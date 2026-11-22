@@ -1,4 +1,7 @@
+# Los datos son de dominio público (CC0): se pueden indexar, usar como
+# contexto de un modelo y para entrenarlo. Guía para agentes: /llms.txt
 User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
 
 Sitemap: https://constitucion.app/sitemap.xml

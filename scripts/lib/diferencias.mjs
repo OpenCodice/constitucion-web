@@ -243,3 +243,33 @@ export function encabezado(texto) {
   const m = /^#{1,6} (.+)$/m.exec(texto ?? "");
   return m ? m[1].trim() : null;
 }
+
+// La misma diferencia por párrafos, en texto para la versión en Markdown de
+// la bitácora: cada párrafo con `-` (quitado), `+` (puesto) o dos espacios
+// (igual, solo los de alrededor de un cambio), como un diff unificado.
+export function diferenciaTexto(antes, despues, max = HTML_MAX) {
+  const ops = diferencia(parrafos(antes), parrafos(despues));
+  const visible = ops.map((op, i) => op[0] !== "=" || ops.slice(Math.max(0, i - CONTEXTO), i + CONTEXTO + 1).some((o) => o[0] !== "="));
+  const lineas = [];
+  let tamaño = 0;
+  for (let i = 0; i < ops.length; ) {
+    if (tamaño > max) {
+      lineas.push(`… (${ops.length - i} párrafos más: ver el commit)`);
+      break;
+    }
+    if (visible[i]) {
+      const [tipo, p] = ops[i++];
+      const l = `${tipo === "=" ? " " : tipo} ${p.replace(/\n/g, " ")}`;
+      tamaño += l.length;
+      lineas.push(l);
+      continue;
+    }
+    let n = 0;
+    while (i < ops.length && !visible[i]) {
+      n++;
+      i++;
+    }
+    lineas.push(`@@ ${n === 1 ? "1 párrafo sin cambios" : `${n} párrafos sin cambios`} @@`);
+  }
+  return lineas.join("\n");
+}

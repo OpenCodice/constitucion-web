@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Genera las páginas que dependen de los repos de datos: public/index.html
+// Genera las páginas que dependen de los repos de datos: public/ley/ (el
+// texto vigente por documento, que sirve el Worker en /ley), public/index.html
 // (el inicio), public/leyes.html (/leyes, para el público), public/estado.html
 // (/estado, el status del sistema), public/bitacora/ (la bitácora de
 // cambios, del historial de git) y public/congreso/ (votaciones y
@@ -26,6 +27,7 @@ import { paginaInicio } from "./inicio.mjs";
 import { modelo, paginasBitacora } from "./bitacora.mjs";
 import { paginasCongreso } from "./congreso.mjs";
 import { SITIO, escribirTarjetas } from "./lib/tarjeta.mjs";
+import { leerCorpus, fichaCatalogo, llmsCompleto, rutaIndice, rutaTexto } from "./lib/corpus.mjs";
 
 const raiz = (archivo) => fileURLToPath(new URL(`../${archivo}`, import.meta.url));
 const publico = (archivo) => fileURLToPath(new URL(`../public/${archivo}`, import.meta.url));
@@ -34,9 +36,36 @@ const generada = new Date().toISOString();
 // congreso-mexicano se lee después del historial: sus miles de archivos
 // abiertos a la vez hacen fallar los `git` del historial (spawn EBADF).
 const [datos, historial] = await Promise.all([leerTodo(generada), leerHistorial()]);
-const vinculos = await leerVinculos();
 const bitacora = modelo(historial);
 datos.bitacora = bitacora;
+
+// /ley: el texto vigente de cada documento, de main de los mismos clones (antes
+// de leer congreso-mexicano, por la misma razón). Entero cada vez, como la
+// bitácora: un documento retirado no debe quedar servido.
+const corpus = await leerCorpus(historial, bitacora);
+const fichas = corpus.documentos.map(fichaCatalogo);
+await rm(publico("ley"), { recursive: true, force: true });
+await enParalelo(corpus.documentos, 16, async (d) => {
+  await mkdir(dirname(publico(rutaTexto(d.clave))), { recursive: true });
+  await writeFile(publico(rutaTexto(d.clave)), d.texto);
+  await writeFile(publico(rutaIndice(d.clave)), JSON.stringify(d.indice));
+});
+await writeFile(
+  publico("ley/catalogo.json"),
+  JSON.stringify(
+    {
+      generada,
+      nota: "El texto vigente de cada documento publicado en OpenCodice. Índice de cada uno en `url` (Markdown) o `url` + `.json`; texto completo en `texto`. No es la publicación oficial ni asesoría legal.",
+      documentos: fichas,
+    },
+    null,
+    1,
+  ),
+);
+await writeFile(publico("llms-full.txt"), llmsCompleto(fichas, generada));
+datos.corpus = { documentos: fichas.length, articulos: fichas.reduce((n, f) => n + f.articulos, 0) };
+
+const vinculos = await leerVinculos();
 // El inicio cuenta votaciones y legisladores.
 datos.congreso = vinculos;
 
@@ -81,9 +110,9 @@ ${paginas.map((a) => `<url><loc>${urlDe(a)}</loc></url>`).join("\n")}
 `,
 );
 
-const fallas = contarFallas(datos) + bitacora.fallas.length;
+const fallas = contarFallas(datos) + bitacora.fallas.length + corpus.fallas.length;
 console.log(
-  `index.html, estado.html, leyes.html, ${archivos.size} archivos de la bitácora (${bitacora.cambios.length} cambios, ${bitacora.documentos.size} documentos) y ${congreso.size} del Congreso generados, ${tarjetas.total} tarjetas (${tarjetas.nuevas} nuevas) y el sitemap${
+  `${corpus.documentos.length} documentos en /ley, index.html, estado.html, leyes.html, ${archivos.size} archivos de la bitácora (${bitacora.cambios.length} cambios, ${bitacora.documentos.size} documentos) y ${congreso.size} del Congreso generados, ${tarjetas.total} tarjetas (${tarjetas.nuevas} nuevas) y el sitemap${
     fallas ? ` con ${fallas} fuentes sin responder` : ""
   }`,
 );
