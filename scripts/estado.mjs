@@ -26,6 +26,7 @@ import {
 import { SEMANAS, inicioActividad } from "./lib/datos.mjs";
 import { DIAS_ATRASO, FALLAS, ESTILO_SALUD, fechaCorrida, salud, insignia, cambios } from "./lib/resumen.mjs";
 import { clasesPorSha } from "./bitacora.mjs";
+import { mapa } from "./lib/cuadros.mjs";
 import { htmlSupervisor } from "../public/supervisor.js";
 
 const ESTADO_CORRIDA = {
@@ -114,8 +115,7 @@ function seccionResumen({ cpeum, estatales, fiscal, federales, commits }) {
     ]);
   } else avisos.push(fallo(`${ORG}/${REPOS.federales}`, federales));
 
-  return `<h2 id="resumen">Qué hay publicado</h2>
-${tabla({
+  return `${tabla({
   id: "t-resumen",
   titulo: "Corpus publicados",
   columnas: [
@@ -134,6 +134,50 @@ ${avisos.join("\n")}
   del corpus. En la legislación fiscal la cifra de artículos cuenta unidades: también reglas,
   fichas y criterios.
 </p>`;
+}
+
+// Para cualquiera: una fila por colección con su cifra y el mapa de las
+// constituciones estatales. La tabla con el último commit de cada una está en
+// el detalle técnico.
+function seccionPublicadoHoy({ cpeum, estatales, fiscal, federales }) {
+  const fila = (cifra, nombre, frase) =>
+    `<div class="fila"><span class="cifra">${cifra}</span><span><strong>${nombre}.</strong> ${frase}</span><span></span></div>`;
+  const reciente = (fechas) => {
+    const f = masReciente(fechas);
+    return f ? ` La publicación más reciente es del ${fechaLarga(f)}.` : "";
+  };
+  const filas = [];
+  if (cpeum.ok) filas.push(fila("1", "Constitución federal", `${plural(cpeum.datos.articulos, "artículo", "artículos")}.${reciente([cpeum.datos.version])}`));
+  if (federales.ok) {
+    const inc = federales.datos.filter((d) => d.estado === "incluida");
+    const total = Math.max(TOTAL_INDICE_FEDERAL, federales.datos.length);
+    filas.push(fila(numero(inc.length), "Leyes federales", `De ${numero(total)} en el índice de la Cámara de Diputados.${reciente(inc.map((d) => d.version))}`));
+  }
+  let figura = "";
+  if (estatales.ok) {
+    const pub = estatales.datos.filter((e) => e.articulos != null);
+    filas.push(fila(numero(pub.length), "Constituciones estatales", `De 32 entidades.${reciente(pub.map((e) => e.version))}`));
+    const leyes = estatales.datos.flatMap((e) => e.leyes ?? []).filter((d) => d.estado === "incluida");
+    if (leyes.length) {
+      const estados = new Set(leyes.map((d) => d.clave.split("/")[0])).size;
+      filas.push(fila(numero(leyes.length), "Leyes estatales", `De ${plural(estados, "estado", "estados")}.${reciente(leyes.map((d) => d.version))}`));
+    }
+    const faltan = estatales.datos.filter((e) => e.articulos == null);
+    figura = `${mapa(estatales.datos)}
+<p class="nota">
+  Un cuadro por entidad, por el número de artículos de su constitución. Con borde, las que ya tienen sus demás leyes.${
+    faltan.length ? ` Sin publicar: ${lista(faltan.map((e) => `${esc(e.nombre)}${e.motivo ? ` (${esc(e.motivo)})` : ""}`))}.` : ""
+  }
+</p>`;
+  }
+  if (fiscal.ok) filas.push(fila(numero(fiscal.datos.length), "Legislación fiscal", `Leyes, reglamentos, la Miscelánea, sus anexos y los criterios del SAT.${reciente(fiscal.datos.map((d) => d.version))}`));
+  if (!filas.length) return "";
+  return `<h2 id="resumen">Qué hay publicado</h2>
+<div class="filas">
+${filas.join("\n")}
+</div>
+${figura}
+<p>La lista de cada documento, con sus reformas, está en <a href="/leyes">Qué leyes hay</a>.</p>`;
 }
 
 // Lo que no cabe en la tabla de resumen: estados que faltan y el avance de
@@ -244,6 +288,10 @@ const LEYENDA_BARRAS = `<p class="leyenda" aria-hidden="true">
   <span><span class="barra b-curso"></span> En curso</span>
 </p>`;
 
+// Con menos semanas de historia que estas, la fila de barras es casi toda
+// vacía y parece rota: se muestra solo el resumen.
+const SEMANAS_MIN_BARRAS = 4;
+
 function filaVigilancia(w, generada) {
   const nombre = `${enlaceRepo(w.repo, w.repo)} <a class="tenue" href="${esc(w.url)}">${esc(w.archivo)}</a>`;
   const { inicio } = inicioActividad(generada);
@@ -279,9 +327,10 @@ function filaVigilancia(w, generada) {
   const conCorrida = semanas.filter((s) => s.clase !== "b-vacia" && s.clase !== "b-curso");
   const correctas = conCorrida.filter((s) => s.clase === "b-ok" || s.clase === "b-recupero").length;
   const ultima = corridas.filter((c) => c.status === "completed").at(-1);
-  return `<div class="vigilancia">
+  const conBarras = conCorrida.length >= SEMANAS_MIN_BARRAS;
+  return `<div class="vigilancia${conBarras ? "" : " sin-barras"}">
 <p class="vig-nombre">${nombre}</p>
-<ol class="barras" aria-label="Últimas ${SEMANAS} semanas de ${esc(w.archivo)}, de la más antigua a la más reciente">${barras}</ol>
+${conBarras ? `<ol class="barras" aria-label="Últimas ${SEMANAS} semanas de ${esc(w.archivo)}, de la más antigua a la más reciente">${barras}</ol>` : ""}
 <p class="vig-resumen">${numero(correctas)} de ${plural(conCorrida.length, "semana correcta", "semanas correctas")}${
     ultima
       ? ` · última corrida: <a href="${esc(ultima.html_url)}">${esc(estadoCorrida(ultima).toLowerCase())}</a>, ${momentoCorto(fechaCorrida(ultima))}`
@@ -327,9 +376,13 @@ function seccionProgreso({ vigilancia, prs }, generada) {
   se abre un pull request que se fusiona solo. Si no, no se publica nada y la siguiente
   vigilancia lo reintenta.
 </p>
-<h3>Últimas ${SEMANAS} semanas de cada vigilancia</h3>
-<p class="leyenda">Cada barra es una semana, de la más antigua a la más reciente.</p>
-${filasV.length ? `${LEYENDA_BARRAS}\n${filasV.join("\n")}` : '<p class="tenue">No se encontraron workflows de vigilancia.</p>'}
+<h3>Cada vigilancia</h3>
+${
+  filasV.some((f) => f.includes('class="barras"'))
+    ? `<p class="leyenda">Cada barra es una semana, de la más antigua a la más reciente, en las últimas ${SEMANAS}.</p>\n${LEYENDA_BARRAS}`
+    : ""
+}
+${filasV.length ? filasV.join("\n") : '<p class="tenue">No se encontraron workflows de vigilancia.</p>'}
 ${tabla({
   id: "t-prs",
   titulo: "Pull requests abiertos",
@@ -377,7 +430,7 @@ ${htmlSupervisor(fuentes, generada)}
 const PUBLICADOS_MAX = 12;
 
 function seccionPublicado(actividad, bitacora) {
-  const titulo = '<h2 id="publicado">Lo que ha publicado el sistema</h2>';
+  const titulo = `<h2 id="publicado">Lo publicado en las últimas ${SEMANAS} semanas</h2>`;
   const avisos = Object.entries(actividad)
     .filter(([, r]) => !r.ok)
     .map(([repo, r]) => fallo(`los commits de ${ORG}/${repo}`, r));
@@ -402,17 +455,14 @@ function seccionPublicado(actividad, bitacora) {
   ]);
   return `${titulo}
 <p>
-  Cada cambio al texto llega como un commit con su tipo en el título: una <em>reforma</em> cuando
-  cambió la ley, una <em>corrección de extracción</em> cuando la ley es la misma y mejoró la
-  lectura del PDF, un <em>alta</em> cuando entra un documento nuevo y un <em>retiro</em> cuando
-  sale uno cuya extracción ya no reproduce el PDF. Ninguno se edita a mano. Las correcciones de
-  los primeros días de un documento son <em>ajustes iniciales</em> de su alta, y los cambios que
-  solo tocan la metadata (no el texto) se cuentan aparte.
+  Una <em>reforma</em> es un cambio de la ley; una <em>corrección de extracción</em>, la misma ley mejor
+  leída de su PDF; un <em>alta</em>, un documento que entra, y un <em>retiro</em>, uno que sale porque su
+  extracción ya no reproduce el PDF. Las correcciones de los primeros días de un documento son
+  <em>ajustes iniciales</em> de su alta, y los cambios que solo tocan la metadata se cuentan aparte.
 </p>
 <ul class="cifras">
 ${cifras.map(([n, uno, varios]) => `  <li><span class="cifra">${numero(n)}</span> ${esc(n === 1 ? uno : varios)}</li>`).join("\n")}
 </ul>
-<p class="tenue">En las últimas ${SEMANAS} semanas.</p>
 ${tabla({
   id: "t-publicado",
   titulo: "Últimas reformas y correcciones",
@@ -453,6 +503,7 @@ ${ESTILO_SALUD}
 .vigilancia { display: grid; grid-template-columns: 12rem 1fr; gap: 0.3rem 1rem; align-items: end; margin: 0 0 1rem; font-size: 0.85em; }
 .vig-nombre, .vig-resumen { margin: 0; }
 .vig-resumen { grid-column: 2; color: var(--tenue); font-size: 0.9em; }
+.sin-barras { align-items: baseline; }
 .barras { display: grid; grid-template-columns: repeat(${SEMANAS}, 1fr); gap: 2px; height: 1.4rem; margin: 0; padding: 0; list-style: none; }
 .barras li { display: flex; align-items: flex-end; margin: 0; min-width: 0; }
 .barra { display: block; width: 100%; height: 100%; border-radius: 1px; background: var(--barra); }
@@ -477,7 +528,13 @@ ${ESTILO_SALUD}
 
 .cifras { display: flex; flex-wrap: wrap; gap: 0.5em 2rem; margin: 0 0 0.4em; padding: 0; list-style: none; color: var(--tenue); font-size: 0.85em; }
 .cifras li { margin: 0; }
-.cifra { display: block; color: var(--texto); font-size: 1.8em; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.cifras .cifra { display: block; color: var(--texto); font-family: var(--mono); font-size: 2em; line-height: 1.15; letter-spacing: -0.02em; }
+.cuadros { margin: 1.5rem 0 0.75rem; }
+.tecnico { margin-top: 4.5rem; padding-top: 1.25rem; border-top: 1px solid var(--linea); }
+.tecnico > summary { cursor: pointer; font-size: 0.833em; font-weight: 500; color: var(--tenue); }
+.tecnico > summary:hover { color: var(--texto); }
+.tecnico[open] > summary { margin-bottom: 1.5rem; }
+.tecnico h2:first-of-type { margin-top: 2.5rem; }
 .tipo { white-space: nowrap; }
 #supervisor-vivo .salud-sub { margin-bottom: 1.2rem; }
 .inv { white-space: nowrap; }
@@ -496,28 +553,50 @@ export function paginaEstado(datos, generada) {
   const cuerpo = `${seccionSalud(datos, generada)}
 
       <p>
-        Un sistema autónomo mantiene al día la ley en los repositorios: cada lunes descarga los
-        PDF oficiales, extrae el texto, lo verifica contra el PDF y solo publica lo que queda
-        verificado. Esta página muestra cómo va; se vuelve a generar cada vez que cambian los datos (la última, el
-        ${momento(generada)}) y las horas son de la Ciudad de México.
+        Las fuentes oficiales se revisan cada lunes. Un cambio se publica cuando coincide con el
+        documento original; si no, se conserva el texto vigente y se reintenta en la siguiente
+        revisión. Esta página se genera cada vez que cambian los datos (la última, el
+        ${momento(generada)}); las horas son de la Ciudad de México.
       </p>
+
+${seccionPublicadoHoy(datos)}
 
 ${seccionPublicado(datos.actividad, datos.bitacora)}
 
+<details class="tecnico" id="tecnico">
+<summary>Detalle técnico: repositorios, vigilancias y supervisor</summary>
+
+<h2 id="repositorios">Repositorios de datos</h2>
 ${seccionResumen(datos)}
 
 ${seccionCorpus(datos)}
 
 ${seccionProgreso(datos, generada)}
 
-${seccionSupervisor(datos.supervisor, generada)}`;
+${seccionSupervisor(datos.supervisor, generada)}
+</details>
+<script>
+  // Un enlace a una sección del detalle técnico (#supervisor, #progreso) lo abre.
+  (() => {
+    const abrir = () => {
+      const destino = location.hash && document.getElementById(location.hash.slice(1));
+      const detalle = destino?.closest("details");
+      if (detalle && !detalle.open) {
+        detalle.open = true;
+        destino.scrollIntoView();
+      }
+    };
+    abrir();
+    addEventListener("hashchange", abrir);
+  })();
+</script>`;
   return documento({
     ruta: "/estado",
     url: "/estado",
     titulo: "Status del sistema — OpenCodice",
     h1: "Status del sistema",
     descripcion:
-      "Estado técnico de OpenCodice: repositorios de datos, corridas de vigilancia, cambios por día y pull requests abiertos.",
+      "Si los datos de OpenCodice están al día: la última revisión de las fuentes oficiales, lo publicado y, en el detalle técnico, las vigilancias y el supervisor.",
     estilo: ESTILO,
     cabeza: '<script type="module" src="/supervisor.js"></script>',
     cuerpo,

@@ -3,7 +3,7 @@
 
 import { ORG, REPOS, ICONO, metaSocial, cabecera, pieSitio, tonoMas, esc, numero, plural, lista, fechaLarga, diaMexico, momento } from "./lib/comun.mjs";
 import { ESTILO_SALUD, salud, insignia, cambios } from "./lib/resumen.mjs";
-import { nivel, tira } from "./lib/cuadros.mjs";
+import { nivel, tira, mapa, conLeyes } from "./lib/cuadros.mjs";
 import { ultimasReformas as reformasBitacora } from "./bitacora.mjs";
 
 const REFORMAS_EN_INICIO = 3;
@@ -110,39 +110,6 @@ function huella(r, articulosDe) {
   const partes = [plural(orden.length, "artículo", "artículos"), `${numero(tocados.size)} con cambios`];
   if (derogados.size) partes.push(plural(derogados.size, "derogado", "derogados"));
   return tira(clases, larga ? 100 : 68, partes.join("; "), larga ? 1 : 2);
-}
-
-// Las 32 entidades como teselas iguales, de noroeste a sureste: [columna, fila, sigla].
-const TESELAS = {
-  "baja-california": [0, 0, "BC"], sonora: [1, 0, "SON"], chihuahua: [2, 0, "CHIH"], coahuila: [3, 0, "COAH"], "nuevo-leon": [4, 0, "NL"], tamaulipas: [5, 0, "TAM"],
-  "baja-california-sur": [0, 1, "BCS"], sinaloa: [1, 1, "SIN"], durango: [2, 1, "DGO"], zacatecas: [3, 1, "ZAC"], "san-luis-potosi": [4, 1, "SLP"],
-  nayarit: [1, 2, "NAY"], jalisco: [2, 2, "JAL"], aguascalientes: [3, 2, "AGS"], guanajuato: [4, 2, "GTO"], queretaro: [5, 2, "QRO"], hidalgo: [6, 2, "HGO"],
-  colima: [2, 3, "COL"], michoacan: [3, 3, "MICH"], edomex: [4, 3, "MEX"], cdmx: [5, 3, "CDMX"], tlaxcala: [6, 3, "TLAX"], veracruz: [7, 3, "VER"], yucatan: [10, 3, "YUC"],
-  guerrero: [4, 4, "GRO"], morelos: [5, 4, "MOR"], puebla: [6, 4, "PUE"], tabasco: [8, 4, "TAB"], campeche: [9, 4, "CAMP"], "quintana-roo": [10, 4, "QROO"],
-  oaxaca: [6, 5, "OAX"], chiapas: [7, 5, "CHIS"],
-};
-
-const conLeyes = (e) => (e.leyes ?? []).some((l) => l.estado === "incluida");
-
-function mapa(estados) {
-  const publicados = estados.filter((e) => e.articulos != null && TESELAS[e.clave]);
-  if (!publicados.length) return "";
-  const max = Math.max(...publicados.map((e) => e.articulos));
-  const lado = 58;
-  const paso = 62;
-  const teselas = Object.entries(TESELAS)
-    .map(([clave, [col, fila, sigla]]) => {
-      const e = publicados.find((x) => x.clave === clave);
-      const n = e ? nivel(e.articulos, max) : 0;
-      const x = col * paso;
-      const y = fila * paso;
-      const titulo = e ? `<title>${esc(e.nombre)}: ${numero(e.articulos)} artículos</title>` : "";
-      return `<rect x="${x}" y="${y}" width="${lado}" height="${lado}" rx="3" class="e${n}">${titulo}</rect>${
-        n ? `<text x="${x + lado / 2}" y="${y + lado / 2 + 4}" font-size="11" text-anchor="middle" class="s${n}">${sigla}</text>` : ""
-      }${e && conLeyes(e) ? `<rect x="${x - 1.5}" y="${y - 1.5}" width="${lado + 3}" height="${lado + 3}" rx="4" class="marca-cuadro"/>` : ""}`;
-    })
-    .join("");
-  return `<svg class="cuadros" viewBox="-3 -3 ${11 * paso + 2} ${6 * paso + 2}" role="img" aria-label="Las 32 entidades como cuadros, teñidos por el número de artículos de su constitución.">${teselas}</svg>`;
 }
 
 // ------------------------------------------------------------------ secciones
