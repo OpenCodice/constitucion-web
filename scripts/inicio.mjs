@@ -251,15 +251,16 @@ ${ultimasReformas(datos.actividad, datos.bitacora)}
         datos publicados, con su enlace para verificarlos: no hay respuestas generadas, y la
         búsqueda es literal.
       </p>
+      <p>El servidor MCP, para cualquier cliente (Streamable HTTP, sin autenticación):</p>
+      <pre class="cmd"><code>${MCP}</code></pre>
+      <p>
+        En ChatGPT (modo de desarrollador) o en Claude se agrega como conector con esa URL,
+        sin autenticación. Desde la terminal:
+      </p>
       <pre class="cmd"><code># Claude Code
 claude mcp add --transport http opencodice ${MCP}
 # Codex
 codex mcp add opencodice --url ${MCP}</code></pre>
-      <p>
-        En ChatGPT, con el modo de desarrollador, se agrega como conector con la URL
-        <code>${MCP}</code> y «sin autenticación»; en Claude, como conector personalizado
-        con la misma URL.
-      </p>
       <ul>
         <li>
           Cada artículo en Markdown, con su fuente, su versión y su URL para citar:
