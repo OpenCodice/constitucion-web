@@ -104,12 +104,16 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   `REPOS_DATOS=..` para leer los clones del espacio de trabajo en vez de
   clonar en `.datos/`). Tarda unos 15 s más las tarjetas que no estén en
   `.tarjetas/`.
-  - `scripts/inicio.mjs` → `/`: qué es, cifras de cada corpus, últimas
-    reformas, cómo leer el historial, status de la vigilancia, cómo citar
+  - `scripts/inicio.mjs` → `/`: qué es, el historial de reformas de la
+    Constitución por año, «Qué publica» (una fila por colección con su
+    cifra), las últimas reformas (cada una con un cuadro por artículo de su
+    ley y, en color, los que tocó), el mapa de constituciones estatales, un
+    cuadro por legislador en funciones, de dónde sale cada dato con el status
+    de la vigilancia, cómo citar
     (las URL de `/ley` del artículo 82 de la Constitución y la versión de su
     última reforma, tomada de la bitácora), «Para agentes de IA» (`#agentes`:
     el MCP, la API y las URL de `/ley`, con la cuenta de documentos y
-    artículos de `datos.corpus`) y lo que sigue. El portal con el tejido de las
+    artículos de `datos.corpus`). El portal con el tejido de las
     leyes (`ce5645b`) se dejó de lado por ahora.
   - `scripts/leyes.mjs` → `/leyes` («Qué leyes hay»), para el público y sin
     detalles técnicos: por documento, su última reforma, cuántas reformas anota,
@@ -393,9 +397,18 @@ Para verlo en local: `npm install && npm run paginas && npm run dev`.
 
 ## Criterios
 
-- **Estilo:** texto plano sobre la página, sobrio y legible, sin animaciones.
-  Tipografía del sistema, blanco y negro (el color, solo en los datos: los
-  hemiciclos y las gráficas), modo oscuro por `prefers-color-scheme`.
+- **Estilo:** texto grande en una columna angosta y centrada, sobrio y
+  legible, sin animaciones. IBM Plex Sans y Mono, servidas desde
+  `public/fuentes/` (sin terceros). La página es blanca, negra y gris; el
+  color, solo en los datos (la escala `--e1` a `--e7` de `estilo.css`, los
+  hemiciclos y las gráficas), en los enlaces y en la ilustración del pie
+  (`public/img/`, una por tema). Modo oscuro por `prefers-color-scheme`, con
+  la escala invertida. El encabezado y el pie de todas las páginas salen de
+  `cabecera` y `pieSitio` de `scripts/lib/comun.mjs`. El diseño, sus tokens y
+  la guía de voz están en el design system «OpenCodice Retícula» (un
+  artefacto de claude.ai): OpenCodice se presenta como una organización sin
+  fines de lucro que reúne y publica información oficial, sin lenguaje de
+  producto y sin frases que busquen convencer.
   `estilo.css` es el mismo archivo en `constitucion-web` y `fiscal-web`: un
   cambio de estilo va en los dos.
 - **Contenido:** las cifras (artículos, documentos, unidades) salen de los repos

@@ -127,6 +127,11 @@ const busqueda = indiceBusqueda([
 ]);
 await escribir(busqueda.archivos);
 
+// Lo que el inicio dibuja: el orden de los artículos de cada documento (para
+// situar los que tocó una reforma) y las cuentas del Congreso.
+datos.articulosDe = new Map(corpus.documentos.map((d) => [d.clave, d.indice.articulos.map((x) => x.clave)]));
+datos.congreso = vinculos.ok ? { legisladores, votaciones } : null;
+
 await Promise.all([
   writeFile(publico("estado.html"), paginaEstado(datos, generada)),
   writeFile(publico("leyes.html"), paginaLeyes(datos, generada)),

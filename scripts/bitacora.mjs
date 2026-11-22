@@ -1584,7 +1584,16 @@ export function ultimasReformas(m, n) {
     .filter((c) => c.tipo === "reforma" && c.principal)
     .sort(porPublicacion)
     .slice(0, n)
-    .map((c) => ({ url: urlCambio(c), nombre: c.doc.nombre, titulo: tituloCambio(c), resumen: resumenCambio(c), dia: c.dia }));
+    .map((c) => ({
+      url: urlCambio(c),
+      nombre: c.doc.nombre,
+      titulo: tituloCambio(c),
+      resumen: resumenCambio(c),
+      dia: c.dia,
+      clave: c.doc.clave,
+      tocados: [...c.adicionados, ...c.modificados],
+      derogados: c.derogados,
+    }));
 }
 
 export const historiaDe = (m, clave) => (m?.documentos.has(clave) ? urlDocumento(clave) : null);

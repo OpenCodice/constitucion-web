@@ -162,23 +162,26 @@ export const ESTILO_VIDA = `
 .cuadricula-c, .vida-c { overflow-x: auto; margin: 0 0 0.6rem; }
 .cuadricula { display: block; width: 100%; min-width: 26rem; height: auto; }
 .cuadricula text { font-size: 9.5px; pointer-events: none; font-variant-numeric: tabular-nums; fill: var(--tenue); }
-.art-c rect { fill: var(--fondo); }
-.art-c.n0 rect { stroke: var(--linea); stroke-width: 1; }
-.n1 rect { fill: color-mix(in srgb, var(--texto) 12%, var(--fondo)); }
-.n2 rect { fill: color-mix(in srgb, var(--texto) 28%, var(--fondo)); }
-.n3 rect { fill: color-mix(in srgb, var(--texto) 48%, var(--fondo)); }
-.n4 rect { fill: color-mix(in srgb, var(--texto) 70%, var(--fondo)); }
-.n5 rect { fill: var(--texto); }
-.n3 text, .n4 text, .n5 text { fill: var(--fondo); }
+.art-c rect { fill: var(--vacia); }
+.n1 rect { fill: var(--e2); }
+.n2 rect { fill: var(--e3); }
+.n3 rect { fill: var(--e4); }
+.n4 rect { fill: var(--e6); }
+.n5 rect { fill: var(--e7); }
+.n1 text, .n2 text, .n3 text { fill: var(--texto); }
+.n4 text, .n5 text { fill: var(--fondo); }
+@media (prefers-color-scheme: dark) {
+  .n2 text, .n3 text { fill: var(--fondo); }
+}
 .art-c.esta rect { stroke: var(--puesto); stroke-width: 3; }
 .leyenda-m { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3em 0.6em; font-size: 0.78em; color: var(--tenue); }
 .cuadro { display: inline-block; width: 0.9em; height: 0.9em; border-radius: 2px; vertical-align: -0.1em; }
-.cuadro.n0 { border: 1px solid var(--linea); }
-.cuadro.n1 { background: color-mix(in srgb, var(--texto) 12%, var(--fondo)); }
-.cuadro.n2 { background: color-mix(in srgb, var(--texto) 28%, var(--fondo)); }
-.cuadro.n3 { background: color-mix(in srgb, var(--texto) 48%, var(--fondo)); }
-.cuadro.n4 { background: color-mix(in srgb, var(--texto) 70%, var(--fondo)); }
-.cuadro.n5 { background: var(--texto); }
+.cuadro.n0 { background: var(--vacia); }
+.cuadro.n1 { background: var(--e2); }
+.cuadro.n2 { background: var(--e3); }
+.cuadro.n3 { background: var(--e4); }
+.cuadro.n4 { background: var(--e6); }
+.cuadro.n5 { background: var(--e7); }
 .cuadro.esta { border: 2.5px solid var(--puesto); }
 .grupo-vida { margin: 2rem 0 0.6rem; font-size: 0.9em; font-weight: 600; }
 .vida { display: block; width: 100%; min-width: 0; height: auto; }

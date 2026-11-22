@@ -247,6 +247,8 @@ tbody th { font-weight: 400; }
 td time, th time, td .dato { white-space: nowrap; }
 .aviso { padding-left: 0.9em; border-left: 2px solid var(--texto); }
 .generada { color: var(--tenue); font-size: 0.85em; }
+.notas { margin-top: 4.5rem; padding-top: 1.25rem; border-top: 1px solid var(--linea); font-size: 0.833em; color: var(--tenue); }
+.notas a { color: inherit; }
 h3 { margin: 2rem 0 0.8rem; font-size: 0.8em; font-weight: 600; }
 .oculto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .leyenda { display: flex; flex-wrap: wrap; gap: 0.4em 1.2em; align-items: center; font-size: 0.8em; color: var(--tenue); }
@@ -289,7 +291,7 @@ export function metaSocial({ url, titulo, descripcion, tarjeta, tipo = "website"
     .join("\n    ");
 }
 
-const ICONO =
+export const ICONO =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23111'/%3E%3C/svg%3E";
 
 const SECCIONES = [
@@ -300,10 +302,63 @@ const SECCIONES = [
   ["https://github.com/OpenCodice", "GitHub"],
 ];
 
+// La barra de secciones, con la actual marcada. En el inicio la marca no es un
+// enlace a sí misma.
+export function cabecera(ruta) {
+  const enlaces = SECCIONES.map(
+    ([href, nombre]) => `<a href="${href}"${href === ruta ? ' aria-current="page"' : ""}>${nombre}</a>`,
+  ).join("\n            ");
+  return `<div class="cabecera">
+          <p class="marca">${ruta === "/" ? "OpenCodice" : '<a href="/">OpenCodice</a>'}</p>
+          <nav aria-label="Secciones">
+            ${enlaces}
+          </nav>
+        </div>`;
+}
+
+const PIE_COLUMNAS = [
+  ["Consultar", [["/leyes", "Leyes"], ["/bitacora/", "Bitácora"], ["/congreso/", "Congreso"], ["/estado", "Status"]]],
+  ["Para agentes de IA", [["/mcp", "Servidor MCP"], ["/api", "API"], ["/openapi.json", "OpenAPI"], ["/llms.txt", "llms.txt"]]],
+  [
+    "Organización",
+    [
+      ["https://github.com/OpenCodice", "GitHub"],
+      ["https://creativecommons.org/publicdomain/zero/1.0/deed.es", "Datos en CC0"],
+      ["https://github.com/OpenCodice/constitucion-extractor", "Código libre"],
+    ],
+  ],
+];
+
+// El pie de todas las páginas, fuera de <main> para que la ilustración vaya de
+// lado a lado. Cada tema descarga solo su imagen.
+export function pieSitio() {
+  const columnas = PIE_COLUMNAS.map(
+    ([titulo, enlaces]) =>
+      `<nav aria-label="${titulo}"><span>${titulo}</span>${enlaces.map(([href, nombre]) => `<a href="${href}">${nombre}</a>`).join("")}</nav>`,
+  ).join("\n          ");
+  return `<footer class="pie">
+      <div class="pie-cuerpo">
+        <div class="pie-marca">
+          <a href="/">OpenCodice</a>
+          <p>Organización sin fines de lucro. Reúne y publica la información oficial de las leyes y del Congreso de México.</p>
+        </div>
+        <div class="pie-columnas">
+          ${columnas}
+        </div>
+      </div>
+      <p class="pie-legal">Los datos son de dominio público y el código es MIT. No sustituye a la publicación oficial ni es asesoría legal.</p>
+      <picture>
+        <source srcset="/img/plaza-noche.webp" media="(prefers-color-scheme: dark)" />
+        <img src="/img/plaza-dia.webp" width="2172" height="549" loading="lazy" alt="Ilustración de una plaza colonial mexicana: un palacio con portales, una catedral barroca, jacarandas, una fuente, un kiosco y casas de teja." />
+      </picture>
+    </footer>`;
+}
+
 // `ruta` marca la sección actual en la barra; `url` es la de la página misma;
 // `tarjeta`, el texto de su imagen para redes (por omisión, la sección, el h1
 // y la descripción); `cabeza`, lo que una página agregue al <head> (un script
-// con `defer`, por ejemplo).
+// con `defer`, por ejemplo); `pie`, las notas propias de la página (cuándo se
+// generó, de dónde salen sus datos), que van al final de su contenido.
 export function documento({ titulo, h1, descripcion, estilo, cuerpo, pie, ruta, url, tarjeta, tipo, cabeza = "" }) {
   const seccion = SECCIONES.find(([href]) => href === ruta)?.[1];
   const meta = metaSocial({
@@ -313,9 +368,6 @@ export function documento({ titulo, h1, descripcion, estilo, cuerpo, pie, ruta, 
     tarjeta: { etiqueta: seccion, titulo: h1, ...tarjeta },
     tipo,
   });
-  const enlaces = SECCIONES.map(
-    ([href, nombre]) => `<a href="${href}"${href === ruta ? ' aria-current="page"' : ""}>${nombre}</a>`,
-  ).join("\n            ");
   return `<!doctype html>
 <html lang="es-MX">
   <head>
@@ -332,21 +384,17 @@ export function documento({ titulo, h1, descripcion, estilo, cuerpo, pie, ruta, 
   <body>
     <main>
       <header>
-        <div class="cabecera">
-          <p class="marca"><a href="/">OpenCodice</a></p>
-          <nav aria-label="Secciones">
-            ${enlaces}
-          </nav>
-        </div>
+        ${cabecera(ruta)}
         <h1>${esc(h1)}</h1>
       </header>
 
 ${cuerpo}
 
-      <footer>
+      <div class="notas">
         ${pie}
-      </footer>
+      </div>
     </main>
+    ${pieSitio()}
   </body>
 </html>
 `;

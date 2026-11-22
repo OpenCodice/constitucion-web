@@ -1,11 +1,15 @@
 // Página de inicio. Se genera en cada despliegue para que las cifras, el
 // status y las últimas reformas salgan de los repos de datos.
 
-import { ORG, REPOS, metaSocial, esc, numero, plural, fechaLarga, diaMexico, momento } from "./lib/comun.mjs";
+import { ORG, REPOS, ICONO, metaSocial, cabecera, pieSitio, esc, numero, plural, lista, fechaLarga, diaMexico, momento } from "./lib/comun.mjs";
 import { ESTILO_SALUD, salud, insignia, cambios } from "./lib/resumen.mjs";
 import { ultimasReformas as reformasBitacora } from "./bitacora.mjs";
 
 const REFORMAS_EN_INICIO = 3;
+
+const TITULO = "OpenCodice reúne y publica la información oficial de las leyes y del Congreso de México.";
+const DESCRIPCION =
+  "Organización sin fines de lucro. El texto vigente de las leyes de México por artículo, cada reforma con su fecha y cada votación del Congreso con el voto de cada legislador, tomados de las fuentes oficiales.";
 
 // Para los buscadores: el sitio y quién lo publica.
 const JSON_LD = JSON.stringify({
@@ -17,7 +21,7 @@ const JSON_LD = JSON.stringify({
       url: "https://constitucion.app/",
       name: "OpenCodice",
       inLanguage: "es-MX",
-      description: "El texto vigente de la ley mexicana, un archivo por artículo, con cada reforma registrada en git.",
+      description: DESCRIPCION,
       publisher: { "@id": "https://constitucion.app/#organizacion" },
     },
     {
@@ -45,57 +49,210 @@ function ejemploCita(bitacora) {
 
 const MCP = "https://constitucion.app/mcp";
 
-const repo = (r) => `https://github.com/${ORG}/${r}`;
+// ------------------------------------------------------------------ figuras
+//
+// Todo cuadro es una unidad contable: un artículo, un legislador, un estado o
+// dos artículos reformados. Son SVG generados aquí, que toman el color de las
+// variables de estilo.css (y cambian con el tema).
+
+const PASOS = 7;
+
+// Raíz cuadrada: lo que se cuenta se concentra en pocas unidades (un artículo
+// con 82 reformas, la mayoría con menos de 10).
+const nivel = (valor, max) => (valor > 0 && max > 0 ? Math.max(1, Math.min(PASOS, Math.ceil(Math.sqrt(valor / max) * PASOS))) : 0);
+
+const AÑO_ORIGINAL = 1917;
+const POR_CUADRO = 2;
+
+// Artículos de la Constitución reformados cada año: una columna por año, un
+// cuadro por cada dos artículos.
+function historial(vida, generada) {
+  if (!vida) return "";
+  const porAño = new Map();
+  for (const a of vida.articulos) for (const f of a.fechas) porAño.set(+f.slice(0, 4), (porAño.get(+f.slice(0, 4)) ?? 0) + 1);
+  const hasta = +generada.slice(0, 4);
+  const años = Array.from({ length: hasta - AÑO_ORIGINAL + 1 }, (_, i) => AÑO_ORIGINAL + i);
+  const alturas = años.map((a) => Math.ceil((porAño.get(a) ?? 0) / POR_CUADRO));
+  const maxAlt = Math.max(...alturas, 1);
+  const lado = 7;
+  const paso = 9;
+  const eje = 20;
+  const alto = maxAlt * paso + eje;
+  const cuadros = [];
+  años.forEach((año, i) => {
+    const x = i * paso;
+    const n = alturas[i];
+    if (!n) cuadros.push(`<rect x="${x}" y="${alto - eje - lado}" width="${lado}" height="${lado}" rx="2" class="e0"/>`);
+    for (let j = 0; j < n; j++) {
+      const titulo = j === n - 1 ? `<title>${año}: ${plural(porAño.get(año), "artículo reformado", "artículos reformados")}</title>` : "";
+      cuadros.push(
+        `<rect x="${x}" y="${alto - eje - (j + 1) * paso + 2}" width="${lado}" height="${lado}" rx="2" class="e${Math.max(2, nivel(j + 1, maxAlt))}">${titulo}</rect>`,
+      );
+    }
+    if (año === AÑO_ORIGINAL || (año % 20 === 0 && año - AÑO_ORIGINAL >= 10 && hasta - año >= 4)) cuadros.push(`<text x="${x}" y="${alto - 3}" font-size="12" class="eje">${año}</text>`);
+  });
+  const mayores = [...porAño].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([a]) => a);
+  return `
+      <figure class="ancha figura">
+        <div class="desliza">
+          <svg class="cuadros historial" viewBox="0 0 ${años.length * paso - 2} ${alto}" role="img" aria-label="Artículos de la Constitución reformados cada año, de ${AÑO_ORIGINAL} a ${hasta}. Los años con más reformas son ${lista(mayores.map(String))}.">
+            ${cuadros.join("")}
+          </svg>
+        </div>
+        <figcaption class="nota">Artículos de la Constitución reformados cada año, de ${AÑO_ORIGINAL} a ${hasta}. Cada cuadro son dos artículos.</figcaption>
+      </figure>
+`;
+}
+
+// Una tira de cuadros iguales, uno por unidad, con la clase de cada uno.
+function tira(clases, columnas, nombre, hueco = 2) {
+  const lado = 10;
+  const paso = lado + hueco;
+  const filas = Math.ceil(clases.length / columnas);
+  const cuadros = clases
+    .map((c, i) => `<rect x="${(i % columnas) * paso}" y="${Math.floor(i / columnas) * paso}" width="${lado}" height="${lado}" rx="${hueco}" class="${c}"/>`)
+    .join("");
+  return `<svg class="cuadros" viewBox="0 0 ${columnas * paso - hueco} ${filas * paso - hueco}" role="img" aria-label="${esc(nombre)}">${cuadros}</svg>`;
+}
+
+// Lo que una reforma tocó de su ley: un cuadro por artículo, en su orden.
+function huella(r, articulosDe) {
+  const orden = articulosDe?.get(r.clave);
+  const tocados = new Set(r.tocados);
+  const derogados = new Set(r.derogados);
+  if (!orden?.length || !(tocados.size + derogados.size)) return "";
+  const clases = orden.map((k) => (derogados.has(k) ? "c-derogado" : tocados.has(k) ? "c-cambio" : "e0"));
+  const larga = orden.length > 300;
+  const partes = [plural(orden.length, "artículo", "artículos"), `${numero(tocados.size)} con cambios`];
+  if (derogados.size) partes.push(plural(derogados.size, "derogado", "derogados"));
+  return tira(clases, larga ? 100 : 68, partes.join("; "), larga ? 1 : 2);
+}
+
+// Las 32 entidades como teselas iguales, de noroeste a sureste: [columna, fila, sigla].
+const TESELAS = {
+  "baja-california": [0, 0, "BC"], sonora: [1, 0, "SON"], chihuahua: [2, 0, "CHIH"], coahuila: [3, 0, "COAH"], "nuevo-leon": [4, 0, "NL"], tamaulipas: [5, 0, "TAM"],
+  "baja-california-sur": [0, 1, "BCS"], sinaloa: [1, 1, "SIN"], durango: [2, 1, "DGO"], zacatecas: [3, 1, "ZAC"], "san-luis-potosi": [4, 1, "SLP"],
+  nayarit: [1, 2, "NAY"], jalisco: [2, 2, "JAL"], aguascalientes: [3, 2, "AGS"], guanajuato: [4, 2, "GTO"], queretaro: [5, 2, "QRO"], hidalgo: [6, 2, "HGO"],
+  colima: [2, 3, "COL"], michoacan: [3, 3, "MICH"], edomex: [4, 3, "MEX"], cdmx: [5, 3, "CDMX"], tlaxcala: [6, 3, "TLAX"], veracruz: [7, 3, "VER"], yucatan: [10, 3, "YUC"],
+  guerrero: [4, 4, "GRO"], morelos: [5, 4, "MOR"], puebla: [6, 4, "PUE"], tabasco: [8, 4, "TAB"], campeche: [9, 4, "CAMP"], "quintana-roo": [10, 4, "QROO"],
+  oaxaca: [6, 5, "OAX"], chiapas: [7, 5, "CHIS"],
+};
+
+const conLeyes = (e) => (e.leyes ?? []).some((l) => l.estado === "incluida");
+
+function mapa(estados) {
+  const publicados = estados.filter((e) => e.articulos != null && TESELAS[e.clave]);
+  if (!publicados.length) return "";
+  const max = Math.max(...publicados.map((e) => e.articulos));
+  const lado = 58;
+  const paso = 62;
+  const teselas = Object.entries(TESELAS)
+    .map(([clave, [col, fila, sigla]]) => {
+      const e = publicados.find((x) => x.clave === clave);
+      const n = e ? nivel(e.articulos, max) : 0;
+      const x = col * paso;
+      const y = fila * paso;
+      const titulo = e ? `<title>${esc(e.nombre)}: ${numero(e.articulos)} artículos</title>` : "";
+      return `<rect x="${x}" y="${y}" width="${lado}" height="${lado}" rx="3" class="e${n}">${titulo}</rect>${
+        n ? `<text x="${x + lado / 2}" y="${y + lado / 2 + 4}" font-size="11" text-anchor="middle" class="s${n}">${sigla}</text>` : ""
+      }${e && conLeyes(e) ? `<rect x="${x - 1.5}" y="${y - 1.5}" width="${lado + 3}" height="${lado + 3}" rx="4" class="marca-cuadro"/>` : ""}`;
+    })
+    .join("");
+  return `<svg class="cuadros" viewBox="-3 -3 ${11 * paso + 2} ${6 * paso + 2}" role="img" aria-label="Las 32 entidades como cuadros, teñidos por el número de artículos de su constitución.">${teselas}</svg>`;
+}
+
+// ------------------------------------------------------------------ secciones
 
 // Las que quedan fuera es porque su extracción no reproduce fielmente el PDF;
 // el motivo de cada una está en /leyes.
-function fueraFederales(d) {
-  const fuera = d.filter((x) => x.estado !== "incluida").length;
-  return fuera
-    ? `; <a href="/leyes">${plural(fuera, "queda fuera", "quedan fuera")}</a> porque su extracción no reproduce fielmente el PDF`
-    : "";
+const incluidas = (docs) => docs.filter((x) => x.estado === "incluida").length;
+
+function filaPublica(href, cifra, nombre, frase) {
+  return `      <a class="fila" href="${href}">
+        <span class="cifra">${cifra}</span>
+        <span><strong>${nombre}.</strong> ${frase}</span>
+        <span class="flecha" aria-hidden="true">→</span>
+      </a>`;
 }
 
-// Las demás leyes de los estados viven en el mismo repo que sus constituciones.
-function leyesEstatales(estados) {
-  const leyes = estados.flatMap((e) => e.leyes ?? []).filter((d) => d.estado === "incluida");
-  if (!leyes.length) return "";
-  const n = new Set(leyes.map((d) => d.clave.split("/")[0])).size;
-  return `, y <a href="/leyes#leyes-estados">${plural(leyes.length, "ley", "leyes")} de ${plural(n, "estado", "estados")}</a>`;
-}
-
-// Una línea por corpus; si su fuente no respondió, el nombre va sin cifra.
-function corpus({ cpeum, federales, estatales, fiscal }) {
-  const cifra = (r, f, resto = () => "") => (r.ok ? `: <span class="dato">${f(r.datos)}</span>${resto(r.datos)}` : "");
-  return [
-    `<a href="${repo(REPOS.cpeum)}">Constitución federal</a>${cifra(cpeum, (d) => `${numero(d.articulos)} artículos`)}.`,
-    `<a href="${repo(REPOS.federales)}">Leyes federales</a>${cifra(federales, (d) => `${numero(d.filter((x) => x.estado === "incluida").length)} de ${numero(d.length)} leyes`, fueraFederales)}.`,
-    `<a href="${repo(REPOS.estatales)}">Constituciones estatales</a>${cifra(estatales, (d) => `${numero(d.filter((e) => e.articulos != null).length)} de 32 entidades`, leyesEstatales)}.`,
-    `<a href="${repo(REPOS.fiscal)}">Legislación fiscal</a>${cifra(fiscal, (d) => `${numero(d.length)} documentos`)}, con la Miscelánea y los criterios del SAT (<a href="https://sat.constitucion.app">detalle</a>).`,
-  ]
-    .map((l) => `        <li>${l}</li>`)
-    .join("\n");
+// Una fila por colección; si su fuente no respondió, la colección no se cuenta
+// ni se nombra.
+function quePublica({ cpeum, federales, estatales, fiscal, bitacora, congreso }) {
+  const filas = [];
+  const partes = [];
+  let leyes = 0;
+  if (cpeum.ok) {
+    leyes += 1;
+    partes.push("la Constitución");
+  }
+  if (federales.ok) {
+    const n = incluidas(federales.datos);
+    leyes += n;
+    partes.push(`<span class="dato">${plural(n, "ley federal", "leyes federales")}</span>`);
+  }
+  if (estatales.ok) {
+    const constituciones = estatales.datos.filter((e) => e.articulos != null).length;
+    const deEstados = estatales.datos.flatMap((e) => e.leyes ?? []).filter((d) => d.estado === "incluida");
+    leyes += constituciones + deEstados.length;
+    partes.push(`<span class="dato">${plural(constituciones, "constitución estatal", "constituciones estatales")}</span>`);
+    if (deEstados.length) {
+      const estados = new Set(deEstados.map((d) => d.clave.split("/")[0])).size;
+      partes.push(`<span class="dato">${plural(deEstados.length, "ley", "leyes")}</span> de ${plural(estados, "estado", "estados")}`);
+    }
+  }
+  if (leyes) filas.push(filaPublica("/leyes", numero(leyes), "Leyes", `${lista(partes).replace(/^l/, "L")}.`));
+  if (congreso) {
+    const enFunciones = congreso.legisladores.filter((l) => l.en_funciones).length;
+    const desde = congreso.votaciones.map((v) => v.fecha).filter(Boolean).sort()[0];
+    filas.push(
+      filaPublica(
+        "/congreso/",
+        numero(enFunciones),
+        "Congreso",
+        `Los legisladores en funciones, con <span class="dato">${plural(congreso.votaciones.length, "votación nominal", "votaciones nominales")}</span>${desde ? ` desde el ${fechaLarga(desde)}` : ""}.`,
+      ),
+    );
+  }
+  if (fiscal.ok) {
+    filas.push(filaPublica("https://sat.constitucion.app", numero(fiscal.datos.length), "Fiscal", "La legislación fiscal, con la Miscelánea, sus anexos y los criterios del SAT."));
+  }
+  if (bitacora?.cambios.length) {
+    filas.push(filaPublica("/bitacora/", numero(bitacora.cambios.length), "Bitácora", "Los cambios registrados, cada uno con su documento oficial y su fecha."));
+  }
+  if (!filas.length) return "";
+  return `
+      <h2>Qué publica</h2>
+      <div class="filas">
+${filas.join("\n")}
+      </div>
+`;
 }
 
 // Solo las reformas: las correcciones de extracción no cambian la ley. Salen
 // de la bitácora (los trailers de cada commit); si su historial no se pudo
 // leer, de los títulos de los commits recientes.
-function ultimasReformas(actividad, bitacora) {
+function ultimasReformas(actividad, bitacora, articulosDe) {
   const deBitacora = bitacora ? reformasBitacora(bitacora, REFORMAS_EN_INICIO) : [];
   if (deBitacora.length) {
+    let conHuella = false;
+    const reformas = deBitacora
+      .map((r) => {
+        const cuadros = huella(r, articulosDe);
+        conHuella ||= Boolean(cuadros);
+        return `      <div class="reforma">
+        <p>
+          <a href="${esc(r.url)}">${esc(r.nombre)}</a>: ${esc(r.titulo.replace(/^Reforma/, "reforma"))}.
+          <span class="tenue">${esc(r.resumen)}.</span>
+        </p>
+        ${cuadros}
+      </div>`;
+      })
+      .join("\n");
     return `
       <h2>Últimas reformas</h2>
-      <ul>
-${deBitacora
-  .map(
-    (r) => `        <li>
-          <a href="${esc(r.url)}">${esc(r.nombre)}: ${esc(r.titulo.replace(/^Reforma/, "reforma"))}</a>
-          <span class="tenue">· ${r.resumen.charAt(0).toLowerCase()}${r.resumen.slice(1)} · registrada el ${esc(fechaLarga(r.dia))}</span>
-        </li>`,
-  )
-  .join("\n")}
-      </ul>
-      <p><a href="/bitacora/">Ver todas en la bitácora →</a></p>
+${reformas}
+      ${conHuella ? '<p class="nota">Cada cuadro es un artículo de la ley. En azul, los que cambió la reforma; en rojo, los que derogó.</p>' : ""}
+      <p><a class="fuerte" href="/bitacora/">Ver todas en la bitácora →</a></p>
 `;
   }
   const reformas = cambios(actividad)
@@ -118,12 +275,105 @@ ${filas}
 `;
 }
 
+function constitucionesEstatales(estatales) {
+  if (!estatales.ok) return "";
+  const figura = mapa(estatales.datos);
+  if (!figura) return "";
+  const publicados = estatales.datos.filter((e) => e.articulos != null);
+  const porTamaño = [...publicados].sort((a, b) => a.articulos - b.articulos);
+  const menor = porTamaño[0];
+  const mayor = porTamaño.at(-1);
+  const leyes = publicados.filter(conLeyes).length;
+  return `
+      <h2>Constituciones estatales</h2>
+      <p>
+        ${publicados.length === 32 ? "Están las 32" : `Están ${numero(publicados.length)} de las 32`}. El mapa muestra cuántos artículos tiene cada una, de
+        <span class="dato">${numero(menor.articulos)}</span> en ${esc(menor.nombre)} a <span class="dato">${numero(mayor.articulos)}</span> en ${esc(mayor.nombre)}.${
+          leyes ? ` Con borde, ${plural(leyes, "el estado que ya tiene", "los estados que ya tienen")} sus demás leyes.` : ""
+        }
+      </p>
+      ${figura}
+`;
+}
+
+// Un cuadro por legislador en funciones, ordenados por su parte de ausencias.
+function seccionCongreso(congreso) {
+  if (!congreso) {
+    return `
+      <h2>Congreso</h2>
+      <p>
+        <a href="/congreso/">Cada votación nominal</a> de la Cámara de Diputados y del Senado con el voto de cada
+        legislador, y lo que presenta cada uno y en qué quedó.
+      </p>
+`;
+  }
+  const enFunciones = congreso.legisladores.filter((l) => l.en_funciones);
+  const max = Math.max(...enFunciones.map((l) => l.ausencia ?? 0), 0.01);
+  const camara = (nombre, titulo) => {
+    const suyos = enFunciones.filter((l) => l.camara === nombre).sort((a, b) => (a.ausencia ?? 0) - (b.ausencia ?? 0));
+    if (!suyos.length) return "";
+    const conDato = suyos.filter((l) => l.ausencia != null);
+    const mediana = conDato.length ? Math.round(conDato[Math.floor(conDato.length / 2)].ausencia * 100) : null;
+    const nombreFigura = `${numero(suyos.length)} legisladores, ordenados por su parte de ausencias en votaciones nominales${mediana == null ? "" : `. La mediana es ${mediana} por ciento`}.`;
+    return `<p class="nota">${titulo}, ${numero(suyos.length)} en funciones</p>
+        ${tira(suyos.map((l) => `e${nivel(l.ausencia ?? 0, max)}`), 63, nombreFigura)}`;
+  };
+  return `
+      <h2>Congreso</h2>
+      <p>
+        Cada votación nominal de la Cámara de Diputados y del Senado con el voto de cada legislador, y lo que
+        presenta cada uno y en qué quedó. Los datos vienen del SIL, la Gaceta Parlamentaria y el Senado.
+      </p>
+      <div class="camaras">
+        ${camara("Cámara de Diputados", "Cámara de Diputados")}
+        ${camara("Cámara de Senadores", "Senado")}
+      </div>
+      <p class="nota">
+        Cada cuadro es un legislador, ordenados por su parte de ausencias en votaciones nominales: más oscuro,
+        más ausencias. La más alta es de ${Math.round(max * 100)} %.
+      </p>
+      <p class="botones"><a class="boton boton-borde" href="/congreso/legisladores/">Ver legisladores</a></p>
+`;
+}
+
 function status(vigilancia, generada) {
   const s = salud(vigilancia, generada);
   const nuevas = s.nuevas.length ? ` · ${plural(s.nuevas.length, "más sin su primera corrida", "más sin su primera corrida")}` : "";
   const revision = `${nuevas}${s.ultimaRevision ? ` · última revisión: ${momento(s.ultimaRevision)}` : ""}`;
   return `<p class="status">${insignia(s)}<span class="tenue">${revision}</span></p>`;
 }
+
+const ESTILO_INICIO = `
+main > header { margin-bottom: 1.5rem; }
+.intro p { margin-bottom: 1.25rem; }
+.intro .botones { margin-top: 1.75rem; }
+.figura { margin-top: 4rem; margin-bottom: 0; }
+.figura .historial { min-width: 44rem; }
+/* En pantallas angostas la figura se desliza y abre en los años recientes. */
+.figura .desliza { direction: rtl; }
+.figura .desliza > * { direction: ltr; }
+.figura figcaption { max-width: calc(var(--columna) - 2.5rem); margin: 0.75rem auto 0; }
+.filas { margin-top: -0.75rem; }
+.fila { display: grid; grid-template-columns: 6rem 1fr auto; gap: 0.25rem 1.25rem; align-items: baseline; padding: 1.125rem 0; border-bottom: 1px solid var(--linea); color: var(--texto); text-decoration: none; }
+.fila:hover { color: var(--texto); }
+.fila:hover strong { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.18em; }
+.fila .cifra { font-family: var(--mono); font-size: 1.875rem; line-height: 2.125rem; letter-spacing: -0.02em; }
+.fila strong { font-weight: 600; }
+.fila .flecha { color: var(--tenue); }
+.reforma { margin-bottom: 2rem; }
+.reforma p { margin-bottom: 0.625rem; }
+.reforma p a, .fuerte { font-weight: 500; }
+.camaras .nota { margin: 1rem 0 0.5rem; }
+.camaras + .nota { margin-top: 1rem; }
+.status { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3em 0.6em; font-size: 0.85em; }
+.status .insignia { font-size: 0.82em; }
+pre.cmd { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 30rem) {
+  .fila { grid-template-columns: 4.25rem 1fr; }
+  .fila .cifra { font-size: 1.5rem; }
+  .fila .flecha { display: none; }
+}
+`;
 
 export function paginaInicio(datos, generada) {
   const cita = ejemploCita(datos.bitacora);
@@ -132,107 +382,55 @@ export function paginaInicio(datos, generada) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OpenCodice — las leyes de México, versionadas</title>
-    <meta
-      name="description"
-      content="El texto vigente de la Constitución, las leyes federales, las constituciones estatales y la legislación fiscal de México, un archivo por artículo, con cada reforma registrada en git."
-    />
+    <title>OpenCodice — información oficial de las leyes y del Congreso de México</title>
+    <meta name="description" content="${esc(DESCRIPCION)}" />
     ${metaSocial({
       url: "/",
-      titulo: "OpenCodice — las leyes de México, versionadas",
-      descripcion: "El texto vigente de la ley mexicana, un archivo por artículo, con cada reforma registrada en git.",
+      titulo: "OpenCodice — información oficial de las leyes y del Congreso de México",
+      descripcion: DESCRIPCION,
       tarjeta: {
-        titulo: "Las leyes de México, versionadas como código.",
-        detalle: "La Constitución, las leyes federales y estatales y la legislación fiscal: un archivo por artículo y cada reforma, un commit.",
+        titulo: TITULO,
+        detalle: "Organización sin fines de lucro. El texto de cada ley por artículo, cada reforma con su fecha y cada votación con el voto de cada legislador.",
       },
     })}
     <script type="application/ld+json">${JSON_LD}</script>
     <meta name="color-scheme" content="light dark" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23111'/%3E%3C/svg%3E" />
+    <link rel="icon" href="${ICONO}" />
     <link rel="alternate" type="text/plain" href="/llms.txt" title="Guía para agentes" />
     <link rel="alternate" type="text/markdown" href="/llms.txt" title="Esta página en Markdown" />
     <link rel="stylesheet" href="/estilo.css" />
-    <style>${ESTILO_SALUD}
-.status { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3em 0.6em; font-size: 0.85em; }
-.status .insignia { font-size: 0.82em; }
-pre.cmd { white-space: pre-wrap; overflow-wrap: anywhere; }
-</style>
+    <style>${ESTILO_SALUD}${ESTILO_INICIO}</style>
   </head>
   <body>
     <main>
       <header>
-        <div class="cabecera">
-          <p class="marca">OpenCodice</p>
-          <nav aria-label="Secciones">
-            <a href="/leyes">Leyes</a>
-            <a href="/bitacora/">Bitácora</a>
-            <a href="/congreso/">Congreso</a>
-            <a href="/estado">Status</a>
-            <a href="https://github.com/${ORG}">GitHub</a>
-          </nav>
-        </div>
-        <h1>Las leyes de México, versionadas como código.</h1>
+        ${cabecera("/")}
+        <h1>${TITULO}</h1>
       </header>
 
+      <div class="intro">
+        <p>
+          Es una organización sin fines de lucro. Parte de lo que publican el Diario Oficial, la Cámara de
+          Diputados, el Senado, los congresos estatales y el SAT, y lo entrega ordenado: el texto de cada ley
+          por artículo, cada reforma con su fecha y cada votación con el voto de cada legislador.
+        </p>
+        <p class="tenue">
+          Los datos son de dominio público y se consultan en esta página, por API o por un servidor MCP.
+        </p>
+        <p class="botones">
+          <a class="boton" href="/leyes">Consultar las leyes</a>
+          <a class="boton boton-borde" href="/congreso/">Consultar el Congreso</a>
+          <a href="#agentes">Conectar un agente de IA →</a>
+        </p>
+      </div>
+${historial(datos.bitacora?.documentos.get("cpeum")?.vida, generada)}${quePublica(datos)}${ultimasReformas(datos.actividad, datos.bitacora, datos.articulosDe)}${constitucionesEstatales(datos.estatales)}${seccionCongreso(datos.congreso)}
+      <h2>De dónde sale cada dato</h2>
       <p>
-        El texto vigente de la ley mexicana, un archivo por artículo, en git. Cada reforma queda
-        registrada con la diferencia exacta, como
-        <a href="${cita.reforma}">la de${cita.fecha ? ` ${fechaLarga(cita.fecha)}` : ""} a los artículos 82, 116 y 122</a>
-        de la Constitución.
+        Los datos se guardan con control de versiones: cada uno tiene fecha, vigencia y el documento oficial
+        del que salió. Las fuentes se revisan cada semana y un cambio se publica cuando coincide con el
+        documento original. <a href="/estado">Ver el status del sistema →</a>
       </p>
-      <p>
-        <strong>Se mantiene solo:</strong> cada semana revisa las fuentes oficiales, verifica cada
-        cambio contra el PDF y publica únicamente lo verificado, sin que nadie edite el texto.
-        <strong>Es abierto:</strong> los datos son de dominio público y el código es libre.
-      </p>
-
-      <h2>Qué hay hoy</h2>
-      <ul>
-${corpus(datos)}
-      </ul>
-      <p><a href="/leyes">Ver todas las leyes y su última reforma →</a></p>
-${ultimasReformas(datos.actividad, datos.bitacora)}
-      <h2>El historial es el producto</h2>
-      <p>
-        Los repositorios de datos solo tienen commits de texto legal, uno por documento, y el
-        título dice qué pasó:
-      </p>
-      <ul>
-        <li><code>Reforma CPEUM (DOF 2026-10-07): arts. 82, 116, 122</code>: cambió la ley.</li>
-        <li><code>Corrección de extracción cdmx: 23 artículos</code>: la misma ley, mejor leída del PDF.</li>
-        <li><code>Alta de LGS</code> o <code>Retiro de …</code>: entra o sale un documento.</li>
-      </ul>
-      <p>
-        Así, <code>git log -- lgs/</code> es la historia de la Ley General de Salud. Sin usar
-        git, <a href="/bitacora/">la bitácora</a> muestra cada cambio con los artículos que tocó
-        y la diferencia de su texto.
-      </p>
-      <p>
-        La historia de cada documento empieza en su alta. Las reformas anteriores no están como
-        commits: solo sus fechas, en <code>metadata/reformas.json</code>.
-      </p>
-
-      <p>
-        <a href="/congreso/">En el Congreso</a>: cada votación nominal con el voto de cada diputado
-        y senador, y lo que presenta cada legislador y en qué quedó.
-      </p>
-
-      <h2>Cómo se mantiene</h2>
       ${status(datos.vigilancia, generada)}
-      <p>
-        Cada lunes se descargan los PDF oficiales y un extractor determinista vuelve a generar el
-        texto: la Constitución y las leyes federales, de la Cámara de Diputados; las
-        constituciones estatales, de cada congreso o periódico oficial; y la Miscelánea y los
-        criterios, del SAT. Los sitios estatales que solo responden desde México se descargan
-        desde un servidor en México, y Baja California Sur, que solo publica en Word, se
-        convierte a PDF y se guardan los dos.
-      </p>
-      <p>
-        Un agente de IA revisa contra el PDF solo lo que cambió y, si encuentra un defecto de
-        extracción, repara el extractor. Deciden pruebas deterministas que el agente no
-        controla: solo se publica lo verificado y lo demás espera a la semana siguiente. Nadie
-        edita el texto legal a mano. <a href="/estado">Ver el status del sistema →</a>
-      </p>
 
       <h2>Para citar</h2>
       <p>
@@ -245,17 +443,14 @@ ${ultimasReformas(datos.actividad, datos.bitacora)}
 
       <h2 id="agentes">Para agentes de IA</h2>
       <p>
-        Un agente puede consultar todo esto por un servidor MCP o una API, sin autenticación:
-        buscar en todas las leyes y en el Congreso, leer cada artículo, ver qué cambió en una
-        reforma y cómo se votó, y consultar a cada legislador. Lo que recibe es el texto y los
-        datos publicados, con su enlace para verificarlos: no hay respuestas generadas, y la
-        búsqueda es literal.
+        Hay un servidor MCP y una API de solo lectura, sin autenticación. Sirven para buscar en las leyes y
+        en el Congreso, leer un artículo, ver qué cambió en una reforma y cómo se votó, y consultar a cada
+        legislador. La búsqueda es literal y cada respuesta trae el texto publicado con su enlace.
       </p>
-      <p>El servidor MCP, para cualquier cliente (Streamable HTTP, sin autenticación):</p>
+      <p>El servidor MCP, para cualquier cliente (Streamable HTTP):</p>
       <pre class="cmd"><code>${MCP}</code></pre>
       <p>
-        En ChatGPT (modo de desarrollador) o en Claude se agrega como conector con esa URL,
-        sin autenticación. Desde la terminal:
+        En ChatGPT (modo de desarrollador) o en Claude se agrega como conector con esa URL. Desde la terminal:
       </p>
       <pre class="cmd"><code># Claude Code
 claude mcp add --transport http opencodice ${MCP}
@@ -283,32 +478,8 @@ codex mcp add opencodice --url ${MCP}</code></pre>
         </li>
       </ul>
       <pre class="cmd"><code>git clone https://github.com/${ORG}/${REPOS.federales}</code></pre>
-
-      <h2>Lo que sigue</h2>
-      <p>
-        Las demás leyes de cada estado (códigos civiles y penales, leyes orgánicas) y, junto a
-        cada reforma de la bitácora, el decreto que la publicó y su paso por el Congreso.
-      </p>
-
-      <footer>
-        <p>
-          <a href="/leyes">Qué leyes hay</a> · <a href="/bitacora/">Bitácora de reformas</a> ·
-          <a href="/estado">Status del sistema</a> · <a href="https://github.com/${ORG}">GitHub</a>
-        </p>
-        <p>
-          Para agentes: <a href="/llms.txt">guía</a> · <a href="/api">API</a> ·
-          <a href="/openapi.json">OpenAPI</a> · servidor MCP en <code>${MCP}</code>
-        </p>
-        <p>
-          Los datos son de dominio público
-          (<a href="https://creativecommons.org/publicdomain/zero/1.0/deed.es">CC0</a>) y el código
-          es MIT: se pueden usar y redistribuir sin restricciones.
-        </p>
-        <p>
-          No sustituye a la publicación oficial ni es asesoría legal.
-        </p>
-      </footer>
     </main>
+    ${pieSitio()}
   </body>
 </html>
 `;
