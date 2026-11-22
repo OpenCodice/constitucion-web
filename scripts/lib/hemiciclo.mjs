@@ -39,7 +39,7 @@ const POR_NOMBRE = new Map(PARTIDOS.flatMap((g) => g.nombres.map((n) => [n, g.cl
 // El sentido del voto: verde y rojo con luminosidad distinta (se distinguen
 // también sin ver el color), ámbar, violeta y, para el ausente, un asiento vacío.
 export const SENTIDOS = [
-  { clave: "yes", nombre: "A favor", corto: "a favor", claro: "#225EA8", oscuro: "#5B9BEA" },
+  { clave: "yes", nombre: "A favor", corto: "a favor", claro: "#2F8FD8", oscuro: "#6CB6F5" },
   { clave: "no", nombre: "En contra", corto: "en contra", claro: "#C0362C", oscuro: "#F0766B" },
   { clave: "abstain", nombre: "Abstención", corto: "abstención", claro: "#8A8A8A", oscuro: "#8A8A8A" },
   { clave: "not voting", nombre: "Presente sin votar", corto: "presente sin votar", claro: "#7057C8", oscuro: "#A68CF0" },
