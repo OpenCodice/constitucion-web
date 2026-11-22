@@ -1,8 +1,9 @@
 // Página de inicio. Se genera en cada despliegue para que las cifras, el
 // status y las últimas reformas salgan de los repos de datos.
 
-import { ORG, REPOS, ICONO, metaSocial, cabecera, pieSitio, esc, numero, plural, lista, fechaLarga, diaMexico, momento } from "./lib/comun.mjs";
+import { ORG, REPOS, ICONO, metaSocial, cabecera, pieSitio, tonoMas, esc, numero, plural, lista, fechaLarga, diaMexico, momento } from "./lib/comun.mjs";
 import { ESTILO_SALUD, salud, insignia, cambios } from "./lib/resumen.mjs";
+import { nivel, tira } from "./lib/cuadros.mjs";
 import { ultimasReformas as reformasBitacora } from "./bitacora.mjs";
 
 const REFORMAS_EN_INICIO = 3;
@@ -55,12 +56,6 @@ const MCP = "https://constitucion.app/mcp";
 // dos artículos reformados. Son SVG generados aquí, que toman el color de las
 // variables de estilo.css (y cambian con el tema).
 
-const PASOS = 7;
-
-// Raíz cuadrada: lo que se cuenta se concentra en pocas unidades (un artículo
-// con 82 reformas, la mayoría con menos de 10).
-const nivel = (valor, max) => (valor > 0 && max > 0 ? Math.max(1, Math.min(PASOS, Math.ceil(Math.sqrt(valor / max) * PASOS))) : 0);
-
 const AÑO_ORIGINAL = 1917;
 const POR_CUADRO = 2;
 
@@ -102,17 +97,6 @@ function historial(vida, generada) {
         <figcaption class="nota">Artículos de la Constitución reformados cada año, de ${AÑO_ORIGINAL} a ${hasta}. Cada cuadro son dos artículos.</figcaption>
       </figure>
 `;
-}
-
-// Una tira de cuadros iguales, uno por unidad, con la clase de cada uno.
-function tira(clases, columnas, nombre, hueco = 2) {
-  const lado = 10;
-  const paso = lado + hueco;
-  const filas = Math.ceil(clases.length / columnas);
-  const cuadros = clases
-    .map((c, i) => `<rect x="${(i % columnas) * paso}" y="${Math.floor(i / columnas) * paso}" width="${lado}" height="${lado}" rx="${hueco}" class="${c}"/>`)
-    .join("");
-  return `<svg class="cuadros" viewBox="0 0 ${columnas * paso - hueco} ${filas * paso - hueco}" role="img" aria-label="${esc(nombre)}">${cuadros}</svg>`;
 }
 
 // Lo que una reforma tocó de su ley: un cuadro por artículo, en su orden.
@@ -329,7 +313,7 @@ function seccionCongreso(congreso) {
         ${camara("Cámara de Senadores", "Senado")}
       </div>
       <p class="nota">
-        Cada cuadro es un legislador, ordenados por su parte de ausencias en votaciones nominales: más oscuro,
+        Cada cuadro es un legislador, ordenados por su parte de ausencias en votaciones nominales: ${tonoMas()},
         más ausencias. La más alta es de ${Math.round(max * 100)} %.
       </p>
       <p class="botones"><a class="boton boton-borde" href="/congreso/legisladores/">Ver legisladores</a></p>

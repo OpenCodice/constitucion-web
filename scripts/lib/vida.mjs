@@ -58,9 +58,11 @@ export function vidaDocumento(reformas, indice) {
 // ------------------------------------------------------------------ cuadrícula
 
 // Cada artículo del índice es un cuadro; `resaltar`, las claves con borde.
-export function htmlCuadricula(vida, { nombre = "el documento", resaltar = new Set() } = {}) {
+// `enlace(clave)` hace de cada cuadro un enlace a su artículo; `ancha`, la
+// versión que sale de la columna, con más cuadros por fila.
+export function htmlCuadricula(vida, { nombre = "el documento", resaltar = new Set(), enlace = null, ancha = false, leyenda: conLeyenda = true } = {}) {
   const n = vida.articulos.length;
-  const C = n <= 170 ? 17 : n <= 500 ? 25 : 30;
+  const C = ancha ? (n <= 170 ? 22 : n <= 500 ? 34 : 40) : n <= 170 ? 17 : n <= 500 ? 25 : 30;
   const S = 30;
   const G = 3;
   const celdas = vida.articulos.map((a, i) => {
@@ -70,7 +72,8 @@ export function htmlCuadricula(vida, { nombre = "el documento", resaltar = new S
     const x = c * (S + G);
     const y = r * (S + G);
     const texto = a.etiqueta.length <= 5 ? `<text x="${x + S / 2}" y="${y + S / 2 + 3.5}" text-anchor="middle">${esc(a.etiqueta)}</text>` : "";
-    return `<g class="art-c n${nivel(k)}${resaltar.has(a.clave) ? " esta" : ""}"><rect x="${x}" y="${y}" width="${S}" height="${S}" rx="2"/>${texto}<title>Artículo ${esc(a.etiqueta)}: ${plural(k, "reforma", "reformas")}</title></g>`;
+    const g = `<g class="art-c n${nivel(k)}${resaltar.has(a.clave) ? " esta" : ""}"><rect x="${x}" y="${y}" width="${S}" height="${S}" rx="2"/>${texto}<title>Artículo ${esc(a.etiqueta)}: ${plural(k, "reforma", "reformas")}</title></g>`;
+    return enlace ? `<a href="${esc(enlace(a.clave))}">${g}</a>` : g;
   });
   const filas = Math.ceil(n / C);
   const svg = `<svg class="cuadricula" viewBox="-3 -3 ${C * (S + G) + 3} ${filas * (S + G) + 3}" role="img" aria-label="${esc(
@@ -78,7 +81,7 @@ export function htmlCuadricula(vida, { nombre = "el documento", resaltar = new S
   )}">${celdas.join("")}</svg>`;
   const borde = resaltar.size ? ' <span class="cuadro esta"></span> esta reforma' : "";
   const leyenda = `<p class="leyenda-m">${ETIQUETAS_NIVEL.map((t, i) => `<span class="cuadro n${i}"></span> ${t}`).join(" ")}${borde}</p>`;
-  return `<div class="cuadricula-c">${svg}</div>\n${leyenda}`;
+  return `<div class="cuadricula-c">${svg}</div>${conLeyenda ? `\n${leyenda}` : ""}`;
 }
 
 // Los más reformados y cuántos nunca: el texto debajo de la cuadrícula.
@@ -173,7 +176,9 @@ export const ESTILO_VIDA = `
 @media (prefers-color-scheme: dark) {
   .n2 text, .n3 text { fill: var(--fondo); }
 }
-.art-c.esta rect { stroke: var(--puesto); stroke-width: 3; }
+.art-c.esta rect { stroke: var(--texto); stroke-width: 2.5; }
+.cuadricula a:hover rect { stroke: var(--texto); stroke-width: 1.5; }
+.cuadricula a { text-decoration: none; }
 .leyenda-m { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3em 0.6em; font-size: 0.78em; color: var(--tenue); }
 .cuadro { display: inline-block; width: 0.9em; height: 0.9em; border-radius: 2px; vertical-align: -0.1em; }
 .cuadro.n0 { background: var(--vacia); }
@@ -182,7 +187,7 @@ export const ESTILO_VIDA = `
 .cuadro.n3 { background: var(--e4); }
 .cuadro.n4 { background: var(--e6); }
 .cuadro.n5 { background: var(--e7); }
-.cuadro.esta { border: 2.5px solid var(--puesto); }
+.cuadro.esta { border: 2.5px solid var(--texto); }
 .grupo-vida { margin: 2rem 0 0.6rem; font-size: 0.9em; font-weight: 600; }
 .vida { display: block; width: 100%; min-width: 0; height: auto; }
 .vida.angosta { display: none; }

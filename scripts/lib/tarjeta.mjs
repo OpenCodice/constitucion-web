@@ -21,7 +21,7 @@ export const ANCHO = 1200;
 export const ALTO = 630;
 
 // Cambia con el diseño para que el caché no sirva tarjetas viejas.
-const VERSION = 2;
+const VERSION = 3;
 
 const COLOR = { fondo: "#ffffff", texto: "#111111", tenue: "#6b6b6b", linea: "#e4e4e4" };
 const MARGEN = 84;
@@ -296,7 +296,7 @@ export function svgTarjeta({ etiqueta = "", titulo, detalle = "", sitio = "const
 ${cuerpo}
 <rect x="${MARGEN}" y="${abajo}" width="${INTERIOR}" height="1" fill="${COLOR.linea}"/>
 <text x="${MARGEN}" y="564" font-size="24" fill="${COLOR.tenue}">${xml(sitio)}</text>
-<text x="${ANCHO - MARGEN}" y="564" font-size="24" fill="${COLOR.tenue}" text-anchor="end">La ley mexicana, versionada en git</text>
+<text x="${ANCHO - MARGEN}" y="564" font-size="24" fill="${COLOR.tenue}" text-anchor="end">Información oficial de las leyes y del Congreso de México</text>
 </svg>`;
 }
 

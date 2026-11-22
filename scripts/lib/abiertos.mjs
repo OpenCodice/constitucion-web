@@ -12,7 +12,7 @@ const SENTIDOS = { yes: "a_favor", no: "en_contra", abstain: "abstenciones", abs
 
 const nombreOrg = (m, id) => m.organizaciones.get(id)?.name ?? null;
 
-function cuentas(lista) {
+export function cuentas(lista) {
   const c = { a_favor: 0, en_contra: 0, abstenciones: 0, ausentes: 0, sin_votar: 0 };
   for (const x of lista ?? []) if (SENTIDOS[x.option]) c[SENTIDOS[x.option]] += Number(x.value) || 0;
   return c;
@@ -83,7 +83,7 @@ export const enLoGeneral = (texto) => /en lo general/i.test(texto) && !/art[ií]
 // El SIL no publica el conteo por grupo de muchas votaciones del Senado, pero
 // sí el voto de cada senador: entonces se cuenta de ahí, con los votos que la
 // fuente no atribuye a nadie en el grupo que les da. `origen` dice de cuál.
-function porGrupo(m, v, conVotos) {
+export function porGrupo(m, v, conVotos) {
   if (v.group_results?.length) {
     const grupos = v.group_results.map((g) => ({ grupo: g.grupo, a_favor: g.yes ?? 0, en_contra: g.no ?? 0, abstenciones: g.abstain ?? 0, ausentes: g.absent ?? 0 }));
     return { grupos, origen: "fuente" };

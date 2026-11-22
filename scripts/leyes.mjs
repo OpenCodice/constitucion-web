@@ -4,7 +4,7 @@
 // /estado.
 
 import { historiaDe, enLey } from "./bitacora.mjs";
-import { ORG, REPOS, ESTADOS, conArticulo, TOTAL_INDICE_FEDERAL, esc, numero, fechaLarga, momento, plural, lista, documento, anclaTip } from "./lib/comun.mjs";
+import { ORG, REPOS, ESTADOS, conArticulo, TOTAL_INDICE_FEDERAL, esc, numero, fechaLarga, momento, plural, lista, documento, anclaTip, tonoMas } from "./lib/comun.mjs";
 
 // Años de la fila de cuadros: desde 2000 hasta el año en curso. En el teléfono
 // se ven solo los últimos AÑOS_EN_TELEFONO para que la fila quepa.
@@ -81,7 +81,7 @@ const letra = (texto) =>
 // cubren los motivos que el proceso escribe hoy; lo demás cae en el genérico.
 function motivoLlano(motivo = "") {
   if (/tabla|columna|f[óo]rmula/i.test(motivo)) {
-    return "Su PDF trae tablas o fórmulas que todavía no podemos convertir a texto fiel.";
+    return "Su PDF trae tablas o fórmulas que todavía no se convierten a texto fiel.";
   }
   if (/marca de agua/i.test(motivo)) return "Una marca de agua del PDF se mezcla con el texto.";
   if (/0 unidades|al menos una unidad|numerad/i.test(motivo)) {
@@ -90,7 +90,7 @@ function motivoLlano(motivo = "") {
   if (/no reproducen el PDF/i.test(motivo)) {
     return "Al convertirla a texto, algunos artículos no quedan idénticos al PDF oficial.";
   }
-  return "Todavía no podemos convertir su PDF a texto con la fidelidad necesaria.";
+  return "Su PDF todavía no se convierte a texto con la fidelidad necesaria.";
 }
 
 // ------------------------------------------------------------------ piezas
@@ -288,7 +288,7 @@ function resumen({ cpeum, estatales, leyesEstados, federales, fiscal, excluidas,
 
   if (estatales) {
     items.push(
-      `<li><a href="#estados">Constituciones de los estados</a>: tenemos ${numero(estatales.length)} de 32${
+      `<li><a href="#estados">Constituciones de los estados</a>: están ${numero(estatales.length)} de 32${
         estatales.length <= 6 ? ` (${lista(estatales.map((e) => esc(e.entidad)))})` : ""
       }.${estatales.length < 32 ? " Las demás todavía no." : ""}</li>`,
     );
@@ -306,7 +306,7 @@ function resumen({ cpeum, estatales, leyesEstados, federales, fiscal, excluidas,
 
   if (federales) {
     const partes = [`${numero(federales.length)} disponibles`];
-    if (excluidas) partes.push(`${numero(excluidas)} que todavía no podemos ofrecer`);
+    if (excluidas) partes.push(`${numero(excluidas)} que todavía no se publican`);
     if (faltanFederales > 0) partes.push(`${numero(faltanFederales)} por revisar`);
     const rev = enRev(federales);
     items.push(
@@ -336,15 +336,15 @@ function comoLeer(hasta) {
   ].join(" ");
   return `<h2 id="como-leer">Cómo leer la lista</h2>
 <p>
-  De cada documento decimos cuándo se publicó su última reforma y cuántas reformas anota su
+  De cada documento se dice cuándo se publicó su última reforma y cuántas reformas anota su
   texto. La fila de cuadros va de ${DESDE_AÑO} a ${hasta}<span class="solo-telefono"> (en el
-  teléfono, desde ${hasta - AÑOS_EN_TELEFONO + 1})</span>, un cuadro por año: entre más oscuro, más
+  teléfono, desde ${hasta - AÑOS_EN_TELEFONO + 1})</span>, un cuadro por año: entre ${tonoMas()}, más
   reformas ese año.
 </p>
 <p class="leyenda" aria-hidden="true">${muestras}</p>
 <ul class="estados-doc">
-  <li><span class="indicador al-dia">Al día</span>: el texto corresponde a la versión oficial más reciente que conocemos.</li>
-  <li><span class="indicador revision">Actualización en revisión</span>: hay una versión nueva que estamos revisando antes de publicarla.</li>
+  <li><span class="indicador al-dia">Al día</span>: el texto corresponde a la versión oficial más reciente que se conoce.</li>
+  <li><span class="indicador revision">Actualización en revisión</span>: hay una versión nueva en revisión antes de publicarse.</li>
 </ul>`;
 }
 
@@ -354,14 +354,14 @@ function seccionEstados(docs, estatales, hasta) {
   const fuera = sinTexto.filter((e) => e.situacion === "fuera" && e.motivo);
   const preparando = sinTexto.filter((e) => !fuera.includes(e));
   const motivos = fuera.length
-    ? `<p>Por ahora no podemos publicar la de:</p>
+    ? `<p>Por ahora no se publica la de:</p>
 <ul class="tenue">
 ${fuera.map((e) => `  <li><strong>${esc(e.nombre)}</strong>: ${esc(e.motivo)}</li>`).join("\n")}
 </ul>`
     : "";
   return `<h2 id="estados">Constituciones de los estados</h2>
 ${listaDocumentos(docs, hasta)}
-${preparando.length ? `<p class="tenue">Estamos preparando la de ${lista(preparando.map((e) => esc(e.nombre)))}.</p>` : ""}
+${preparando.length ? `<p class="tenue">En preparación, la de ${lista(preparando.map((e) => esc(e.nombre)))}.</p>` : ""}
 ${motivos}`;
 }
 
@@ -468,12 +468,11 @@ ${bloques.join("\n")}`;
 
 const estilo = (hasta) => `
 :root {
-  --a0: #eaedeb; --a1: #bfdcc6; --a2: #7fb991; --a3: #3f8757; --a4: #1d5233;
+  --a0: var(--vacia); --a1: var(--e2); --a2: var(--e3); --a3: var(--e4); --a4: var(--e6);
   --al-dia: #2e7d4a; --revision: #a86400;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --a0: #222624; --a1: #2a5636; --a2: #3b8150; --a3: #5fae78; --a4: #a3e3b5;
     --al-dia: #5cbb7f; --revision: #e3a23a;
   }
 }
@@ -531,8 +530,8 @@ export function paginaLeyes(datos, generada) {
     : 0;
 
   const cuerpo = `      <p>
-        Estas son las leyes mexicanas de las que tenemos el texto vigente, artículo por artículo.
-        De cada una decimos qué versión está vigente, cuántas veces se ha reformado y si viene una
+        Estas son las leyes mexicanas con su texto vigente, artículo por artículo.
+        De cada una se dice qué versión está vigente, cuántas veces se ha reformado y si viene una
         actualización. En <a href="/bitacora/">la bitácora</a> está cada cambio con la diferencia
         de su texto.
       </p>

@@ -227,6 +227,11 @@ ${cuerpo}
 </div>`;
 }
 
+// «Más oscuro» en el tema claro y «más claro» en el oscuro, donde la escala
+// de los cuadros va al revés.
+export const tonoMas = (inicial = "m") =>
+  `<span class="solo-claro">${inicial}ás oscuro</span><span class="solo-oscuro">${inicial}ás claro</span>`;
+
 export const fallo = (que, r) => `<p class="aviso">No se pudo leer ${esc(que)}: ${esc(r.error)}.</p>`;
 
 // Ancla del tooltip según la posición del elemento en su fila (i de n): en

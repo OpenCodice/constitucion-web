@@ -23,6 +23,7 @@
 // ajustesIniciales).
 
 import {
+  tonoMas,
   ORG,
   REPOS,
   ESTADOS,
@@ -42,7 +43,9 @@ import { diferenciaArticulo, diferenciaTexto, encabezado } from "./lib/diferenci
 import { vinculosDe } from "./lib/vinculos.mjs";
 import { urlVotacion, urlLegislador, urlExpediente, urlSilExpediente } from "./lib/congreso.mjs";
 import { ESTILO_HEMICICLO, asientosVotacion, resumenSentidos, svgMini } from "./lib/hemiciclo.mjs";
-import { ESTILO_CADENA, cadenaDe, htmlCadena, htmlQuien, htmlVotos, htmlCongresos, votacionPrincipal } from "./lib/cadena.mjs";
+import { ESTILO_CADENA, cadenaDe, htmlCadena, htmlQuien, htmlVotos, htmlCongresos, votacionPrincipal, conVotosDe } from "./lib/cadena.mjs";
+import { cuentas as cuentasVoto, porGrupo } from "./lib/abiertos.mjs";
+import { ESTILO_CUADROS, htmlVotacion, leyendaVotos } from "./lib/cuadros.mjs";
 import { ESTILO_VIDA, FILAS_VIDA, vidaDocumento, htmlCuadricula, htmlLineaVida, resumenVida } from "./lib/vida.mjs";
 import { decretosDelRegistro, tituloSinDecreto } from "./lib/decretos.mjs";
 
@@ -337,10 +340,7 @@ const avisoFallas = (fallas) =>
     : "";
 
 const ESTILO = `
-:root { --puesto: #1a7f37; --quitado: #b42318; --puesto-f: #dafbe1; --quitado-f: #ffebe9; }
-@media (prefers-color-scheme: dark) {
-  :root { --puesto: #56d364; --quitado: #f47067; --puesto-f: #12361e; --quitado-f: #3d1416; }
-}
+:root { --puesto: var(--cambio); --quitado: var(--en-contra); --puesto-f: var(--agregado-fondo); --quitado-f: var(--quitado-fondo); }
 .pestañas { display: flex; flex-wrap: wrap; gap: 0.3em 1.2em; margin: 0 0 2rem; font-size: 0.9em; }
 .pestañas a { text-decoration: none; }
 .pestañas a[aria-current="page"] { text-decoration: underline; text-decoration-thickness: 2px; }
@@ -364,18 +364,20 @@ h3.grupo { margin: 2rem 0 0.2rem; font-size: 0.85em; font-weight: 600; text-tran
 .articulo { margin: 2.5rem 0 0; }
 .articulo h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2em 0.8em; margin: 0 0 0.6rem; font-size: 0.95em; }
 .articulo h3 .enlaces { font-size: 0.8em; font-weight: 400; color: var(--tenue); }
-.dif { border-left: 2px solid var(--linea); padding-left: 0.9rem; font-size: 0.88em; }
-.dif p { margin: 0 0 0.7em; white-space: pre-wrap; overflow-wrap: anywhere; }
+.dif { font-size: 0.89em; }
+.dif p { margin: 0 0 0.4em; padding: 0.55em 0.8em; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dif .enc { font-weight: 600; }
 .dif .nota { font-style: italic; color: var(--tenue); font-size: 0.92em; }
 .dif .igual { color: var(--tenue); }
 .dif .omitidos { color: var(--tenue); font-size: 0.85em; }
 .dif .omitidos::before { content: "⋯ "; }
-.dif .puesto { border-left: 3px solid var(--puesto); margin-left: calc(-0.9rem - 2px); padding-left: calc(0.9rem - 1px); }
-.dif .quitado { border-left: 3px solid var(--quitado); margin-left: calc(-0.9rem - 2px); padding-left: calc(0.9rem - 1px); }
-.dif .mod { border-left: 3px solid var(--tenue); margin-left: calc(-0.9rem - 2px); padding-left: calc(0.9rem - 1px); }
-ins { background: var(--puesto-f); color: inherit; text-decoration: underline; text-decoration-color: var(--puesto); text-underline-offset: 0.2em; }
-del { background: var(--quitado-f); color: inherit; text-decoration: line-through; text-decoration-color: var(--quitado); }
+.dif .puesto { background: var(--agregado-fondo); color: var(--agregado-texto); }
+.dif .puesto::before { content: "+"; margin-right: 0.6em; font-family: var(--mono); }
+.dif .quitado { background: var(--quitado-fondo); color: var(--quitado-texto); text-decoration: line-through; }
+.dif .quitado::before { content: "−"; display: inline-block; margin-right: 0.6em; font-family: var(--mono); text-decoration: none; }
+.dif .mod { background: var(--superficie); }
+ins { border-radius: 2px; background: var(--agregado-fondo); color: var(--agregado-texto); text-decoration: none; }
+del { border-radius: 2px; background: var(--quitado-fondo); color: var(--quitado-texto); text-decoration: line-through; }
 ins::before, ins::after, del::before, del::after {
   position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
 }
@@ -402,10 +404,17 @@ ins::after, del::after { content: "] "; }
 .decretos .f { grid-row: span 2; color: var(--tenue); font-size: 0.8em; font-variant-numeric: tabular-nums; }
 .decretos .q { font-size: 0.95em; line-height: 1.35; }
 .decretos .d { grid-column: 2; font-size: 0.75em; line-height: 1.5; color: var(--tenue); }
-.decretos .si { color: var(--puesto); font-weight: 600; font-variant-numeric: tabular-nums; }
+.decretos .si { color: var(--a-favor); font-weight: 600; font-variant-numeric: tabular-nums; }
 .decretos .no { color: var(--quitado); font-weight: 600; font-variant-numeric: tabular-nums; }
 @media (max-width: 40rem) { .decretos li { grid-template-columns: minmax(0, 1fr); } .decretos .f { grid-row: auto; } .decretos .d { grid-column: 1; } }
 .titulo-dof { font-size: 0.85em; color: var(--tenue); }
+.ley-intro .botones { margin-top: 1.5rem; }
+.ley-articulos { margin-top: 3rem; }
+.ley-articulos .nota { max-width: 47.5rem; margin: 0.75rem auto 0; }
+.ley-reforma h3 { margin: 0 0 0.75rem; font-size: 1.44em; font-weight: 600; line-height: 1.2; letter-spacing: -0.015em; }
+.ley-reforma h3 a { color: inherit; text-decoration: none; }
+.ley-reforma h3 a:hover { text-decoration: underline; text-decoration-thickness: 1px; }
+.art-cambio { margin: 0 0 0.875rem; font-size: 1.11em; font-weight: 600; letter-spacing: -0.01em; }
 `;
 
 function pagina({ titulo, h1, descripcion, cuerpo, generada, url, tarjeta, tipo, sobre = "", markdown, jsonld }) {
@@ -424,6 +433,7 @@ function pagina({ titulo, h1, descripcion, cuerpo, generada, url, tarjeta, tipo,
       cuerpo.includes('class="mini-svg') || cuerpo.includes('class="hemiciclo"') ? ESTILO_HEMICICLO : "",
       cuerpo.includes('class="tira"') || cuerpo.includes('class="estados"') ? ESTILO_CADENA : "",
       cuerpo.includes('class="cuadricula"') || cuerpo.includes('class="vida-c"') ? ESTILO_VIDA : "",
+      cuerpo.includes('class="votacion') || cuerpo.includes('class="cronologia"') ? ESTILO_CUADROS : "",
     ].join(""),
     cabeza: [
       `<link rel="alternate" type="application/atom+xml" href="${BASE}/reformas.xml" title="Reformas registradas en OpenCodice" />`,
@@ -475,7 +485,7 @@ ${avisoFallas(m.fallas)}
 <p>
   Las reformas, por la fecha en que se publicaron en el Diario Oficial o en el periódico oficial
   del estado. La historia de cada documento empieza en su alta: de las reformas anteriores
-  conocemos la fecha, que está en la página de cada documento, y de las federales más recientes,
+  se conoce la fecha, que está en la página de cada documento, y de las federales más recientes,
   su <a href="${BASE}/decretos/">decreto</a> con su proceso legislativo.
 </p>
 ${
@@ -588,18 +598,126 @@ ${porAño
 </details>`;
 }
 
-// Los artículos del documento por número de reformas, de las notas de reforma
-// de su texto vigente. Sin reformas.json no hay sección.
-function seccionCuadricula(d) {
+const frasesVoto = (c) =>
+  lista(
+    [
+      [c.a_favor, "a favor", "a favor"],
+      [c.en_contra, "en contra", "en contra"],
+      [c.abstenciones, "abstención", "abstenciones"],
+    ]
+      .filter(([n], i) => n || i < 2)
+      .map(([n, uno, varios]) => `${numero(n)} ${n === 1 ? uno : varios}`),
+  );
+
+const esSenado = (nombre) => /senad/i.test(nombre ?? "");
+const nombreCamara = (nombre) => (esSenado(nombre) ? "Senado" : nombre);
+
+// Los artículos del documento, uno por cuadro, por número de reformas (de las
+// notas de reforma de su texto vigente) y con borde los de su última reforma.
+// Sin reformas.json no hay figura.
+function seccionCuadricula(d, ultima) {
   if (!d.vida) return "";
-  const original = d.vida.omitidas ? " Las fechas de 1917 son la publicación original, no reformas, y no se cuentan." : "";
-  return `<h2 id="articulos-reformas">Sus artículos</h2>
-<p>
-  Cada cuadro es un artículo de su texto vigente; más oscuro, más reformas. Las cuenta el propio texto en
-  sus notas de reforma (<code>reformas.json</code>), también las anteriores a su alta.${original}
-</p>
-${htmlCuadricula(d.vida, { nombre: d.nombre })}
-<p class="tenue">${resumenVida(d.vida)}</p>`;
+  const original = d.vida.omitidas ? " Las fechas de 1917 son la publicación original y no se cuentan." : "";
+  const tocados = new Set(ultima ? articulosDe(ultima) : []);
+  const enlace = d.retirado || !d.vida.conIndice ? null : (clave) => `/ley/${d.clave}/${clave}`;
+  return `<figure class="ancha ley-articulos" id="articulos-reformas">
+${htmlCuadricula(d.vida, { nombre: d.nombre, resaltar: tocados, enlace, ancha: true, leyenda: false })}
+<figcaption class="nota">
+  Cada cuadro es un artículo${enlace ? " y lleva a su texto" : ""}. ${tonoMas("M")}, más veces reformado, según las notas de reforma del
+  propio texto.${original} ${resumenVida(d.vida)}${tocados.size ? " Con borde, los que cambió la última reforma." : ""}
+</figcaption>
+</figure>`;
+}
+
+// La última reforma con su recorrido: cada cámara, la publicación y el
+// registro. Los pasos del Congreso salen de la cadena de su decreto; sin ella,
+// quedan la publicación y el registro.
+function seccionUltimaReforma(m, d, u) {
+  if (!u) return "";
+  const e = (m.decretos ?? []).find((x) => x.cambio === u);
+  const votos = (e?.cad?.votos ?? []).filter((v) => v.principal?.votacion.start_date);
+  const pasos = votos
+    .map((v) => {
+      const vt = v.principal.votacion;
+      const hecho = RESULTADO[vt.result] ? `${RESULTADO[vt.result]} con` : "Se vota:";
+      return [vt.start_date, `<strong>${esc(nombreCamara(v.camara.nombre))}.</strong> ${hecho} ${frasesVoto(cuentasVoto(vt.counts))}.`];
+    })
+    .sort((a, b) => a[0].localeCompare(b[0]));
+  const publicada = e?.decreto.fecha ?? fechaPublicacion(u);
+  const medio = u.medio === "DOF" ? "Diario Oficial" : (u.medio ?? "Publicación");
+  if (publicada) pasos.push([publicada, `<strong>${esc(medio)}.</strong> Se publica ${e ? "el decreto" : "la reforma"}.`]);
+  pasos.push([u.dia, "<strong>OpenCodice.</strong> Se registra el cambio, comparado con el documento oficial."]);
+  const enlaces = [
+    e?.decreto.url ? `<a href="${esc(e.decreto.url)}">Decreto en el Diario Oficial</a>` : "",
+    e?.cad?.expediente?.expediente ? `<a href="${esc(urlExpediente(e.cad.expediente.expediente.id))}">Expediente legislativo</a>` : "",
+    `<a href="${esc(urlCambio(u))}">La reforma completa</a>`,
+  ].filter(Boolean);
+  const camaras = votos
+    .map((v) => {
+      const vt = v.principal.votacion;
+      const conVotos = conVotosDe(v.principal);
+      return htmlVotacion({
+        titulo: `${esc(nombreCamara(v.camara.nombre))}, ${fechaLarga(vt.start_date)}`,
+        c: cuentasVoto(vt.counts),
+        grupos: m.vinculos ? porGrupo(m.vinculos, vt, conVotos).grupos : [],
+        enlace: urlVotacion((conVotos ?? vt).id),
+        quienes: esSenado(v.camara.nombre) ? "senador" : "diputado",
+      });
+    })
+    .join("\n");
+  return `<section class="ley-reforma">
+<h2 id="ultima-reforma">Última reforma</h2>
+<h3><a href="${esc(urlCambio(u))}">${esc(tituloCambio(u))}</a></h3>
+<p>${e ? esc(e.decreto.titulo) : `${resumenCambio(u)}.`}</p>
+<p class="nota">${enlaces.join(" · ")}</p>
+<div class="cronologia">
+${pasos.map(([f, texto]) => `<div><time datetime="${esc(f)}">${esc(f)}</time><span>${texto}</span></div>`).join("\n")}
+</div>
+</section>${
+    camaras
+      ? `
+<h2 id="votaciones">Cómo se votó</h2>
+${leyendaVotos}
+${camaras}`
+      : ""
+  }`;
+}
+
+// El primer artículo que cambió la última reforma, antes y después; los demás
+// se enlazan a la página de la reforma.
+function seccionCambioTexto(u) {
+  if (!u) return "";
+  const claves = articulosDe(u);
+  const primero = claves.find((k) => {
+    const t = u.textos[k];
+    return t && (t.antes != null || t.despues != null);
+  });
+  if (!primero) return "";
+  const t = u.textos[primero];
+  const d = diferenciaArticulo(t.antes, t.despues);
+  if (d.iguales) return "";
+  const otros = claves.filter((k) => k !== primero);
+  const nombrados = otros.slice(0, EN_LINEA).map((k) => `<a href="${esc(urlCambio(u))}#art-${esc(k)}">${esc(u.etiquetas[k] ?? k)}</a>`);
+  const tambien = otros.length
+    ? ` La reforma cambió también ${otros.length === 1 ? "el artículo" : "los artículos"} ${lista(nombrados)}${otros.length > EN_LINEA ? ` y ${numero(otros.length - EN_LINEA)} más` : ""}.`
+    : "";
+  return `<h2 id="texto">Qué cambió en el texto</h2>
+<p class="art-cambio">${esc(encabezado(t.despues) ?? encabezado(t.antes) ?? primero)}</p>
+<div class="dif">
+${d.html}
+</div>
+<p class="nota">Los párrafos sin cambios se resumen.${d.truncado ? ` Faltan ${plural(d.truncado, "párrafo", "párrafos")} de este artículo.` : ""}${tambien}</p>
+<p class="botones"><a class="boton boton-borde" href="${esc(urlCambio(u))}">Ver la reforma completa</a></p>`;
+}
+
+// La dirección fija de un artículo y la de su versión en la última reforma.
+function seccionCitar(d, u) {
+  if (d.retirado) return "";
+  const clave = (u ? articulosDe(u)[0] : null) ?? d.vida?.articulos[0]?.clave;
+  if (!clave) return "";
+  return `<h2 id="citar">Para citar</h2>
+<p>Cada artículo tiene una dirección fija, y cada versión un enlace permanente que no cambia aunque la ley se reforme después.</p>
+<pre><code>${SITIO}/ley/${esc(d.clave)}/${esc(clave)}${u ? `\n${SITIO}/ley/${esc(d.clave)}/${esc(clave)}@${esc(u.id)}` : ""}</code></pre>`;
 }
 
 function paginaDocumento(m, d, generada) {
@@ -616,34 +734,56 @@ function paginaDocumento(m, d, generada) {
       : n("ajuste")
         ? ` Los ${numero(n("ajuste"))} ajustes de su lectura en los días siguientes a su alta están bajo ella.`
         : "";
-  const sobre = `<p class="sobre"><a href="${BASE}/documentos">Bitácora</a>${d.sigla && d.sigla !== d.nombre ? ` · ${esc(d.sigla)}` : ""}${d.retirado ? " · retirado" : ""}</p>`;
+  const sobre = `<p class="sobre"><a href="/leyes">Leyes</a> / <a href="${BASE}/documentos">Bitácora</a>${d.sigla && d.sigla !== d.nombre ? ` · ${esc(d.sigla)}` : ""}${d.retirado ? " · retirado" : ""}</p>`;
   const enlaces = [...d.repos]
     .map((r) => {
       const ruta2 = r === repo ? ruta : textoVigente({ ...d, repos: new Set([r]) }).ruta;
       return `<a href="${esc(gh(r, `/tree/main/${ruta2}`))}">texto en ${esc(r)}</a> (<a href="${esc(gh(r, `/commits/main/${ruta2}`))}">historial</a>)`;
     })
     .join(" · ");
-  const cuerpo = `<p>
-  Desde su alta el ${fechaLarga(d.cambios.at(-1).dia)}, OpenCodice registró ${lista(resumen)}.${ajustes}
-  ${d.retirado ? "Ya no se publica: su extracción dejó de reproducir fielmente el PDF oficial." : ""}
+  const ultima = d.cambios.find((c) => c.clase === "reforma") ?? null;
+  const articulos = d.vida?.conIndice ? d.vida.articulos.length : null;
+  const publicada = ultima ? fechaPublicacion(ultima) : null;
+  const vigente = d.retirado
+    ? "Ya no se publica: su extracción dejó de reproducir fielmente el PDF oficial."
+    : `Texto vigente${articulos ? `, con ${plural(articulos, "artículo", "artículos")}` : ""}.${
+        ultima ? ` La última reforma registrada${publicada ? ` se publicó el ${fechaLarga(publicada)}` : ""}: ${resumenCambio(ultima).replace(/^./, (l) => l.toLowerCase())}.` : ""
+      }`;
+  const fuente = d.cambios.find((c) => c.fuente)?.fuente;
+  const botones = d.retirado
+    ? ""
+    : `<p class="botones">
+  <a class="boton" href="/ley/${esc(d.clave)}">Leer el texto</a>
+  <a class="boton boton-borde" href="#cambios">Ver todos los cambios</a>
+  <a href="/ley/${esc(d.clave)}.md">Descargar en Markdown →</a>
+</p>`;
+  const cuerpo = `<div class="ley-intro">
+<p>${vigente}</p>
+<p class="nota">
+  ${fuente ? `Fuente: <a href="${esc(fuente)}">${esc(new URL(fuente).hostname.replace(/^www\./, ""))}</a>. ` : ""}Desde su alta el ${fechaLarga(d.cambios.at(-1).dia)} se registraron ${lista(resumen)}.${ajustes}
+  ${enlaces}
 </p>
-<p class="tenue">${enlaces}</p>
+${botones}
+</div>
+${seccionCuadricula(d, ultima)}
+${seccionUltimaReforma(m, d, ultima)}
+${seccionCambioTexto(ultima)}
 <h2 id="cambios">Cambios registrados</h2>
 ${listaCambios(
   d.cambios.filter((c) => c.clase !== "ajuste"),
   { conDocumento: false, fecha: "registro" },
 )}
-${seccionCuadricula(d)}
 ${seccionDecretos(m, d)}
-${reformasAnteriores(d)}`;
+${reformasAnteriores(d)}
+${seccionCitar(d, ultima)}`;
   return pagina({
     url: urlDocumento(d.clave),
-    tarjeta: { titulo: d.nombre, detalle: "Su historia: el alta, las reformas y las correcciones de su extracción, con la diferencia de su texto." },
+    tarjeta: { titulo: d.nombre, detalle: "Su texto vigente, su última reforma con cómo se votó y lo que cambió, y todos sus cambios registrados." },
     markdown: `${urlDocumento(d.clave)}index.md`,
     jsonld: d.retirado ? null : jsonldDocumento(d),
     titulo: `${d.nombre}: historia`,
     h1: d.nombre,
-    descripcion: `Historia de ${d.nombre} en OpenCodice: reformas, correcciones de extracción y la diferencia de su texto.`,
+    descripcion: `${d.nombre} en OpenCodice: su texto vigente por artículo, su última reforma con las votaciones y la diferencia de su texto, y todos sus cambios.`,
     cuerpo,
     sobre,
     generada,
@@ -1350,6 +1490,7 @@ ${entradas}
 // Archivos de la bitácora: ruta relativa a public/ → contenido.
 export function paginasBitacora(m, generada, vinculos) {
   m.decretos = registroDecretos(m, vinculos);
+  m.vinculos = vinculos?.ok ? vinculos : null;
   const archivos = new Map();
   archivos.set("bitacora/index.html", indiceReformas(m, generada));
   archivos.set(

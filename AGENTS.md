@@ -158,8 +158,15 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     reformas por fecha de publicación; `/bitacora/correcciones`,
     `/bitacora/altas` y `/bitacora/metadatos` (por fecha de registro); `/bitacora/documentos`;
     `/bitacora/decretos/` (ver `decretos.mjs` abajo); la
-    historia de cada documento en `/bitacora/{Documento}/` (con sus decretos
-    y las fechas de reforma anteriores a su alta, de `reformas.json`) y cada cambio en
+    página de cada documento en `/bitacora/{Documento}/`: su texto vigente
+    (cuántos artículos, su fuente y los enlaces a `/ley`), un cuadro por
+    artículo que lleva a su texto, la última reforma con su recorrido
+    (`seccionUltimaReforma`: cada cámara, la publicación y el registro) y
+    «Cómo se votó» (`htmlVotacion` de `scripts/lib/cuadros.mjs`: un cuadro por
+    legislador y una barra por grupo, de la votación principal de cada
+    cámara), el primer artículo que cambió con su diferencia, todos sus
+    cambios, sus decretos, las fechas de reforma anteriores a su alta (de
+    `reformas.json`) y cómo citar; y cada cambio en
     `/bitacora/{Documento}/{sha a 12}`: ficha (tipo, publicación, medio,
     fuente y sha256, extractor, commit), artículos y la diferencia de su texto
     antes/después. También `/bitacora/cambios.json` y el Atom
