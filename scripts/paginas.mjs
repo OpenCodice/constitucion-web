@@ -14,8 +14,8 @@
 // API (el límite anónimo es de 60 peticiones por hora). Ninguna falla de red
 // detiene el despliegue: cada fuente que no responde se anota en la página.
 
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { leerTodo, contarFallas } from "./lib/datos.mjs";
 import { leerHistorial } from "./lib/historial.mjs";
@@ -26,6 +26,7 @@ import { paginaLeyes } from "./leyes.mjs";
 import { paginaInicio } from "./inicio.mjs";
 import { modelo, paginasBitacora } from "./bitacora.mjs";
 import { paginasCongreso } from "./congreso.mjs";
+import { urlFoto } from "./lib/congreso.mjs";
 import { SITIO, escribirTarjetas } from "./lib/tarjeta.mjs";
 import { leerCorpus, fichaCatalogo, llmsCompleto, archivosDocumento } from "./lib/corpus.mjs";
 import { resumenVotaciones, resumenLegisladores, coleccionesCongreso } from "./lib/abiertos.mjs";
@@ -87,6 +88,13 @@ await enParalelo([...congreso], 32, async ([ruta, contenido]) => {
   await mkdir(dirname(publico(ruta)), { recursive: true });
   await writeFile(publico(ruta), contenido);
 });
+// Las fotos de los legisladores, copiadas de congreso-mexicano (`fuentes/`).
+if (vinculos.ok) {
+  await mkdir(publico("congreso/fotos"), { recursive: true });
+  await enParalelo([...vinculos.fotos.values()], 32, (f) =>
+    copyFile(join(vinculos.raiz, f.archivo), publico(urlFoto(f).slice(1))),
+  );
+}
 
 // Los datos abiertos del Congreso (votaciones y legisladores con sus
 // cuentas) y el índice de la búsqueda literal, para la API y el MCP. Van

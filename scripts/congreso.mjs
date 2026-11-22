@@ -16,7 +16,7 @@
 // los registros que dejó de publicar quedan a la vista, no se corrigen.
 
 import { ESTADOS, ORG, esc, numero, plural, lista, fechaLarga, momento, tabla, documento as paginaHtml } from "./lib/comun.mjs";
-import { ASUNTOS, BASE_CONGRESO, urlVotacion, urlLegislador, urlExpediente, urlSilExpediente, urlDato } from "./lib/congreso.mjs";
+import { ASUNTOS, BASE_CONGRESO, urlVotacion, urlLegislador, urlExpediente, urlSilExpediente, urlDato, urlFoto } from "./lib/congreso.mjs";
 import { historiaDe } from "./bitacora.mjs";
 import {
   ESTILO_HEMICICLO,
@@ -171,6 +171,11 @@ const ficha = (filas) =>
 
 const ESTILO = `
 .mini-yo{max-width:15rem;margin:0 0 1.5rem}
+.retrato { float: right; margin: 0 0 1rem 1.25rem; font-size: 0.7em; color: var(--tenue); text-align: center; }
+.retrato img { display: block; width: 145px; height: auto; aspect-ratio: 145 / 181; border-radius: 4px; background: var(--linea); }
+.retrato figcaption { margin-top: 0.3em; }
+.miniretrato { width: 1.6em; height: 2em; object-fit: cover; border-radius: 2px; vertical-align: middle; margin-right: 0.5em; background: var(--linea); }
+@media (max-width: 30rem) { .retrato { float: none; margin: 0 0 1rem; } }
 .sobre { margin: -2.5rem 0 1.25rem; font-size: 0.9em; color: var(--tenue); }
 .ficha { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.35em 1.2em; margin: 0 0 2rem; font-size: 0.85em; }
 .ficha dt { color: var(--tenue); }
@@ -719,6 +724,19 @@ ${secciones.join("\n")}
 
 const grupoMandato = (m, x) => m.organizaciones.get(x.on_behalf_of_id)?.name ?? x.partido_fuente ?? "Sin grupo";
 
+// La foto oficial del SIL, si congreso-mexicano la tiene copiada.
+function retrato(m, id, nombre) {
+  const f = m.fotos?.get(id);
+  return f
+    ? `<figure class="retrato"><img src="${esc(urlFoto(f))}" width="145" height="181" alt="Foto oficial de ${esc(nombre)}"><figcaption>Foto: <a href="${esc(f.url)}">SIL</a></figcaption></figure>`
+    : "";
+}
+
+const miniRetrato = (m, id) => {
+  const f = m.fotos?.get(id);
+  return f ? `<img class="miniretrato" src="${esc(urlFoto(f))}" width="29" height="36" alt="" loading="lazy">` : "";
+};
+
 function indiceLegisladores(m, generada) {
   const mandatos = [...m.mandatos.values()];
   const orden = porApellido(m);
@@ -729,7 +747,7 @@ function indiceLegisladores(m, generada) {
       const filas = xs
         .sort((a, b) => orden(a.person_id, b.person_id))
         .map((x) => [
-          enlacePersona(m, x.person_id),
+          `${miniRetrato(m, x.person_id)}${enlacePersona(m, x.person_id)}`,
           esc(lugar(x) || "—"),
           esc(PRINCIPIO[x.principio] ?? x.principio ?? "—"),
           esc(x.calidad ?? "—"),
@@ -911,6 +929,7 @@ function paginaLegislador(m, id, generada) {
   const pendientes = asuntos.filter((x) => x.asunto.estatus?.resultado === "pendiente").length;
   const actual = mandatos[0];
   const cuerpo = `${migas(`<a href="${BASE_CONGRESO}/legisladores/">Legisladores</a>`)}
+${retrato(m, id, p.name)}
 <p>
   ${actual ? `${esc(m.organizaciones.get(actual.organization_id)?.name ?? actual.organization_id)}, ${esc(grupoMandato(m, actual))}${lugar(actual) ? `, ${esc(lugar(actual))}` : ""}. ` : ""}${
     asuntos.length

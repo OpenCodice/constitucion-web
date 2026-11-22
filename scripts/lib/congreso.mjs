@@ -3,8 +3,9 @@
 // páginas de /congreso.
 //
 // El repo pesa por las copias de las páginas oficiales (`fuentes/`), que aquí
-// no hacen falta: se clona sin blobs y con sparse-checkout de todo menos
-// `fuentes/`. Con REPOS_DATOS=<carpeta> se lee el clon que ya exista ahí.
+// no hacen falta salvo las fotos de los legisladores: se clona sin blobs y con
+// sparse-checkout de todo menos `fuentes/`, más sus imágenes. Con
+// REPOS_DATOS=<carpeta> se lee el clon que ya exista ahí.
 
 import { access, mkdir, readdir, readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
@@ -26,6 +27,9 @@ const existe = (ruta) =>
   );
 
 const git = (dir, args) => ejecutar("git", ["-C", dir, ...args], { maxBuffer: 1 << 26 });
+// Se excluyen los archivos de `fuentes/` y no la carpeta: git no vuelve a
+// incluir nada dentro de una carpeta excluida.
+const SPARSE = ["sparse-checkout", "set", "--no-cone", "/*", "!/fuentes/*/*", "/fuentes/*/*.jpg", "/fuentes/*/*.png"];
 
 async function carpeta() {
   if (process.env.REPOS_DATOS) {
@@ -37,11 +41,12 @@ async function carpeta() {
   if (await existe(join(dir, ".git"))) {
     await git(dir, ["fetch", "--quiet", "--filter=blob:none", "origin", "main"]);
     await git(dir, ["reset", "--quiet", "--hard", "origin/main"]);
+    await git(dir, SPARSE);
   } else {
     await mkdir(DATOS, { recursive: true });
     await ejecutar("git", ["clone", "--quiet", "--filter=blob:none", "--sparse", "--single-branch", "--branch", "main",
       `https://github.com/${ORG}/${REPO}`, dir], { maxBuffer: 1 << 26 });
-    await git(dir, ["sparse-checkout", "set", "--no-cone", "/*", "!/fuentes/"]);
+    await git(dir, SPARSE);
   }
   return dir;
 }
@@ -64,6 +69,8 @@ export const urlExpediente = (id) => `${BASE_CONGRESO}/expedientes/${id}`;
 // Fuera del sitio: la ficha del SIL y el repo de datos.
 export const urlSilExpediente = (e) =>
   `http://sil.gobernacion.gob.mx/Librerias/pp_ReporteSeguimiento.php?Seguimiento=${e.seguimiento}`;
+// Las fotos se sirven por su huella: una foto nueva es otro archivo.
+export const urlFoto = (foto) => `${BASE_CONGRESO}/fotos/${foto.sha256}.${foto.archivo.split(".").pop()}`;
 export const urlDato = (ruta) => `https://github.com/${ORG}/${REPO}/blob/main/${ruta}`;
 
 const agregar = (mapa, clave, valor) => {
@@ -111,6 +118,15 @@ export function modeloCongreso(r) {
   // Mandatos de cada persona.
   m.mandatosPorPersona = new Map();
   for (const x of m.mandatos.values()) agregar(m.mandatosPorPersona, x.person_id, x);
+  // La foto de cada persona (`image`) es la copia que cita uno de sus mandatos.
+  m.fotos = new Map();
+  for (const p of m.personas.values()) {
+    if (!p.image) continue;
+    const f = (m.mandatosPorPersona.get(p.id) ?? [])
+      .flatMap((x) => x.sources ?? [])
+      .find((s) => s.url === p.image && /\.(jpg|png)$/.test(s.archivo ?? ""));
+    if (f) m.fotos.set(p.id, { archivo: f.archivo, sha256: f.sha256, url: f.url });
+  }
   // Asuntos por autor y por expediente.
   m.asuntosPorPersona = new Map();
   m.asuntosPorSeguimiento = new Map();
@@ -129,7 +145,10 @@ export async function leerCongreso() {
     const subs = ["organizaciones", "personas", "mandatos", "expedientes", "votaciones", "decretos", ...Object.keys(ASUNTOS)];
     const leidos = await Promise.all(subs.map((s) => leerCarpeta(raiz, s)));
     const r = Object.fromEntries(subs.map((s, i) => [ASUNTOS[s] ?? s, leidos[i]]));
-    return { ok: true, ...modeloCongreso(r) };
+    const m = modeloCongreso(r);
+    // Una página nunca enlaza una foto que el despliegue no lleve.
+    for (const [id, f] of m.fotos) if (!(await existe(join(raiz, f.archivo)))) m.fotos.delete(id);
+    return { ok: true, raiz, ...m };
   } catch (e) {
     return { ok: false, error: e.message };
   }

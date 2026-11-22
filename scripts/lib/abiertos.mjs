@@ -5,7 +5,7 @@
 // bitácora; aquí solo se cuenta, nunca se interpreta.
 
 import { SITIO } from "./tarjeta.mjs";
-import { urlVotacion, urlLegislador, urlExpediente } from "./congreso.mjs";
+import { urlVotacion, urlLegislador, urlExpediente, urlFoto } from "./congreso.mjs";
 
 const SENTIDOS = { yes: "a_favor", no: "en_contra", abstain: "abstenciones", absent: "ausentes", "not voting": "sin_votar" };
 
@@ -122,6 +122,7 @@ export function resumenLegisladores(m) {
       iniciativas: presentados.length,
       iniciativas_aprobadas: presentados.filter((x) => x.asunto.estatus?.resultado === "aprobado").length,
       url: `${SITIO}${urlLegislador(p.id)}`,
+      foto: m.fotos?.has(p.id) ? `${SITIO}${urlFoto(m.fotos.get(p.id))}` : null,
     });
   }
   return filas.sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));

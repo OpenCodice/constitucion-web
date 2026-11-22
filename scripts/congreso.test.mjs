@@ -233,3 +233,20 @@ test("sin datos, una página que lo dice", () => {
   assert.deepEqual([...p.keys()], ["congreso/index.html"]);
   assert.match(p.get("congreso/index.html"), /No se pudieron leer los datos del Congreso \(no existe/);
 });
+
+test("la foto de un legislador es la copia que cita su mandato", () => {
+  const r = registros();
+  const url = "http://sil.gobernacion.gob.mx/Archivos/Fotos/1.jpg";
+  const sha = "b".repeat(64);
+  const ana = r.mandatos.find((x) => x.person_id === "ana-lopez");
+  ana.sources = [...ana.sources, { url, sha256: sha, archivo: `fuentes/bb/${sha}.jpg` }];
+  r.personas.find((x) => x.id === "ana-lopez").image = url;
+  // Una `image` que ningún mandato copia no se muestra.
+  r.personas.find((x) => x.id === "beto-ruiz").image = "http://sil.gobernacion.gob.mx/Archivos/Fotos/2.jpg";
+  const m = modeloCongreso(r);
+  assert.deepEqual([...m.fotos.keys()], ["ana-lopez"]);
+  const p = paginasCongreso({ ok: true, ...m }, "2026-11-17T12:00:00Z");
+  assert.match(p.get("congreso/legisladores/ana-lopez.html"), new RegExp(`<img src="/congreso/fotos/${sha}.jpg"[^>]*alt="Foto oficial de Ana López"`));
+  assert.doesNotMatch(p.get("congreso/legisladores/beto-ruiz.html"), /class="retrato"/);
+  assert.match(p.get("congreso/legisladores/index.html"), /class="miniretrato"/);
+});

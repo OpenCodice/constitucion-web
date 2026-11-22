@@ -65,7 +65,7 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   totales y por grupo, `division` = la parte de los votos emitidos que tuvo el
   lado perdedor, `en_lo_general`, decreto y leyes) y
   `congreso/legisladores.json` (mandato actual, votos con nombre por
-  sentido, ausencias y su tasa, iniciativas presentadas y aprobadas), y los
+  sentido, ausencias y su tasa, iniciativas presentadas y aprobadas, `foto`), y los
   asuntos como colecciones para la búsqueda.
 - `scripts/lib/busqueda.mjs` — el índice de la búsqueda en `public/buscar/`
   (palabra → ids, en 256 archivos; `meta.json` con el rango de ids de cada
@@ -279,9 +279,9 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     `inconsistencias`, `diferencia_conteos`/`_grupos`, `discrepancias` y la
     misma votación en otra fuente, y `retirada_de_la_fuente`);
     `/congreso/legisladores/` (por cámara y grupo),
-    `/congreso/legisladores/{persona}` (su lugar en el hemiciclo de su cámara
-    si está en funciones, mandatos con licencias y comisiones, sus votos y lo
-    que presentó, con estatus y desenlace);
+    `/congreso/legisladores/{persona}` (su foto oficial, su lugar en el
+    hemiciclo de su cámara si está en funciones, mandatos con licencias y
+    comisiones, sus votos y lo que presentó, con estatus y desenlace);
     `/congreso/camaras` (la composición de cada cámara, ver «Hemiciclos»); y
     `/congreso/expedientes/` y `/congreso/expedientes/{id}` (cronología,
     votaciones nominales y económicas, asuntos con autor, decreto del DOF y
@@ -289,7 +289,11 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     de miles): se listan en la de su autor y su expediente, con enlace al SIL
     y al JSON. Las rutas salen de `scripts/lib/congreso.mjs`; se prueba en
     `scripts/congreso.test.mjs` con un modelo sintético. Si congreso-mexicano
-    no se puede leer, solo sale `/congreso/` con el aviso.
+    no se puede leer, solo sale `/congreso/` con el aviso. Las fotos de los
+    legisladores (la `image` de cada persona, que es la copia `.jpg` o `.png`
+    en `fuentes/` que cita uno de sus mandatos) son lo único de `fuentes/` que
+    se clona; `paginas.mjs` las copia a `/congreso/fotos/{sha256}.{ext}`, y
+    una foto que no está en el clon no se enlaza.
   - La situación de cada constitución estatal (vigilada, en preparación o
     fuera, con su motivo) sale de `estados.json` de `constitucion-extractor`:
     `/leyes` muestra el motivo de las que faltan y `/estado`, una tabla de las 32.
