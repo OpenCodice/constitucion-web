@@ -81,34 +81,13 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   `REPOS_DATOS=..` para leer los clones del espacio de trabajo en vez de
   clonar en `.datos/`). Tarda unos 15 s más las tarjetas que no estén en
   `.tarjetas/`.
-  - `scripts/inicio.mjs` → `/`: la portada de OpenCodice como organización.
-    Su meta («que cualquier persona pueda leer la ley mexicana vigente, saber
-    cuándo cambió y quién la cambió») junto al tejido; el status de la
-    vigilancia; «Lo que hacemos», una columna por parte de la meta (las leyes,
-    la bitácora y el Congreso, con sus cifras: documentos del tejido, reformas
-    de la bitácora y votaciones y legisladores de congreso-mexicano, que
-    `paginas.mjs` le pasa en `datos.congreso`); cifras de cada corpus,
-    últimas reformas, cómo se mantiene, «Para agentes de IA» (`#agentes`: el
-    MCP, las URL de `/ley` y la API, con la cuenta de documentos y
-    artículos de `datos.corpus`), y el historial, cómo citar (con las URL de
-    `/ley` del artículo 82 de la Constitución y la versión de su última
-    reforma, de la bitácora) y los datos abiertos. Es la única página con diseño propio
-    (no usa `estilo.css`): la fuente Jost, servida desde `public/fuentes/`
-    (OFL), y los colores de cada corpus, con su versión para modo oscuro.
-    - El tejido (`scripts/lib/tejido.mjs`): un cuadro por documento
-      publicado, enlazado a su historia en la bitácora. La Constitución va al
-      centro en 2×2 y los demás en órbitas de cuatro (sus reflejos en los
-      cuatro cuadrantes), de adentro hacia afuera, con huecos en escalón como
-      una greca; cada órbita es de un solo corpus, así que el color queda
-      simétrico. Corpus: Constitución, constituciones estatales, leyes
-      federales separadas por su nombre (generales y nacionales; orgánicas,
-      reglamentarias, códigos y reglamentos; las demás), leyes de los estados
-      y lo fiscal que no está en leyes-federales. Las órbitas incompletas (un
-      corpus que no es múltiplo de 4) van al borde. Un documento reformado o
-      corregido en los últimos 30 días lleva un punto y late (salvo con
-      `prefers-reduced-motion`). Es determinista: los mismos documentos dan el
-      mismo dibujo, y la tarjeta para redes del inicio lo lleva a la derecha
-      (`arte` en `tarjeta.mjs`, que entra en el hash).
+  - `scripts/inicio.mjs` → `/`: qué es, cifras de cada corpus, últimas
+    reformas, cómo leer el historial, status de la vigilancia, cómo citar
+    (las URL de `/ley` del artículo 82 de la Constitución y la versión de su
+    última reforma, tomada de la bitácora), «Para agentes de IA» (`#agentes`:
+    el MCP, la API y las URL de `/ley`, con la cuenta de documentos y
+    artículos de `datos.corpus`) y lo que sigue. El portal con el tejido de las
+    leyes (`ce5645b`) se dejó de lado por ahora.
   - `scripts/leyes.mjs` → `/leyes` («Qué leyes hay»), para el público y sin
     detalles técnicos: por documento, su última reforma, cuántas reformas anota,
     una fila de cuadros por año y si tiene una actualización en revisión (un PR
@@ -387,8 +366,7 @@ Para verlo en local: `npm install && npm run paginas && npm run dev`.
 
 ## Criterios
 
-- **Estilo:** texto plano sobre la página, sobrio y legible, sin animaciones
-  (la excepción es el inicio, con su tejido; ver arriba).
+- **Estilo:** texto plano sobre la página, sobrio y legible, sin animaciones.
   Tipografía del sistema, blanco y negro (el color, solo en los datos: los
   hemiciclos y las gráficas), modo oscuro por `prefers-color-scheme`.
   `estilo.css` es el mismo archivo en `constitucion-web` y `fiscal-web`: un

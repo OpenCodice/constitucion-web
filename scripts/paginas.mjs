@@ -69,8 +69,6 @@ await writeFile(publico("llms-full.txt"), llmsCompleto(fichas, generada));
 datos.corpus = { documentos: fichas.length, articulos: fichas.reduce((n, f) => n + f.articulos, 0) };
 
 const vinculos = await leerVinculos();
-// El inicio cuenta votaciones y legisladores.
-datos.congreso = vinculos;
 
 // La bitácora se escribe entera cada vez: un documento retirado o un commit
 // que ya no está no debe dejar páginas viejas.
