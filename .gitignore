@@ -9,6 +9,7 @@ public/og/
 public/sitemap.xml
 public/ley/
 public/llms-full.txt
+public/buscar/
 # Tarjetas ya dibujadas; deploy.yml las conserva entre corridas.
 .tarjetas/
 # Clones de los repos de datos que lee la bitácora.

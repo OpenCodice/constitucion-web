@@ -42,7 +42,7 @@ import { diferenciaArticulo, diferenciaTexto, encabezado } from "./lib/diferenci
 import { vinculosDe } from "./lib/vinculos.mjs";
 import { urlVotacion, urlLegislador, urlExpediente, urlSilExpediente } from "./lib/congreso.mjs";
 import { ESTILO_HEMICICLO, asientosVotacion, resumenSentidos, svgMini } from "./lib/hemiciclo.mjs";
-import { ESTILO_CADENA, cadenaDe, htmlCadena, htmlQuien, htmlVotos, htmlCongresos } from "./lib/cadena.mjs";
+import { ESTILO_CADENA, cadenaDe, htmlCadena, htmlQuien, htmlVotos, htmlCongresos, votacionPrincipal } from "./lib/cadena.mjs";
 import { ESTILO_VIDA, FILAS_VIDA, vidaDocumento, htmlCuadricula, htmlLineaVida, resumenVida } from "./lib/vida.mjs";
 import { decretosDelRegistro, tituloSinDecreto } from "./lib/decretos.mjs";
 
@@ -1406,7 +1406,7 @@ export function paginasBitacora(m, generada, vinculos) {
     archivos.set(`bitacora/${d.clave}/index.html`, paginaDocumento(m, d, generada));
     for (const c of d.cambios) archivos.set(`bitacora/${d.clave}/${c.id}.html`, paginaCambio(c, generada, vinculos));
     archivos.set(`bitacora/${d.clave}/index.md`, mdDocumento(d));
-    for (const c of d.cambios) archivos.set(`bitacora/${d.clave}/${c.id}.md`, mdCambio(c));
+    for (const c of d.cambios) archivos.set(`bitacora/${d.clave}/${c.id}.md`, mdCambio(c, vinculos));
   }
   archivos.set("bitacora/index.md", mdReformas(m));
   archivos.set("bitacora/decretos/index.html", indiceDecretos(m, generada));
@@ -1443,7 +1443,45 @@ const urlLey = (doc, clave) => `${SITIO}/ley/${doc}${clave ? `/${clave}` : ""}`;
 const lineaMd = (c, conDocumento) =>
   `- ${fechaPublicacion(c) ?? c.dia} · ${conDocumento ? `${c.doc.nombre} · ` : ""}${tituloCambio(c)} · ${sinHtml(resumenCambio(c))} · ${SITIO}${urlCambio(c)}`;
 
-function mdCambio(c) {
+// El proceso legislativo de un cambio, en Markdown: lo mismo que la cadena de
+// la página (decreto, expediente, votación principal de cada cámara,
+// iniciativas), sin interpretar nada.
+const SENTIDO_MD = { yes: "a favor", no: "en contra", abstain: "abstenciones", absent: "ausentes" };
+
+function mdProceso(c, vinculos) {
+  const ps = vinculosDe(vinculos, c);
+  if (!ps.length) return null;
+  const lineas = [];
+  for (const p of ps) {
+    const d = p.decreto;
+    lineas.push(`- Decreto${d.fecha ? ` del DOF del ${d.fecha}` : ""}: ${d.titulo ?? d.id}${d.url ? ` (${d.url})` : ""}`);
+    for (const x of p.expedientes) {
+      if (!x.expediente) continue;
+      lineas.push(`- Expediente del SIL: ${SITIO}${urlExpediente(x.expediente.id)}`);
+      for (const g of x.votaciones) {
+        const e = votacionPrincipal(g.votaciones);
+        if (!e) continue;
+        const v = e.votacion;
+        const cuenta = (v.counts ?? [])
+          .filter((k) => SENTIDO_MD[k.option] && k.value)
+          .map((k) => `${k.value} ${SENTIDO_MD[k.option]}`)
+          .join(", ");
+        lineas.push(`- Votación en ${g.nombre ?? "el Congreso"}${v.start_date ? ` (${v.start_date})` : ""}: ${cuenta || "sin conteo"}. ${SITIO}${urlVotacion(v.id)}`);
+      }
+      for (const g of x.economicas) lineas.push(`- ${g.nombre ?? "El Congreso"}: ${plural(g.n, "votación económica", "votaciones económicas")}, sin votos nominales.`);
+      for (const i of x.iniciativas.slice(0, 5)) {
+        const quien = (i.autores ?? []).map((a) => `${a.nombre}${a.partido ? ` (${a.partido})` : ""}`).join(", ");
+        lineas.push(`- Iniciativa${i.fecha ? ` del ${i.fecha}` : ""}: ${i.denominacion}${quien ? ` Presentada por ${quien}.` : ""}`);
+      }
+      if (x.iniciativas.length > 5) lineas.push(`- Y ${x.iniciativas.length - 5} iniciativas más en el expediente.`);
+    }
+    if (!p.expedientes.length && p.candidatos.length) lineas.push(`- Su expediente del SIL no se identificó con certeza (${p.candidatos.length} posibles).`);
+    if (p.legislaturas?.aprobaron?.length) lineas.push(`- Congresos locales que la aprobaron: ${p.legislaturas.aprobaron.length}.`);
+  }
+  return `## Proceso legislativo\n\n${lineas.join("\n")}`;
+}
+
+function mdCambio(c, vinculos) {
   const claves = articulosDe(c);
   const estado = Object.fromEntries(ESTADO_ARTICULO.flatMap(([k, uno]) => c[k].map((a) => [a, uno])));
   const partes = [
@@ -1467,6 +1505,8 @@ function mdCambio(c) {
   ];
   if (c.otros.length) partes.push(`El mismo hecho está registrado también en ${c.otros.map((o) => `${o.repo} (${SITIO}${urlCambio(o)}.md)`).join(", ")}.`);
   if (c.alta) partes.push(`Ajuste inicial del alta: ${SITIO}${urlCambio(c.alta)}.md`);
+  const proceso = mdProceso(c, vinculos);
+  if (proceso) partes.push(proceso);
   if (c.tipo === "alta" || c.tipo === "retiro" || !claves.length) {
     if (!c.doc.retirado) partes.push(`Índice y texto vigente: ${urlLey(c.documento)}`);
     return `${partes.join("\n\n")}\n`;

@@ -1,73 +1,111 @@
-// Lo que sirve el Worker a los agentes (/ley, /mcp y las páginas en
-// Markdown), con un despliegue sintético en lugar de env.ASSETS.
+// Lo que sirve el Worker a los agentes (/ley, /api, /mcp y las páginas en
+// Markdown), sobre un despliegue sintético armado con las mismas funciones
+// que escriben los archivos de verdad (`archivosDocumento`, `indiceBusqueda`).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { normalizarClave, mapaClaves, resolverClave } from "../worker/claves.js";
+import { palabras, codificar, decodificar } from "../worker/texto.js";
 import worker, { prefiereMarkdown } from "../worker/index.js";
+import { HERRAMIENTAS } from "../worker/herramientas.js";
 import { diferenciaTexto } from "./lib/diferencias.mjs";
+import { archivosDocumento, fichaCatalogo } from "./lib/corpus.mjs";
+import { indiceBusqueda } from "./lib/busqueda.mjs";
 
 const art = (n, cuerpo) => `# Artículo ${n}.\n\n${cuerpo}`;
-const TEXTOS = [
+const SHA_REFORMA = "a".repeat(40);
+const SHA_ALTA = "b".repeat(40);
+const cambios = (doc) => [
+  { sha: SHA_REFORMA, tipo: "reforma", clase: "reforma", dia: "2026-11-15", publicacion: ["2026-10-07"], medio: "DOF", bitacora: `https://constitucion.app/bitacora/${doc}/aaaaaaaaaaaa` },
+  { sha: SHA_ALTA, tipo: "alta", clase: "alta", dia: "2026-06-09", publicacion: ["2026-06-02"], medio: "DOF", bitacora: `https://constitucion.app/bitacora/${doc}/bbbbbbbbbbbb` },
+];
+
+function documento(clave, extra, textos) {
+  return {
+    clave,
+    indice: {
+      documento: clave,
+      repo: "constitucion-mexicana",
+      carpeta: "articulos/",
+      fuente: "https://www.diputados.gob.mx/LeyesBiblio/pdf/CPEUM.pdf",
+      ...extra,
+      articulos: textos.map(([k, t], i) => ({
+        clave: k,
+        etiqueta: t.split("\n")[0].slice(2),
+        ubicacion: i < 2 ? "Título Primero / Capítulo I" : "Título Segundo",
+        url: `https://constitucion.app/ley/${clave}/${k}`,
+        cambios: k === "004" ? [0, 1] : [1],
+        texto: t,
+      })),
+      cambios: cambios(clave),
+    },
+  };
+}
+
+const CPEUM = documento("cpeum", { nombre: "Constitución Política de los Estados Unidos Mexicanos", sigla: "CPEUM", ambito: "constitucion", entidad: null }, [
   ["001", art("1o", "Toda persona gozará de los derechos humanos.")],
   ["004", art("4o", "La mujer y el hombre son iguales ante la ley.")],
   ["077-bis-35-a", art("77 Bis 35 A", "El salario mínimo se fijará anualmente.")],
+]);
+const JALISCO = documento("jalisco/constitucion", { nombre: "Constitución de Jalisco", sigla: "Jalisco", ambito: "constitucion-estatal", entidad: "Jalisco" }, [
+  ["001", art("1", "El matrimonio es la unión de dos personas.")],
+]);
+
+const VOTACIONES = [
+  {
+    id: "sil-1-1", fecha: "2026-09-22", camara: "Cámara de Diputados", asunto: "Reforma constitucional en materia de nacionalidad", resultado: "Aprobado en lo general", en_lo_general: true,
+    a_favor: 344, en_contra: 116, abstenciones: 1, ausentes: 38, sin_votar: 0, division: 0.252,
+    por_grupo: [{ grupo: "Morena", a_favor: 240, en_contra: 0, abstenciones: 0, ausentes: 13 }, { grupo: "PAN", a_favor: 0, en_contra: 70, abstenciones: 0, ausentes: 2 }],
+    votos_con_nombre: true, expediente: "https://constitucion.app/congreso/expedientes/sil-9", decreto: null,
+    leyes: [{ documento: "cpeum", nombre: "Constitución Política de los Estados Unidos Mexicanos", url: "https://constitucion.app/ley/cpeum" }],
+    url: "https://constitucion.app/congreso/votaciones/sil-1-1",
+  },
+  {
+    id: "sil-1-2", fecha: "2026-09-22", camara: "Cámara de Diputados", asunto: "Reforma constitucional en materia de nacionalidad", resultado: "Aprobado en lo particular", en_lo_general: false,
+    a_favor: 300, en_contra: 150, abstenciones: 0, ausentes: 49, sin_votar: 0, division: 0.333, por_grupo: [],
+    votos_con_nombre: true, expediente: "https://constitucion.app/congreso/expedientes/sil-9", decreto: null, leyes: [], url: "https://constitucion.app/congreso/votaciones/sil-1-2",
+  },
+  {
+    id: "sil-2-1", fecha: "2026-03-01", camara: "Cámara de Senadores", asunto: "Ley de aguas", resultado: "Aprobado", en_lo_general: true,
+    a_favor: 120, en_contra: 0, abstenciones: 0, ausentes: 8, sin_votar: 0, division: 0, por_grupo: [], votos_con_nombre: false, expediente: null, decreto: null, leyes: [],
+    url: "https://constitucion.app/congreso/votaciones/sil-2-1",
+  },
 ];
+const LEGISLADORES = [
+  { id: "ana", nombre: "Ana Pérez", camara: "Cámara de Diputados", grupo: "Morena", entidad: "jalisco", en_funciones: true, estatus: "Activo(a)", votaciones: 300, a_favor: 100, en_contra: 0, abstenciones: 0, ausencias: 200, ausencia: 0.667, iniciativas: 2, iniciativas_aprobadas: 0, url: "https://constitucion.app/congreso/legisladores/ana" },
+  { id: "beto", nombre: "Beto Ruiz", camara: "Cámara de Senadores", grupo: "Partido Acción Nacional", entidad: "queretaro", en_funciones: true, estatus: "Activo(a)", votaciones: 400, a_favor: 300, en_contra: 90, abstenciones: 0, ausencias: 10, ausencia: 0.025, iniciativas: 30, iniciativas_aprobadas: 1, url: "https://constitucion.app/congreso/legisladores/beto" },
+  { id: "caro", nombre: "Caro Gil", camara: "Cámara de Diputados", grupo: "Morena", entidad: "puebla", en_funciones: false, estatus: "Baja(a)", votaciones: 5, a_favor: 0, en_contra: 0, abstenciones: 0, ausencias: 5, ausencia: 1, iniciativas: 0, iniciativas_aprobadas: 0, url: "https://constitucion.app/congreso/legisladores/caro" },
+];
+const INICIATIVA = { id: "sil-5", fecha: "2026-09-14", titulo: "En materia de matrimonio igualitario", autores: [{ nombre: "Alma Vega", grupo: "Morena" }], estatus: "Pendiente", buscar: "En materia de matrimonio igualitario Alma Vega" };
 
-function documentoSintetico() {
-  let texto = "";
-  const articulos = TEXTOS.map(([clave, t], i) => {
-    if (texto) texto += "\n\n";
-    const ini = texto.length;
-    texto += t;
-    return { clave, etiqueta: t.split("\n")[0].slice(2), ubicacion: i < 2 ? "Título Primero / Capítulo I" : "Título Segundo", ini, fin: texto.length, cambios: i === 1 ? [0, 1] : [1] };
-  });
-  texto += "\n";
-  const indice = {
-    documento: "cpeum",
-    nombre: "Constitución Política de los Estados Unidos Mexicanos",
-    sigla: "CPEUM",
-    ambito: "constitucion",
-    entidad: null,
-    repo: "constitucion-mexicana",
-    carpeta: "articulos/",
-    fuente: "https://www.diputados.gob.mx/LeyesBiblio/pdf/CPEUM.pdf",
-    articulos,
-    cambios: [
-      { sha: "a".repeat(40), tipo: "reforma", clase: "reforma", dia: "2026-11-15", publicacion: ["2026-10-07"], medio: "DOF", bitacora: "https://constitucion.app/bitacora/cpeum/aaaaaaaaaaaa" },
-      { sha: "b".repeat(40), tipo: "alta", clase: "alta", dia: "2026-06-09", publicacion: ["2026-06-02"], medio: "DOF", bitacora: "https://constitucion.app/bitacora/cpeum/bbbbbbbbbbbb" },
-    ],
-  };
-  return { indice, texto };
-}
-
-const { indice, texto } = documentoSintetico();
-const estatal = { ...indice, documento: "jalisco/constitucion", nombre: "Constitución de Jalisco", sigla: "Jalisco", ambito: "constitucion-estatal", entidad: "Jalisco" };
-const ficha = (i) => ({ documento: i.documento, nombre: i.nombre, sigla: i.sigla, ambito: i.ambito, entidad: i.entidad, articulos: 3, url: `https://constitucion.app/ley/${i.documento}` });
-
-const ARCHIVOS = {
-  "/ley/catalogo.json": JSON.stringify({ documentos: [ficha(indice), ficha(estatal)] }),
-  "/ley/_/cpeum.json": JSON.stringify(indice),
-  "/ley/_/cpeum.md": texto,
-  "/ley/_/jalisco/constitucion.json": JSON.stringify(estatal),
-  "/ley/_/jalisco/constitucion.md": texto,
+const ARCHIVOS = new Map();
+for (const d of [CPEUM, JALISCO]) for (const [ruta, contenido] of archivosDocumento(d)) ARCHIVOS.set(`/${ruta}`, contenido);
+const busqueda = indiceBusqueda([
+  ...[CPEUM, JALISCO].map((d) => ({ coleccion: d.clave, tipo: "ley", nombre: d.indice.nombre, ambito: d.indice.ambito, unidades: d.indice.articulos.map((a) => ({ buscar: a.texto })) })),
+  { coleccion: "congreso/iniciativa", tipo: "iniciativa", nombre: "Iniciativas", unidades: [INICIATIVA] },
+  { coleccion: "congreso/votacion", tipo: "votacion", nombre: "Votaciones", unidades: VOTACIONES.map((v) => ({ ...v, buscar: v.asunto })) },
+]);
+for (const [ruta, contenido] of busqueda.archivos) ARCHIVOS.set(`/${ruta}`, contenido);
+for (const [ruta, contenido] of Object.entries({
+  "/ley/catalogo.json": JSON.stringify({ documentos: [CPEUM, JALISCO].map(fichaCatalogo) }),
+  "/congreso/votaciones.json": JSON.stringify({ nota: "nota", votaciones: VOTACIONES }),
+  "/congreso/legisladores.json": JSON.stringify({ nota: "nota", legisladores: LEGISLADORES }),
   "/llms.txt": "# OpenCodice\n",
   "/index.html": "<!doctype html><title>Inicio</title>",
   "/bitacora/cpeum/aaaaaaaaaaaa.html": "<!doctype html><title>Reforma</title>",
-  "/bitacora/cpeum/aaaaaaaaaaaa.md": "# Reforma\n",
+  "/bitacora/cpeum/aaaaaaaaaaaa.md": "# Reforma del 7 de octubre de 2026\n\n## Proceso legislativo\n",
   "/bitacora/cambios.json": JSON.stringify({
     cambios: [
-      { documento: "cpeum", nombre: indice.nombre, tipo: "reforma", menor: false, ajuste_inicial: false, fecha: "2026-11-15T00:00:00Z", publicacion: ["2026-10-07"], medio: "DOF", articulos_adicionados: [], articulos_modificados: ["004"], articulos_derogados: [], articulos_corregidos: [], pagina: "https://constitucion.app/bitacora/cpeum/aaaaaaaaaaaa" },
+      { documento: "cpeum", nombre: "CPEUM", tipo: "reforma", menor: false, ajuste_inicial: false, sha: SHA_REFORMA, fecha: "2026-11-15T00:00:00Z", publicacion: ["2026-10-07"], medio: "DOF", articulos_adicionados: [], articulos_modificados: ["004"], articulos_derogados: [], articulos_corregidos: [], pagina: "https://constitucion.app/bitacora/cpeum/aaaaaaaaaaaa" },
     ],
   }),
-};
+})) ARCHIVOS.set(ruta, contenido);
 
 const env = {
   ASSETS: {
     async fetch(req) {
-      const ruta = new URL(req.url ?? req).pathname;
-      const clave = ruta === "/" ? "/index.html" : ruta.endsWith(".html") || ruta.includes(".") ? ruta : `${ruta}.html`;
-      const cuerpo = ARCHIVOS[clave];
+      const ruta = decodeURIComponent(new URL(req.url ?? req).pathname);
+      const cuerpo = ARCHIVOS.get(ruta) ?? ARCHIVOS.get(`${ruta}.html`) ?? ARCHIVOS.get(ruta === "/" ? "/index.html" : null);
       return cuerpo == null ? new Response("no", { status: 404 }) : new Response(cuerpo, { headers: { "Content-Type": "text/html" } });
     },
   },
@@ -75,6 +113,7 @@ const env = {
 
 const pedir = (ruta, init = {}) => worker.fetch(new Request(`https://constitucion.app${ruta}`, init), env);
 const md = { headers: { Accept: "text/markdown" } };
+const api = async (ruta) => (await pedir(`/api/${ruta}`)).json();
 
 test("claves: las formas en que se escribe un artículo", () => {
   assert.equal(normalizarClave("Artículo 4o."), "4");
@@ -88,56 +127,101 @@ test("claves: las formas en que se escribe un artículo", () => {
   assert.equal(resolverClave(m, "5"), null);
 });
 
+test("texto: palabras sin acentos y listas de ids comprimidas", () => {
+  assert.deepEqual(palabras("Matrimonio IGUALITARIO, año 2026"), ["matrimonio", "igualitario", "ano", "2026"]);
+  const ids = [3, 4, 40, 1000, 99999];
+  assert.deepEqual(decodificar(codificar(ids)), ids);
+});
+
+test("corpus: el texto completo y el índice se sirven tal cual; el Worker usa los trozos", () => {
+  const archivos = archivosDocumento(CPEUM);
+  assert.match(archivos.get("ley/cpeum.md"), /^---\ndocumento: "cpeum"[\s\S]*---\n\n# Artículo 1o\.[\s\S]*fijará anualmente\.\n$/);
+  const indice = JSON.parse(archivos.get("ley/cpeum.json"));
+  assert.equal(indice.articulos.length, 3);
+  assert.equal(indice.articulos[0].texto, undefined);
+  const minimo = JSON.parse(archivos.get("ley/_/cpeum/i.json"));
+  assert.deepEqual(minimo.claves, ["001", "004", "077-bis-35-a"]);
+  assert.deepEqual(minimo.trozo, [0, 0, 0]);
+});
+
 test("/ley: un artículo, con su frontmatter y sin redirigir", async () => {
   const r = await pedir("/ley/CPEUM/4o", md);
   assert.equal(r.status, 200);
   assert.match(r.headers.get("Content-Type"), /text\/markdown/);
-  assert.equal(r.headers.get("Link"), "<https://constitucion.app/ley/cpeum/004>; rel=\"canonical\"");
+  assert.equal(r.headers.get("Link"), '<https://constitucion.app/ley/cpeum/004>; rel="canonical"');
   const t = await r.text();
   assert.match(t, /^---\ndocumento: "cpeum"/);
-  assert.match(t, /url: "https:\/\/constitucion.app\/ley\/cpeum\/004"/);
   assert.match(t, /version: "a{40}"/);
   assert.match(t, /permanente: "https:\/\/constitucion.app\/ley\/cpeum\/004@a{12}"/);
   assert.match(t, /---\n\n# Artículo 4o\.\n\nLa mujer y el hombre son iguales ante la ley\.\n$/);
-  // El navegador lo recibe como texto plano para mostrarlo.
   const h = await pedir("/ley/cpeum/1", { headers: { Accept: "text/html,*/*" } });
   assert.match(h.headers.get("Content-Type"), /text\/plain/);
 });
 
-test("/ley: índice, texto completo, JSON, historia, versión y documento con diagonal", async () => {
+test("/ley: índice, JSON, historia, versión, estados y lo que no existe", async () => {
   const i = await (await pedir("/ley/cpeum", md)).text();
   assert.match(i, /## Título Primero \/ Capítulo I\n\n- \[Artículo 1o\.\]\(https:\/\/constitucion.app\/ley\/cpeum\/001\)/);
-  const completo = await (await pedir("/ley/cpeum.md", md)).text();
-  assert.ok(completo.endsWith(texto));
   const j = await (await pedir("/ley/cpeum/77%20bis%2035%20a.json")).json();
   assert.equal(j.clave, "077-bis-35-a");
-  assert.equal(j.texto, TEXTOS[2][1]);
-  const h = await (await pedir("/ley/cpeum/4/historia", md)).text();
-  assert.match(h, /# Artículo 4o: historia/);
-  assert.match(h, /2026-11-15 · Reforma \(DOF 2026-10-07\)/);
+  assert.match(j.texto, /salario mínimo/);
+  assert.match(await (await pedir("/ley/cpeum/4/historia", md)).text(), /# Artículo 4o: historia[\s\S]*2026-11-15 · Reforma \(DOF 2026-10-07\)/);
   const v = await pedir("/ley/cpeum/4@bbbbbbb");
   assert.equal(v.status, 302);
-  assert.equal(v.headers.get("Location"), `https://raw.githubusercontent.com/OpenCodice/constitucion-mexicana/${"b".repeat(40)}/articulos/004.md`);
+  assert.equal(v.headers.get("Location"), `https://raw.githubusercontent.com/OpenCodice/constitucion-mexicana/${SHA_ALTA}/articulos/004.md`);
   assert.equal((await pedir("/ley/cpeum/4@cccccccc")).status, 404);
   assert.match(await (await pedir("/ley/jalisco/constitucion/1", md)).text(), /documento: "jalisco\/constitucion"/);
-  // Un estado lista sus leyes; su sigla no abre la constitución.
   assert.match(await (await pedir("/ley/jalisco", md)).text(), /^# Leyes de Jalisco/);
-});
-
-test("/ley: lo que no existe es 404 con ayuda", async () => {
+  // Por sigla, el texto completo redirige al archivo estático.
+  assert.equal((await pedir("/ley/CPEUM.md")).headers.get("Location"), "https://constitucion.app/ley/cpeum.md");
   const a = await pedir("/ley/cpeum/999", md);
   assert.equal(a.status, 404);
-  assert.match(await a.text(), /no tiene un artículo `999`[\s\S]*\/ley\/cpeum/);
+  assert.match(await a.text(), /no tiene un artículo `999`/);
   assert.equal((await pedir("/ley/nada", md)).status, 404);
-  assert.equal((await pedir("/ley/cpeum/1/otra", md)).status, 404);
 });
 
-test("/ley/buscar: literal, sin acentos ni mayúsculas", async () => {
-  const t = await (await pedir("/ley/buscar?q=SALARIO%20minimo&documento=cpeum", md)).text();
-  assert.match(t, /1 artículo con todas las palabras/);
-  assert.match(t, /\[Artículo 77 Bis 35 A\.\]\(https:\/\/constitucion.app\/ley\/cpeum\/077-bis-35-a\)/);
-  assert.match(await (await pedir("/ley/buscar?q=jalisco", md)).text(), /Constitución de Jalisco/);
-  assert.equal((await pedir("/ley/buscar", md)).status, 400);
+test("buscar: literal en leyes y Congreso, con palabras comunes ignoradas", async () => {
+  const r = await api("buscar?texto=Matrimonio");
+  assert.equal(r.articulos_con_coincidencias, 1);
+  assert.equal(r.leyes[0].documento, "jalisco/constitucion");
+  assert.match(r.leyes[0].articulos[0].fragmento, /El matrimonio es la unión/);
+  assert.equal(r.congreso[0].tipo, "iniciativa");
+  assert.equal(r.congreso[0].ejemplos[0].titulo, INICIATIVA.titulo);
+  const solo = await api("buscar?texto=matrimonio&tipos=ley");
+  assert.equal(solo.congreso.length, 0);
+  const doc = await api("buscar?texto=salario%20minimo&documento=CPEUM");
+  assert.deepEqual(doc.leyes.map((l) => l.articulos.map((a) => a.clave)), [["077-bis-35-a"]]);
+  const nada = await api("buscar?texto=inexistente");
+  assert.deepEqual(nada.sin_resultados_para, ["inexistente"]);
+  assert.equal((await pedir("/api/buscar")).status, 400);
+});
+
+test("votaciones: las más divididas, agrupadas por asunto, y filtros", async () => {
+  const r = await api("votaciones?orden=division");
+  assert.deepEqual(r.votaciones.map((v) => [v.id, v.otras_del_asunto]), [["sil-1-2", 1], ["sil-2-1", 0]]);
+  const sinAgrupar = await api("votaciones?orden=division&agrupar=false");
+  assert.equal(sinAgrupar.total, 3);
+  assert.deepEqual((await api("votaciones?en_lo_general=true&documento=cpeum")).votaciones.map((v) => v.id), ["sil-1-1"]);
+  assert.deepEqual((await api("votaciones?grupo_en_contra=Partido%20Accion%20Nacional")).votaciones.map((v) => v.id), ["sil-1-1"]);
+  assert.deepEqual((await api("votaciones?camara=senado")).votaciones.map((v) => v.id), ["sil-2-1"]);
+  // La memoria del isolate no se modifica entre peticiones.
+  assert.deepEqual((await api("votaciones?orden=division")).votaciones.map((v) => v.otras_del_asunto), [1, 0]);
+});
+
+test("legisladores: los más ausentes, en funciones por omisión, grupo por sigla", async () => {
+  const r = await api("legisladores?orden=ausencia");
+  assert.deepEqual(r.legisladores.map((l) => l.id), ["ana", "beto"]);
+  assert.deepEqual(r.por_grupo, { Morena: 1, "Partido Acción Nacional": 1 });
+  assert.deepEqual((await api("legisladores?grupo=PAN")).legisladores.map((l) => l.id), ["beto"]);
+  assert.deepEqual((await api("legisladores?en_funciones=false&orden=ausencias&minimo_votaciones=0")).legisladores.map((l) => l.id), ["ana", "beto", "caro"]);
+  assert.match(await (await pedir("/api/legisladores?orden=ausencia", md)).text(), /\*\*Ana Pérez\*\*[\s\S]*200 ausencias \(66\.7 %\)/);
+});
+
+test("detalle_cambio: la última reforma con su página en Markdown", async () => {
+  const r = await api("detalle_cambio?documento=cpeum");
+  assert.equal(r.sha, SHA_REFORMA);
+  assert.match(r.markdown, /## Proceso legislativo/);
+  const e = await pedir("/api/detalle_cambio?documento=jalisco/constitucion&cambio=cccccccc");
+  assert.equal(e.status, 404);
 });
 
 const rpc = async (cuerpo) => {
@@ -146,34 +230,43 @@ const rpc = async (cuerpo) => {
 };
 const llamar = async (name, args) => (await rpc({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name, arguments: args } })).json.result;
 
-test("mcp: initialize, notificaciones y lista de herramientas", async () => {
+test("mcp: initialize, notificaciones, lista de herramientas y lotes", async () => {
   const { json } = await rpc({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "prueba", version: "1" } } });
   assert.equal(json.result.protocolVersion, "2025-06-18");
-  assert.deepEqual(json.result.capabilities, { tools: { listChanged: false } });
+  assert.match(json.result.instructions, /orden «division»/);
   assert.equal((await rpc({ jsonrpc: "2.0", method: "notifications/initialized" })).status, 202);
   const lista = (await rpc({ jsonrpc: "2.0", id: 2, method: "tools/list" })).json.result.tools;
-  assert.deepEqual(
-    lista.map((h) => h.name),
-    ["buscar_documentos", "indice_documento", "leer_articulo", "buscar_en_documento", "historia_articulo", "cambios_recientes"],
-  );
+  assert.deepEqual(lista.map((h) => h.name), HERRAMIENTAS.map((h) => h.name));
   assert.ok(lista.every((h) => h.annotations.readOnlyHint && h.inputSchema.type === "object"));
   assert.equal((await rpc({ jsonrpc: "2.0", id: 3, method: "otra/cosa" })).json.error.code, -32601);
   const lote = await rpc([{ jsonrpc: "2.0", id: 4, method: "ping" }, { jsonrpc: "2.0", method: "notifications/initialized" }]);
   assert.deepEqual(lote.json, [{ jsonrpc: "2.0", id: 4, result: {} }]);
 });
 
-test("mcp: las herramientas leen lo mismo que /ley", async () => {
+test("mcp: las herramientas devuelven Markdown y los errores con isError", async () => {
   const leer = await llamar("leer_articulo", { documento: "CPEUM", articulos: ["4o", "99"] });
   assert.ok(!leer.isError);
-  assert.match(leer.content[0].text, /La mujer y el hombre son iguales/);
-  assert.match(leer.content[0].text, /no tiene un artículo «99»/);
+  assert.match(leer.content[0].text, /La mujer y el hombre son iguales[\s\S]*no tiene un artículo «99»/);
   assert.match((await llamar("buscar_documentos", { entidad: "Jalisco" })).content[0].text, /^1 documento\.[\s\S]*jalisco\/constitucion/);
-  assert.match((await llamar("buscar_en_documento", { documentos: ["cpeum"], texto: "derechos humanos" })).content[0].text, /Artículo 1o/);
-  assert.match((await llamar("historia_articulo", { documento: "cpeum", articulo: "4" })).content[0].text, /Alta \(DOF 2026-06-02\)/);
+  assert.match((await llamar("buscar", { texto: "matrimonio igualitario" })).content[0].text, /## Iniciativas: 1[\s\S]*Alma Vega \(Morena\)/);
+  assert.match((await llamar("votaciones", { orden: "division" })).content[0].text, /y otra votación de este asunto/);
   assert.match((await llamar("cambios_recientes", { documento: "cpeum" })).content[0].text, /modifica 004/);
   const error = await llamar("indice_documento", { documento: "nada" });
   assert.equal(error.isError, true);
   assert.match(error.content[0].text, /buscar_documentos/);
+  assert.equal((await llamar("leer_articulo", { documento: "cpeum" })).isError, true);
+});
+
+test("api: índice, OpenAPI de las mismas herramientas y Markdown por Accept", async () => {
+  const i = await api("");
+  assert.deepEqual(i.herramientas.map((h) => h.nombre), HERRAMIENTAS.map((h) => h.name));
+  const o = await (await pedir("/openapi.json")).json();
+  assert.equal(o.openapi, "3.1.0");
+  assert.deepEqual(Object.keys(o.paths), HERRAMIENTAS.map((h) => `/api/${h.name}`));
+  assert.ok(o.paths["/api/buscar"].get.parameters.find((p) => p.name === "texto").required);
+  const post = await pedir("/api/leer_articulo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ documento: "cpeum", articulos: ["1"] }) });
+  assert.equal((await post.json()).articulos[0].clave, "001");
+  assert.equal((await pedir("/api/nada")).status, 404);
 });
 
 test("mcp: GET explica cómo conectarse; un cliente que pide SSE recibe 405", async () => {
@@ -186,8 +279,7 @@ test("negociación: Markdown para quien lo prefiere, HTML para los demás", asyn
   assert.equal(prefiereMarkdown("text/markdown, text/html;q=0.9"), true);
   assert.equal(prefiereMarkdown("text/html,application/xhtml+xml,*/*;q=0.8"), false);
   assert.equal(prefiereMarkdown("text/html;q=1, text/markdown;q=0.5"), false);
-  const r = await pedir("/bitacora/cpeum/aaaaaaaaaaaa", md);
-  assert.equal(await r.text(), "# Reforma\n");
+  assert.match(await (await pedir("/bitacora/cpeum/aaaaaaaaaaaa", md)).text(), /^# Reforma/);
   assert.equal(await (await pedir("/", md)).text(), "# OpenCodice\n");
   const html = await pedir("/bitacora/cpeum/aaaaaaaaaaaa", { headers: { Accept: "text/html" } });
   assert.match(await html.text(), /<title>Reforma/);

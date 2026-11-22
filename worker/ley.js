@@ -1,60 +1,31 @@
-// /ley: el texto vigente de cada documento, para agentes y para quien quiera
-// leer o citar un artículo con una URL. Todo sale de los archivos que
-// `scripts/lib/corpus.mjs` escribe en public/ley/ en cada despliegue: el
-// Worker no consulta nada más, así que lo que responde es exactamente lo
-// publicado en main de los repos de datos al desplegar.
+// Las leyes: buscar un documento, leer un artículo, su índice y su historia,
+// en Markdown y en JSON. Lo usan las rutas /ley/…, la API y el MCP
+// (`herramientas.js`). Todo sale de los archivos de `scripts/lib/corpus.mjs`.
 
 import { mapaClaves, resolverClave } from "./claves.js";
+import { plano } from "./texto.js";
+import { SITIO, NOTA, ErrorDatos, catalogo, minimoDe, trozoDe, indiceDe } from "./datos.js";
 
-export const SITIO = "https://constitucion.app";
-const NOTA = "Texto extraído del PDF oficial por OpenCodice. No es la publicación oficial ni asesoría legal.";
+export const urlArticulo = (doc, clave) => `${SITIO}/ley/${doc}/${clave}`;
+const corto = (sha) => sha.slice(0, 12);
+const sinPunto = (s) => String(s ?? "").replace(/[.\s]+$/, "");
 
-// ------------------------------------------------------------------ datos
+export const yaml = (campos) =>
+  `---\n${Object.entries(campos)
+    .filter(([, v]) => v != null && v !== "" && !(Array.isArray(v) && !v.length))
+    .map(([k, v]) => `${k}: ${Array.isArray(v) ? `[${v.map((x) => JSON.stringify(x)).join(", ")}]` : typeof v === "string" ? JSON.stringify(v) : v}`)
+    .join("\n")}\n---\n`;
 
-// Un isolate atiende muchas peticiones: el catálogo y los últimos documentos
-// leídos se guardan en memoria. El despliegue siguiente arranca isolates nuevos.
-const memoria = new Map();
-const MAX_MEMORIA = 12;
+// ------------------------------------------------------------------ documentos
 
-async function asset(env, ruta, como = "json") {
-  const clave = `${como}:${ruta}`;
-  if (memoria.has(clave)) {
-    const v = memoria.get(clave);
-    memoria.delete(clave);
-    memoria.set(clave, v);
-    return v;
-  }
-  const r = await env.ASSETS.fetch(new Request(`${SITIO}/${ruta}`));
-  if (!r.ok) return null;
-  const v = como === "json" ? await r.json() : await r.text();
-  memoria.set(clave, v);
-  while (memoria.size > MAX_MEMORIA) memoria.delete(memoria.keys().next().value);
-  return v;
-}
-
-export const catalogo = (env) => asset(env, "ley/catalogo.json");
-export const indiceDe = (env, doc) => asset(env, `ley/_/${doc}.json`);
-export const textoDe = (env, doc) => asset(env, `ley/_/${doc}.md`, "texto");
-
-const mapas = new WeakMap();
-function mapaDe(indice) {
-  if (!mapas.has(indice)) mapas.set(indice, mapaClaves(indice.articulos.map((a) => a.clave)));
-  return mapas.get(indice);
-}
-
-export function articuloDe(indice, pedido) {
-  const k = resolverClave(mapaDe(indice), pedido);
-  return k ? indice.articulos.find((a) => a.clave === k) : null;
-}
-
-// Documento por su clave, sin importar mayúsculas: «CPEUM», «LGS», «Jalisco/Constitucion».
+// Documento por su clave, sin importar mayúsculas, o por su sigla. La sigla de
+// una constitución estatal es el nombre del estado, así que no cuenta:
+// `/ley/jalisco` lista las leyes de Jalisco, no abre su constitución.
 export function documentoDe(cat, pedido) {
   const k = String(pedido ?? "")
     .trim()
     .toLowerCase()
     .replace(/^\/+|\/+$/g, "");
-  // La sigla de una constitución estatal es el nombre del estado: `/ley/jalisco`
-  // lista las leyes de Jalisco, no abre su constitución.
   return (
     cat.documentos.find((d) => d.documento === k) ??
     cat.documentos.find((d) => d.ambito !== "constitucion-estatal" && d.sigla?.toLowerCase() === k) ??
@@ -62,18 +33,126 @@ export function documentoDe(cat, pedido) {
   );
 }
 
-// ------------------------------------------------------------------ formato
+export async function documentoOError(env, pedido) {
+  const d = documentoDe(await catalogo(env), pedido);
+  if (!d) throw new ErrorDatos(`No hay un documento «${pedido}» en OpenCodice. Su clave se busca con buscar_documentos (o en ${SITIO}/ley).`);
+  return d;
+}
 
-const yaml = (campos) =>
-  `---\n${Object.entries(campos)
-    .filter(([, v]) => v != null && v !== "" && !(Array.isArray(v) && !v.length))
-    .map(([k, v]) => `${k}: ${Array.isArray(v) ? `[${v.map((x) => JSON.stringify(x)).join(", ")}]` : typeof v === "string" ? JSON.stringify(v) : v}`)
-    .join("\n")}\n---\n`;
+export const AMBITOS = {
+  constitucion: "Constitución federal",
+  federal: "Leyes federales",
+  fiscal: "Legislación fiscal",
+  "constitucion-estatal": "Constituciones estatales",
+  estatal: "Leyes de los estados",
+};
 
-export const urlArticulo = (doc, clave) => `${SITIO}/ley/${doc}/${clave}`;
-const corto = (sha) => sha.slice(0, 12);
+export function buscarDocumentos(cat, { consulta, ambito, entidad } = {}) {
+  const ps = plano(consulta ?? "").split(/\s+/).filter(Boolean);
+  const ent = plano(entidad ?? "").trim();
+  return cat.documentos.filter(
+    (d) =>
+      (!ambito || d.ambito === ambito) &&
+      (!ent || plano(d.entidad ?? "") === ent || d.documento.startsWith(`${ent.replace(/\s+/g, "-")}/`)) &&
+      ps.every((p) => plano(`${d.nombre} ${d.sigla ?? ""} ${d.documento} ${d.entidad ?? ""}`).includes(p)),
+  );
+}
 
-const NOMBRE_TIPO = {
+export function lineaDocumento(d) {
+  const ult = d.ultimo_cambio?.publicacion?.length ? `, versión del ${d.ultimo_cambio.publicacion.at(-1)}` : "";
+  return `- [${d.nombre}](${d.url}): \`${d.documento}\`, ${d.articulos} artículos${ult}`;
+}
+
+export function mdCatalogo(cat, filtro = () => true, titulo = "OpenCodice: las leyes publicadas") {
+  const partes = [];
+  for (const [ambito, nombre] of Object.entries(AMBITOS)) {
+    const xs = cat.documentos.filter((d) => d.ambito === ambito && filtro(d));
+    if (xs.length) partes.push(`## ${nombre} (${xs.length})\n\n${xs.map(lineaDocumento).join("\n")}`);
+  }
+  return `# ${titulo}
+
+Cada documento con su índice de artículos. Un artículo: \`${SITIO}/ley/{documento}/{artículo}\` (por ejemplo [/ley/cpeum/1](${SITIO}/ley/cpeum/1)). Guía: ${SITIO}/llms.txt. API: ${SITIO}/api. Catálogo en JSON: ${SITIO}/ley/catalogo.json.
+
+${partes.join("\n\n") || "Ninguno."}
+`;
+}
+
+// ------------------------------------------------------------------ artículos
+
+const mapas = new WeakMap();
+function mapaDe(minimo) {
+  if (!mapas.has(minimo)) mapas.set(minimo, mapaClaves(minimo.claves));
+  return mapas.get(minimo);
+}
+
+// El artículo pedido de un documento, como se escriba («4o», «77 Bis 35 A»),
+// o null, con la ficha mínima del documento.
+export async function leerArticulo(env, doc, pedido) {
+  const minimo = await minimoDe(env, doc);
+  if (!minimo) throw new ErrorDatos(`No se encontró el documento ${doc}.`);
+  const clave = resolverClave(mapaDe(minimo), String(pedido ?? ""));
+  if (!clave) return { minimo, articulo: null };
+  return { minimo, articulo: await articuloPorPosicion(env, minimo, minimo.claves.indexOf(clave)) };
+}
+
+export async function articuloPorPosicion(env, minimo, i) {
+  const trozo = await trozoDe(env, minimo.documento, minimo.trozo[i]);
+  return trozo?.find((a) => a.clave === minimo.claves[i]) ?? null;
+}
+
+export function datosArticulo(minimo, a) {
+  const ultimo = a.cambios.length ? minimo.cambios[a.cambios[0]] : null;
+  return {
+    documento: minimo.documento,
+    nombre: minimo.nombre,
+    clave: a.clave,
+    etiqueta: a.etiqueta,
+    ubicacion: a.ubicacion ?? null,
+    derogado: Boolean(a.derogado),
+    ultima_reforma: a.ultima_reforma ?? null,
+    url: urlArticulo(minimo.documento, a.clave),
+    version: ultimo?.sha ?? null,
+    permanente: ultimo ? `${urlArticulo(minimo.documento, a.clave)}@${corto(ultimo.sha)}` : null,
+    historia: `${urlArticulo(minimo.documento, a.clave)}/historia`,
+    fuente: minimo.fuente ?? null,
+    texto: a.texto,
+  };
+}
+
+export function mdArticulo(minimo, a) {
+  const d = datosArticulo(minimo, a);
+  return `${yaml({
+    documento: d.documento,
+    nombre: d.nombre,
+    articulo: d.clave,
+    etiqueta: d.etiqueta,
+    ubicacion: d.ubicacion,
+    derogado: d.derogado || null,
+    ultima_reforma: d.ultima_reforma,
+    url: d.url,
+    version: d.version,
+    permanente: d.permanente,
+    historia: d.historia,
+    fuente: d.fuente,
+    nota: NOTA,
+  })}\n${d.texto}\n`;
+}
+
+export function datosHistoria(minimo, a) {
+  return {
+    documento: minimo.documento,
+    clave: a.clave,
+    etiqueta: a.etiqueta,
+    url: urlArticulo(minimo.documento, a.clave),
+    ultima_reforma: a.ultima_reforma ?? null,
+    cambios: a.cambios.map((i) => {
+      const c = minimo.cambios[i];
+      return { ...c, texto_en_esa_version: `${urlArticulo(minimo.documento, a.clave)}@${corto(c.sha)}` };
+    }),
+  };
+}
+
+const NOMBRE_CLASE = {
   reforma: "Reforma",
   correccion: "Corrección de extracción",
   alta: "Alta",
@@ -82,42 +161,19 @@ const NOMBRE_TIPO = {
   ajuste: "Ajuste inicial",
 };
 
-function lineaCambio(c, extra = "") {
+export function lineaCambio(c, extra = "") {
   const pub = c.publicacion?.length ? ` (${c.medio ?? "publicación"} ${c.publicacion.join(", ")})` : "";
-  return `- ${c.dia} · ${NOMBRE_TIPO[c.clase] ?? c.tipo}${pub} · [bitácora](${c.bitacora})${extra}`;
+  return `- ${c.dia} · ${NOMBRE_CLASE[c.clase] ?? c.tipo}${pub} · [bitácora](${c.bitacora})${extra}`;
 }
 
-export function mdArticulo(indice, a, texto) {
-  const ultimo = a.cambios.length ? indice.cambios[a.cambios[0]] : null;
-  return `${yaml({
-    documento: indice.documento,
-    nombre: indice.nombre,
-    articulo: a.clave,
-    etiqueta: a.etiqueta,
-    ubicacion: a.ubicacion,
-    derogado: a.derogado ? true : null,
-    ultima_reforma: a.ultima_reforma,
-    url: urlArticulo(indice.documento, a.clave),
-    version: ultimo?.sha,
-    permanente: ultimo ? `${urlArticulo(indice.documento, a.clave)}@${corto(ultimo.sha)}` : null,
-    historia: `${urlArticulo(indice.documento, a.clave)}/historia`,
-    fuente: indice.fuente,
-    nota: NOTA,
-  })}\n${texto.slice(a.ini, a.fin)}\n`;
-}
+export function mdHistoria(minimo, a) {
+  const h = datosHistoria(minimo, a);
+  return `${yaml({ documento: h.documento, articulo: h.clave, etiqueta: h.etiqueta, url: h.url, ultima_reforma: h.ultima_reforma })}
+# ${sinPunto(a.etiqueta)}: historia en OpenCodice
 
-export function mdHistoria(indice, a) {
-  const url = urlArticulo(indice.documento, a.clave);
-  const lineas = a.cambios.map((i) => {
-    const c = indice.cambios[i];
-    return lineaCambio(c, ` · [texto en esa versión](${url}@${corto(c.sha)})`);
-  });
-  return `${yaml({ documento: indice.documento, articulo: a.clave, etiqueta: a.etiqueta, url, ultima_reforma: a.ultima_reforma })}
-# ${a.etiqueta.replace(/[.\s]+$/, "")}: historia en OpenCodice
+${h.cambios.map((c) => lineaCambio(c, ` · [texto en esa versión](${c.texto_en_esa_version})`)).join("\n") || "Sin cambios registrados."}
 
-${lineas.length ? lineas.join("\n") : "Sin cambios registrados."}
-
-La historia de cada documento en OpenCodice empieza en su alta. Las reformas anteriores no están como commits; sus fechas están en las notas del texto (por ejemplo _Párrafo reformado DOF 07-10-2026_)${a.ultima_reforma ? ` y la más reciente según esas notas es del ${a.ultima_reforma}` : ""}.
+La historia de cada documento en OpenCodice empieza en su alta. Las reformas anteriores no están como commits; sus fechas están en las notas del texto (por ejemplo _Párrafo reformado DOF 07-10-2026_)${h.ultima_reforma ? ` y la más reciente según esas notas es del ${h.ultima_reforma}` : ""}. Lo que cambió en cada reforma, con la diferencia de su texto y su proceso legislativo, está en su página de la bitácora (detalle_cambio en el MCP).
 `;
 }
 
@@ -129,7 +185,7 @@ export function mdIndice(indice) {
       lugar = a.ubicacion;
       lineas.push(`\n## ${lugar}\n`);
     }
-    lineas.push(`- [${a.etiqueta}](${urlArticulo(indice.documento, a.clave)})${a.derogado ? " (derogado)" : ""}`);
+    lineas.push(`- [${a.etiqueta}](${a.url})${a.derogado ? " (derogado)" : ""}`);
   }
   const ultimos = indice.cambios.filter((c) => c.clase !== "metadatos" && c.clase !== "ajuste").slice(0, 5);
   return `${yaml({
@@ -149,7 +205,7 @@ export function mdIndice(indice) {
   })}
 # ${indice.nombre}
 
-${indice.articulos.length} artículos. Cada uno en \`${SITIO}/ley/${indice.documento}/{artículo}\`; el texto completo en [${indice.documento}.md](${SITIO}/ley/${indice.documento}.md).
+${indice.articulos.length} artículos. Cada uno en \`${SITIO}/ley/${indice.documento}/{artículo}\`; el texto completo en ${SITIO}/ley/${indice.documento}.md.
 
 ## Últimos cambios
 
@@ -160,105 +216,11 @@ ${lineas.join("\n")}
 `;
 }
 
-export function mdTexto(indice, texto) {
-  return `${yaml({
-    documento: indice.documento,
-    nombre: indice.nombre,
-    sigla: indice.sigla,
-    articulos: indice.articulos.length,
-    url: `${SITIO}/ley/${indice.documento}.md`,
-    indice: `${SITIO}/ley/${indice.documento}`,
-    version: indice.cambios[0]?.sha,
-    fuente: indice.fuente,
-    nota: NOTA,
-  })}\n${texto}`;
-}
-
-const NOMBRE_AMBITO = {
-  constitucion: "Constitución federal",
-  federal: "Leyes federales",
-  fiscal: "Legislación fiscal",
-  "constitucion-estatal": "Constituciones estatales",
-  estatal: "Leyes de los estados",
-};
-
-export function lineaDocumento(d) {
-  const ult = d.ultimo_cambio?.publicacion?.length ? `, versión del ${d.ultimo_cambio.publicacion.at(-1)}` : "";
-  return `- [${d.nombre}](${d.url}): \`${d.documento}\`, ${d.articulos} artículos${ult}`;
-}
-
-export function mdCatalogo(cat, filtro = () => true, titulo = "OpenCodice: las leyes publicadas") {
-  const partes = [];
-  for (const [ambito, nombre] of Object.entries(NOMBRE_AMBITO)) {
-    const xs = cat.documentos.filter((d) => d.ambito === ambito && filtro(d));
-    if (xs.length) partes.push(`## ${nombre} (${xs.length})\n\n${xs.map(lineaDocumento).join("\n")}`);
-  }
-  return `# ${titulo}
-
-Cada documento con su índice de artículos. Un artículo: \`${SITIO}/ley/{documento}/{artículo}\` (por ejemplo [/ley/cpeum/1](${SITIO}/ley/cpeum/1)). Guía: ${SITIO}/llms.txt. Catálogo en JSON: ${SITIO}/ley/catalogo.json.
-
-${partes.join("\n\n") || "Ninguno."}
-`;
-}
-
-// ------------------------------------------------------------------ búsqueda
-
-// Búsqueda literal: sin acentos ni mayúsculas, todas las palabras en el mismo
-// artículo. No interpreta nada; un agente que busca «despido» no encuentra
-// «rescisión».
-const plano = (s) =>
-  s
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toLowerCase();
-
-export function buscarEn(indice, texto, consulta, limite = 20) {
-  const palabras = plano(consulta).split(/\s+/).filter(Boolean);
-  if (!palabras.length) return [];
-  const resultados = [];
-  for (const a of indice.articulos) {
-    const original = texto.slice(a.ini, a.fin);
-    // NFD + quitar marcas conserva la longitud solo si el texto ya está en
-    // NFC (lo está: sale del extractor); por si acaso, el fragmento se corta
-    // del texto sin acentos.
-    const t = plano(original);
-    if (!palabras.every((p) => t.includes(p))) continue;
-    const i = t.indexOf(palabras[0]);
-    const ini = Math.max(0, i - 160);
-    const fin = Math.min(t.length, i + palabras[0].length + 160);
-    const fragmento = (t.length === original.length ? original : t).slice(ini, fin).replace(/\s+/g, " ").trim();
-    resultados.push({ clave: a.clave, etiqueta: a.etiqueta, url: urlArticulo(indice.documento, a.clave), fragmento: `${ini ? "…" : ""}${fragmento}${fin < t.length ? "…" : ""}` });
-    if (resultados.length >= limite) break;
-  }
-  return resultados;
-}
-
-export function buscarDocumentos(cat, { consulta, ambito, entidad } = {}) {
-  const ps = plano(consulta ?? "").split(/\s+/).filter(Boolean);
-  return cat.documentos.filter(
-    (d) =>
-      (!ambito || d.ambito === ambito) &&
-      (!entidad || plano(d.entidad ?? "") === plano(entidad) || d.documento.startsWith(`${plano(entidad).replace(/\s+/g, "-")}/`)) &&
-      ps.every((p) => plano(`${d.nombre} ${d.sigla ?? ""} ${d.documento} ${d.entidad ?? ""}`).includes(p)),
-  );
-}
-
-export function mdBusqueda(indice, consulta, resultados, limite) {
-  if (!resultados.length) return `Sin resultados para «${consulta}» en ${indice.nombre}. La búsqueda es literal (sin acentos ni mayúsculas, todas las palabras en el mismo artículo): prueba con otras palabras.\n`;
-  return `# «${consulta}» en ${indice.nombre}
-
-${resultados.length === 1 ? "1 artículo" : `${resultados.length}${resultados.length >= limite ? " o más" : ""} artículos`} con todas las palabras.
-
-${resultados.map((r) => `- [${r.etiqueta}](${r.url}): ${r.fragmento}`).join("\n")}
-`;
-}
-
-// ------------------------------------------------------------------ rutas
+// ------------------------------------------------------------------ rutas /ley
 
 const ENCABEZADOS = {
   "Access-Control-Allow-Origin": "*",
   "Cache-Control": "public, max-age=300",
-  "X-Robots-Tag": "noindex",
 };
 
 // Markdown para quien lo pide (agentes) y texto plano para el navegador, que
@@ -272,26 +234,30 @@ export function respuestaMd(request, cuerpo, status = 200, extra = {}) {
   });
 }
 
-const respuestaJson = (datos, status = 200) =>
-  new Response(JSON.stringify(datos, null, 2), { status, headers: { ...ENCABEZADOS, "Content-Type": "application/json; charset=utf-8" } });
+export const respuestaJson = (datos, status = 200, extra = {}) =>
+  new Response(JSON.stringify(datos, null, 1), { status, headers: { ...ENCABEZADOS, "Content-Type": "application/json; charset=utf-8", ...extra } });
 
-// Un artículo se sirve con la forma en que se pida («4o», «LFT/Artículo 132»),
-// sin redirigir: hay clientes que no siguen redirecciones. La URL única va
-// aquí y en el frontmatter.
+// Un artículo se sirve con la forma en que se pida («4o», «LFT»), sin
+// redirigir: hay clientes que no siguen redirecciones. La URL única va aquí y
+// en el frontmatter.
 const canonica = (url) => ({ Link: `<${url}>; rel="canonical"` });
 
 const noEncontrado = (request, que, ayuda) =>
   respuestaMd(request, `# No encontrado\n\n${que}\n\n${ayuda ?? `El catálogo está en ${SITIO}/ley y la guía en ${SITIO}/llms.txt.`}\n`, 404);
 
+// Lo que llega aquí no es un archivo: `/ley/{Documento}.md` y `.json` se
+// sirven directo y solo pasan por el Worker si el documento se pidió por su
+// sigla o con mayúsculas.
 export async function rutaLey(request, env) {
   const url = new URL(request.url);
   let ruta = decodeURIComponent(url.pathname).replace(/^\/ley\/?/, "").replace(/\/+$/, "");
   const cat = await catalogo(env);
   if (!cat) return respuestaMd(request, "El catálogo no está disponible en este despliegue.\n", 503);
-
   if (ruta === "" || ruta === "index.md") return respuestaMd(request, mdCatalogo(cat));
-  if (ruta === "catalogo.json") return respuestaJson(cat);
-  if (ruta === "buscar") return buscar(request, env, cat, url);
+  if (ruta === "buscar") {
+    // La búsqueda se mudó a la API; esta ruta era de la primera versión.
+    return Response.redirect(`${SITIO}/api/buscar${url.search.replace(/([?&])q=/, "$1texto=")}`, 301);
+  }
 
   let formato = "md";
   if (ruta.endsWith(".json")) {
@@ -321,78 +287,40 @@ export async function rutaLey(request, env) {
     if (del.length && partes.length === 1) return respuestaMd(request, mdCatalogo(cat, (d) => d.documento.startsWith(`${estado}/`), `Leyes de ${del[0].entidad ?? estado}`));
     return noEncontrado(request, `No hay un documento \`${partes[0]}\` en OpenCodice.`);
   }
-  const indice = await indiceDe(env, doc.documento);
-  if (!indice) return noEncontrado(request, `No se encontró el índice de \`${doc.documento}\`.`);
 
   if (!resto.length) {
-    if (formato === "json") return respuestaJson(indice);
-    if (formato === "texto") return respuestaMd(request, mdTexto(indice, await textoDe(env, doc.documento)));
+    if (formato !== "md") return Response.redirect(`${SITIO}/ley/${doc.documento}.${formato === "json" ? "json" : "md"}`, 301);
+    const indice = await indiceDe(env, doc.documento);
+    if (!indice) return noEncontrado(request, `No se encontró el índice de \`${doc.documento}\`.`);
     return respuestaMd(request, mdIndice(indice), 200, canonica(`${SITIO}/ley/${doc.documento}`));
   }
 
   let [pedido, sub] = resto;
-  if (resto.length > 2 || (sub && sub !== "historia")) return noEncontrado(request, `Ruta desconocida: \`${url.pathname}\`.`, `Un artículo es \`/ley/${doc.documento}/{artículo}\` y su historia, \`/ley/${doc.documento}/{artículo}/historia\`.`);
+  if (resto.length > 2 || (sub && sub !== "historia")) {
+    return noEncontrado(request, `Ruta desconocida: \`${url.pathname}\`.`, `Un artículo es \`/ley/${doc.documento}/{artículo}\` y su historia, \`/ley/${doc.documento}/{artículo}/historia\`.`);
+  }
   let version = null;
   const arroba = pedido.indexOf("@");
   if (arroba >= 0) {
     version = pedido.slice(arroba + 1).toLowerCase();
     pedido = pedido.slice(0, arroba);
   }
-  const a = articuloDe(indice, pedido);
+  const { minimo, articulo: a } = await leerArticulo(env, doc.documento, pedido);
   if (!a) {
-    return noEncontrado(
-      request,
-      `${indice.nombre} no tiene un artículo \`${pedido}\`.`,
-      `Su índice, con la URL de cada artículo, está en ${SITIO}/ley/${doc.documento}.`,
-    );
+    return noEncontrado(request, `${doc.nombre} no tiene un artículo \`${pedido}\`.`, `Su índice, con la URL de cada artículo, está en ${SITIO}/ley/${doc.documento}.`);
   }
+
   if (version) {
     // Una versión anterior: el archivo en ese commit, en GitHub. Solo los
     // commits del documento, para no prometer una versión que no existe.
-    const c = /^[0-9a-f]{7,40}$/.test(version) ? indice.cambios.find((x) => x.sha.startsWith(version)) : null;
-    if (!c) return noEncontrado(request, `\`${version}\` no es un commit de ${indice.nombre}.`, `Las versiones de este artículo están en ${urlArticulo(doc.documento, a.clave)}/historia.`);
-    return Response.redirect(`https://raw.githubusercontent.com/OpenCodice/${indice.repo}/${c.sha}/${indice.carpeta}${a.clave}.md`, 302);
+    const c = /^[0-9a-f]{7,40}$/.test(version) ? minimo.cambios.find((x) => x.sha.startsWith(version)) : null;
+    if (!c) return noEncontrado(request, `\`${version}\` no es un commit de ${doc.nombre}.`, `Las versiones de este artículo están en ${urlArticulo(doc.documento, a.clave)}/historia.`);
+    return Response.redirect(`https://raw.githubusercontent.com/OpenCodice/${minimo.repo}/${c.sha}/${minimo.carpeta}${a.clave}.md`, 302);
   }
-
   if (sub === "historia") {
-    if (formato === "json") return respuestaJson({ documento: doc.documento, articulo: a.clave, etiqueta: a.etiqueta, cambios: a.cambios.map((i) => indice.cambios[i]) });
-    return respuestaMd(request, mdHistoria(indice, a), 200, canonica(`${urlArticulo(doc.documento, a.clave)}/historia`));
+    const u = `${urlArticulo(doc.documento, a.clave)}/historia`;
+    return formato === "json" ? respuestaJson(datosHistoria(minimo, a), 200, canonica(u)) : respuestaMd(request, mdHistoria(minimo, a), 200, canonica(u));
   }
-  const texto = await textoDe(env, doc.documento);
-  if (formato === "json") {
-    const { ini, fin, cambios, ...resto2 } = a;
-    return respuestaJson({
-      documento: doc.documento,
-      nombre: indice.nombre,
-      ...resto2,
-      url: urlArticulo(doc.documento, a.clave),
-      texto: texto.slice(ini, fin),
-      version: cambios.length ? indice.cambios[cambios[0]].sha : null,
-      fuente: indice.fuente,
-    });
-  }
-  return respuestaMd(request, mdArticulo(indice, a, texto), 200, canonica(urlArticulo(doc.documento, a.clave)));
-}
-
-async function buscar(request, env, cat, url) {
-  const q = (url.searchParams.get("q") ?? "").trim();
-  const docs = (url.searchParams.get("documento") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
-  const ayuda = `Uso: \`${SITIO}/ley/buscar?q={palabras}&documento={clave}\` (hasta 5 documentos separados por coma). Sin \`documento\`, busca entre los nombres de los documentos.`;
-  if (!q) return respuestaMd(request, `# Búsqueda literal\n\n${ayuda}\n`, 400);
-  if (!docs.length) {
-    const xs = buscarDocumentos(cat, { consulta: q });
-    return respuestaMd(request, xs.length ? `# Documentos con «${q}» en su nombre\n\n${xs.map(lineaDocumento).join("\n")}\n` : `Ningún documento tiene «${q}» en su nombre.\n\n${ayuda}\n`);
-  }
-  if (docs.length > 5) return respuestaMd(request, `A lo más 5 documentos por búsqueda.\n\n${ayuda}\n`, 400);
-  const partes = [];
-  for (const k of docs) {
-    const d = documentoDe(cat, k);
-    if (!d) {
-      partes.push(`No hay un documento \`${k}\`.\n`);
-      continue;
-    }
-    const [indice, texto] = await Promise.all([indiceDe(env, d.documento), textoDe(env, d.documento)]);
-    partes.push(mdBusqueda(indice, q, buscarEn(indice, texto, q, 30), 30));
-  }
-  return respuestaMd(request, partes.join("\n"));
+  const u = urlArticulo(doc.documento, a.clave);
+  return formato === "json" ? respuestaJson(datosArticulo(minimo, a), 200, canonica(u)) : respuestaMd(request, mdArticulo(minimo, a), 200, canonica(u));
 }

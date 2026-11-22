@@ -474,7 +474,7 @@ ${ultimasReformas(datos.actividad, datos.bitacora)}
             <div class="paso">
               <span class="num">Servidor MCP</span>
               <h3>Conéctalo en un paso</h3>
-              <p>Herramientas de solo lectura para buscar una ley, leer sus artículos, buscar dentro de ella y ver su historia. Sirve con cualquier cliente que acepte un servidor MCP remoto.</p>
+              <p>Busca en todas las leyes y en el Congreso, lee artículos, ve qué cambió en cada reforma y cómo se votó, y consulta a cada legislador. Sirve con cualquier cliente que acepte un servidor MCP remoto.</p>
               <pre class="cmd"><code>claude mcp add --transport http opencodice ${MCP}</code></pre>
             </div>
             <div class="paso">
@@ -483,9 +483,9 @@ ${ultimasReformas(datos.actividad, datos.bitacora)}
               <p>Cada artículo con su texto, su fuente oficial, su versión y su URL: <a href="/ley/cpeum/123"><code>/ley/cpeum/123</code></a>, <a href="/ley/lft/87"><code>/ley/lft/87</code></a>, <a href="/ley/jalisco/constitucion/4"><code>/ley/jalisco/constitucion/4</code></a>. Cada ley, su índice: <a href="/ley/lgs"><code>/ley/lgs</code></a>.</p>
             </div>
             <div class="paso">
-              <span class="num">Para empezar</span>
-              <h3>Una guía y un catálogo</h3>
-              <p><a href="/llms.txt"><code>/llms.txt</code></a> explica las rutas y <a href="/llms-full.txt"><code>/llms-full.txt</code></a> lista cada ley${datos.corpus ? ` (${numero(datos.corpus.documentos)} documentos, ${numero(datos.corpus.articulos)} artículos)` : ""}. Búsqueda literal: <a href="/ley/buscar?q=aguinaldo&amp;documento=lft"><code>/ley/buscar?q=aguinaldo&amp;documento=lft</code></a>.</p>
+              <span class="num">API</span>
+              <h3>Las mismas herramientas, en JSON</h3>
+              <p>Sin autenticación: <a href="/api/votaciones?orden=division&amp;en_lo_general=true"><code>/api/votaciones?orden=division</code></a>, <a href="/api/legisladores?orden=ausencia"><code>/api/legisladores?orden=ausencia</code></a>, <a href="/api/buscar?texto=matrimonio%20igualitario"><code>/api/buscar?texto=…</code></a>. Descritas en <a href="/openapi.json"><code>/openapi.json</code></a>; la guía, en <a href="/llms.txt"><code>/llms.txt</code></a>, y el catálogo${datos.corpus ? ` (${numero(datos.corpus.documentos)} documentos, ${numero(datos.corpus.articulos)} artículos)` : ""}, en <a href="/llms-full.txt"><code>/llms-full.txt</code></a>.</p>
             </div>
           </div>
           <p class="aparte">Sin respuestas generadas: lo que recibe el agente es el texto publicado, el mismo de los repositorios, con su enlace para verificarlo.</p>
@@ -534,7 +534,7 @@ ${ultimasReformas(datos.actividad, datos.bitacora)}
         </div>
         <div>
           <h4>Proyecto</h4>
-          <ul><li><a href="/estado">Status del sistema</a></li><li><a href="/llms.txt">Guía para agentes</a></li><li><a href="/mcp">Servidor MCP</a></li><li><a href="https://github.com/${ORG}">GitHub</a></li></ul>
+          <ul><li><a href="/estado">Status del sistema</a></li><li><a href="/llms.txt">Guía para agentes</a></li><li><a href="/mcp">Servidor MCP</a></li><li><a href="/api">API</a></li><li><a href="https://github.com/${ORG}">GitHub</a></li></ul>
         </div>
       </div>
     </footer>

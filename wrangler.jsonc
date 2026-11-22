@@ -4,12 +4,14 @@
   "main": "worker/index.js",
   "compatibility_date": "2026-01-01",
   "routes": [{ "pattern": "constitucion.app", "custom_domain": true }],
-  // El Worker va primero en /ley, /mcp y en las páginas que tienen versión
-  // en Markdown (las elige por el Accept); lo demás se sirve directo.
+  // Lo que es un archivo se sirve directo, sin el Worker (incluidos
+  // /ley/{documento}.md y .json); lo que no, llega al Worker (un artículo,
+  // /api, /mcp). Solo va primero el Worker donde hay que elegir entre HTML y
+  // Markdown por el Accept.
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/", "/leyes", "/bitacora/*", "/ley", "/ley/*", "/mcp", "/mcp/*", "/api/*", "/pdf/*"]
+    "run_worker_first": ["/", "/leyes", "/bitacora/*"]
   },
   "observability": { "enabled": true },
   // v2 retira el Durable Object del limitador de peticiones del servicio de

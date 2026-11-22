@@ -1,30 +1,34 @@
 # OpenCodice
 
-> El texto vigente de la ley mexicana (la Constitución, las leyes federales, la legislación fiscal y las constituciones y leyes de los estados), extraído de los PDF oficiales, un artículo por archivo, con cada reforma registrada como un commit de git. Se lee por URL en Markdown, por un servidor MCP de solo lectura o clonando los repositorios.
+> El texto vigente de la ley mexicana (la Constitución, las leyes federales, la legislación fiscal y las constituciones y leyes de los estados), extraído de los PDF oficiales, un artículo por archivo, con cada reforma registrada como un commit de git, y los datos del Congreso de la Unión (votaciones nominales, legisladores, iniciativas, decretos). Se lee por URL en Markdown, por una API REST, por un servidor MCP o clonando los repositorios. Todo de solo lectura y sin autenticación.
 
-Los datos son de dominio público (CC0 1.0) y los extractores, MIT. No es la publicación oficial ni asesoría legal: para efectos jurídicos, la fuente es el Diario Oficial de la Federación o el periódico oficial de cada estado. Lo que se publica es texto extraído del PDF oficial por un programa, nunca editado a mano ni generado; la IA solo se usa al mantenerlo (un agente revisa cada cambio contra el PDF y repara el extractor). Nada responde con texto generado: no hay búsqueda semántica ni respuestas de un modelo.
+Los datos son de dominio público (CC0 1.0) y los extractores, MIT. No es la publicación oficial ni asesoría legal: para efectos jurídicos, la fuente es el Diario Oficial de la Federación o el periódico oficial de cada estado. Lo que se publica es texto extraído del PDF oficial por un programa, nunca editado a mano ni generado; la IA solo se usa al mantenerlo (un agente revisa cada cambio contra el PDF y repara el extractor). Ninguna respuesta es texto generado: la búsqueda es literal (palabras exactas, sin acentos ni mayúsculas), no semántica.
+
+## Servidor MCP y API
+
+`https://constitucion.app/mcp` (Streamable HTTP, sin autenticación). En Claude Code: `claude mcp add --transport http opencodice https://constitucion.app/mcp`. Las mismas herramientas son la API REST: `GET https://constitucion.app/api/{herramienta}?{parámetros}` (o POST con JSON) responde JSON, o Markdown con `Accept: text/markdown`. [/api](https://constitucion.app/api) las lista y [/openapi.json](https://constitucion.app/openapi.json) las describe.
+
+- `buscar`: búsqueda literal en todos los artículos de todas las leyes y en las iniciativas, proposiciones, dictámenes, decretos y votaciones del Congreso; resultados agrupados por ley y por tipo, con fragmento. Para un tema, busca varias veces con las palabras que usaría la ley (`/api/buscar?texto=matrimonio igualitario`).
+- `buscar_documentos`: leyes por nombre, sigla, ámbito o estado; da la clave de cada una.
+- `indice_documento`: los artículos de un documento, con su URL.
+- `leer_articulo`: el texto de hasta 20 artículos, con su URL, versión y fuente (`/api/leer_articulo?documento=cpeum&articulos=1,4o`).
+- `historia_articulo`: los cambios registrados de un artículo.
+- `detalle_cambio`: lo que cambió en una reforma (por omisión, la última de la ley): el diff de cada artículo y su proceso legislativo (decreto, votación de cada cámara, iniciativas y autores) (`/api/detalle_cambio?documento=cpeum`).
+- `cambios_recientes`: las reformas, altas y correcciones más recientes.
+- `votaciones`: las votaciones nominales con sus cuentas totales y por grupo, las leyes de su decreto y qué tan divididas fueron; `orden=division` da las más controvertidas (`/api/votaciones?orden=division&en_lo_general=true`).
+- `legisladores`: diputados y senadores con sus votos, ausencias (y su tasa) e iniciativas; `orden=ausencia` da los más ausentes (`/api/legisladores?orden=ausencia`).
+
+Los datos completos, para descargar: [/ley/catalogo.json](https://constitucion.app/ley/catalogo.json), `/ley/{documento}.json` y `.md`, [/congreso/votaciones.json](https://constitucion.app/congreso/votaciones.json), [/congreso/legisladores.json](https://constitucion.app/congreso/legisladores.json) y [/bitacora/cambios.json](https://constitucion.app/bitacora/cambios.json).
 
 ## Leer un artículo por URL
 
 - `https://constitucion.app/ley/{documento}/{artículo}`: el artículo en Markdown, con un frontmatter con su documento, su ubicación (título, capítulo), su última reforma según las notas del texto, su URL para citar, su versión (commit), su enlace permanente y su fuente oficial. Ejemplos: [/ley/cpeum/123](https://constitucion.app/ley/cpeum/123), [/ley/lft/87](https://constitucion.app/ley/lft/87), [/ley/jalisco/constitucion/4](https://constitucion.app/ley/jalisco/constitucion/4), [/ley/rmf-2026/2.1.1](https://constitucion.app/ley/rmf-2026/2.1.1).
 - El artículo se escribe como sea: `4`, `4o`, `004`, `Artículo 4o.`, `77 Bis 35 A`, `Regla 2.1.1`. La clave del documento acepta mayúsculas o su sigla (`LFT`). La URL canónica va en el frontmatter (`url`).
-- `https://constitucion.app/ley/{documento}`: el índice del documento, con cada artículo enlazado y agrupado por título y capítulo, su fuente y sus últimos cambios. `/ley/{documento}.md` es el texto completo; `/ley/{documento}.json` y `/ley/{documento}/{artículo}.json`, lo mismo en JSON.
+- `https://constitucion.app/ley/{documento}`: el índice del documento, con cada artículo enlazado y agrupado por título y capítulo, su fuente y sus últimos cambios. `/ley/{documento}.md` es el texto completo y `/ley/{documento}.json` el índice en JSON (archivos estáticos); `/ley/{documento}/{artículo}.json`, el artículo en JSON.
 - `https://constitucion.app/ley/{documento}/{artículo}/historia`: los cambios registrados de ese artículo, cada uno con su página en la bitácora y la URL de su texto en esa versión (`/ley/{documento}/{artículo}@{sha}`, que lleva al archivo en ese commit).
-- `https://constitucion.app/ley/buscar?q={palabras}&documento={clave}`: búsqueda literal (sin acentos ni mayúsculas, todas las palabras en el mismo artículo) en hasta 5 documentos separados por coma. Sin `documento`, busca en los nombres de los documentos. Es literal: busca las palabras que usaría la ley.
 - `https://constitucion.app/ley`: todos los documentos, por ámbito. `/ley/{estado}` (por ejemplo [/ley/jalisco](https://constitucion.app/ley/jalisco)), los de un estado. [/llms-full.txt](https://constitucion.app/llms-full.txt) es el mismo catálogo en una sola página, y [/ley/catalogo.json](https://constitucion.app/ley/catalogo.json), en JSON.
 
 Claves de documento: `cpeum` (la Constitución), la de LeyesBiblio de la Cámara de Diputados para las leyes federales (`lft`, `lgs`, `cff`, `lisr`, `ccf`…), la del SAT para lo fiscal (`rmf-2026`, `criterios-normativos`, `anexo2-2026`…) y `{estado}/{ley}` para los estados (`jalisco/constitucion`, `cdmx/codigo-penal`, `nuevo-leon/ley-electoral`).
-
-## Servidor MCP
-
-`https://constitucion.app/mcp` (Streamable HTTP, sin autenticación). En Claude Code: `claude mcp add --transport http opencodice https://constitucion.app/mcp`. Herramientas, todas de solo lectura y deterministas:
-
-- `buscar_documentos`: leyes por nombre, sigla, ámbito o estado; da la clave de cada una.
-- `indice_documento`: los artículos de un documento, con su URL.
-- `leer_articulo`: el texto de hasta 20 artículos, con su URL, versión y fuente.
-- `buscar_en_documento`: búsqueda literal en hasta 5 documentos.
-- `historia_articulo`: los cambios registrados de un artículo.
-- `cambios_recientes`: las reformas, altas y correcciones más recientes.
 
 ## Las páginas, en Markdown
 

@@ -27,7 +27,9 @@ import { paginaInicio } from "./inicio.mjs";
 import { modelo, paginasBitacora } from "./bitacora.mjs";
 import { paginasCongreso } from "./congreso.mjs";
 import { SITIO, escribirTarjetas } from "./lib/tarjeta.mjs";
-import { leerCorpus, fichaCatalogo, llmsCompleto, rutaIndice, rutaTexto } from "./lib/corpus.mjs";
+import { leerCorpus, fichaCatalogo, llmsCompleto, archivosDocumento } from "./lib/corpus.mjs";
+import { resumenVotaciones, resumenLegisladores, coleccionesCongreso } from "./lib/abiertos.mjs";
+import { indiceBusqueda } from "./lib/busqueda.mjs";
 
 const raiz = (archivo) => fileURLToPath(new URL(`../${archivo}`, import.meta.url));
 const publico = (archivo) => fileURLToPath(new URL(`../public/${archivo}`, import.meta.url));
@@ -44,12 +46,13 @@ datos.bitacora = bitacora;
 // bitácora: un documento retirado no debe quedar servido.
 const corpus = await leerCorpus(historial, bitacora);
 const fichas = corpus.documentos.map(fichaCatalogo);
+const escribir = (mapa, n = 32) =>
+  enParalelo([...mapa], n, async ([ruta, contenido]) => {
+    await mkdir(dirname(publico(ruta)), { recursive: true });
+    await writeFile(publico(ruta), contenido);
+  });
 await rm(publico("ley"), { recursive: true, force: true });
-await enParalelo(corpus.documentos, 16, async (d) => {
-  await mkdir(dirname(publico(rutaTexto(d.clave))), { recursive: true });
-  await writeFile(publico(rutaTexto(d.clave)), d.texto);
-  await writeFile(publico(rutaIndice(d.clave)), JSON.stringify(d.indice));
-});
+await enParalelo(corpus.documentos, 8, (d) => escribir(archivosDocumento(d), 8));
 await writeFile(
   publico("ley/catalogo.json"),
   JSON.stringify(
@@ -87,6 +90,34 @@ await enParalelo([...congreso], 32, async ([ruta, contenido]) => {
   await writeFile(publico(ruta), contenido);
 });
 
+// Los datos abiertos del Congreso (votaciones y legisladores con sus
+// cuentas) y el índice de la búsqueda literal, para la API y el MCP. Van
+// después de /congreso, que se borra al generarse.
+const nombresLey = new Map(fichas.map((f) => [f.documento, f.nombre]));
+const votaciones = vinculos.ok ? resumenVotaciones(vinculos, nombresLey) : [];
+const legisladores = vinculos.ok ? resumenLegisladores(vinculos) : [];
+const nota = "De congreso-mexicano (SIL, Gaceta Parlamentaria y Senado). Las cuentas son las de cada fuente; `division` es la parte de los votos emitidos que tuvo el lado perdedor (0 unanimidad, 0.5 empate).";
+if (vinculos.ok) {
+  await mkdir(publico("congreso"), { recursive: true });
+  await writeFile(publico("congreso/votaciones.json"), JSON.stringify({ generada, nota, votaciones }));
+  await writeFile(
+    publico("congreso/legisladores.json"),
+    JSON.stringify({ generada, nota: "De congreso-mexicano. `ausencia` es la parte de sus votaciones nominales con nombre en que se le registró ausente.", legisladores }),
+  );
+}
+await rm(publico("buscar"), { recursive: true, force: true });
+const busqueda = indiceBusqueda([
+  ...corpus.documentos.map((d) => ({
+    coleccion: d.clave,
+    tipo: "ley",
+    nombre: d.indice.nombre,
+    ambito: d.indice.ambito,
+    unidades: d.indice.articulos.map((a) => ({ buscar: a.texto })),
+  })),
+  ...(vinculos.ok ? coleccionesCongreso(vinculos, votaciones) : []),
+]);
+await escribir(busqueda.archivos);
+
 await Promise.all([
   writeFile(publico("estado.html"), paginaEstado(datos, generada)),
   writeFile(publico("leyes.html"), paginaLeyes(datos, generada)),
@@ -112,7 +143,7 @@ ${paginas.map((a) => `<url><loc>${urlDe(a)}</loc></url>`).join("\n")}
 
 const fallas = contarFallas(datos) + bitacora.fallas.length + corpus.fallas.length;
 console.log(
-  `${corpus.documentos.length} documentos en /ley, index.html, estado.html, leyes.html, ${archivos.size} archivos de la bitácora (${bitacora.cambios.length} cambios, ${bitacora.documentos.size} documentos) y ${congreso.size} del Congreso generados, ${tarjetas.total} tarjetas (${tarjetas.nuevas} nuevas) y el sitemap${
+  `${corpus.documentos.length} documentos en /ley (${busqueda.palabras} palabras en el índice), index.html, estado.html, leyes.html, ${archivos.size} archivos de la bitácora (${bitacora.cambios.length} cambios, ${bitacora.documentos.size} documentos) y ${congreso.size} del Congreso generados, ${tarjetas.total} tarjetas (${tarjetas.nuevas} nuevas) y el sitemap${
     fallas ? ` con ${fallas} fuentes sin responder` : ""
   }`,
 );

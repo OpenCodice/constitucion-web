@@ -1,18 +1,21 @@
-// El sitio es estático (./public). El Worker atiende lo que no es un archivo:
+// El sitio es estático (./public): lo que es un archivo se sirve directo,
+// incluidos los datos (`/ley/{documento}.md` y `.json`, `/ley/catalogo.json`,
+// `/congreso/*.json`, `/bitacora/cambios.json`). El Worker atiende lo demás:
 //
-// - /ley/…: el texto vigente por documento y por artículo (worker/ley.js);
-// - /mcp: el servidor MCP de solo lectura (worker/mcp.js);
+// - /ley/…: un artículo, el índice de un documento y su historia (ley.js);
+// - /api/…: las herramientas como API REST (api.js) y /openapi.json;
+// - /mcp: las mismas herramientas como servidor MCP (mcp.js);
 // - la versión en Markdown de las páginas para quien la pide con
 //   `Accept: text/markdown` (el inicio, /leyes y la bitácora);
-// - las rutas del servicio de búsqueda que se retiró, con un 410.
+// - /pdf/…, del servicio de búsqueda que se retiró, con un 410.
 //
 // Todo lee los archivos del propio despliegue (env.ASSETS); nada consulta
 // otro servicio en tiempo de lectura.
 
-import { catalogo, mdCatalogo, respuestaMd, rutaLey } from "./ley.js";
+import { mdCatalogo, respuestaMd, respuestaJson, rutaLey } from "./ley.js";
+import { catalogo } from "./datos.js";
 import { rutaMcp } from "./mcp.js";
-
-const RETIRADAS = ["/api/", "/pdf/"];
+import { rutaApi, openapi } from "./api.js";
 
 // ¿Prefiere Markdown a HTML? Por los pesos `q` del Accept; sin mención de
 // HTML basta con que pida Markdown.
@@ -62,12 +65,11 @@ export default {
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Accept" } });
       return rutaLey(request, env);
     }
-    if (RETIRADAS.some((r) => ruta.startsWith(r))) {
+    if (ruta === "/api" || ruta.startsWith("/api/")) return rutaApi(request, env);
+    if (ruta === "/openapi.json") return respuestaJson(openapi(), 200, { "Access-Control-Allow-Origin": "*" });
+    if (ruta.startsWith("/pdf/")) {
       return Response.json(
-        {
-          error: "Este servicio se retiró. El texto de cada ley está en https://constitucion.app/ley y el servidor MCP en https://constitucion.app/mcp.",
-          guia: "https://constitucion.app/llms.txt",
-        },
+        { error: "Este servicio se retiró. El texto de cada ley está en https://constitucion.app/ley y la API en https://constitucion.app/api.", guia: "https://constitucion.app/llms.txt" },
         { status: 410 },
       );
     }

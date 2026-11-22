@@ -7,11 +7,12 @@ Página estática de presentación del proyecto. No tiene build: lo que hay en
 - `scripts/paginas.mjs`: genera `public/leyes.html` (`/leyes`, la lista de leyes
   para el público) y `public/estado.html` (`/estado`, el estado técnico) desde
   los repos de datos; corre en cada despliegue, que también ocurre al terminar cada vigilancia (aviso `datos-actualizados`).
-- `worker/`: lo que no es un archivo. `/ley/…`, el texto vigente de cada
-  documento por artículo (`ley.js`), `/mcp`, un servidor MCP de solo lectura
-  (`mcp.js`), y la versión en Markdown del inicio, `/leyes` y la bitácora para
-  quien pide `Accept: text/markdown`. Lee solo los archivos del despliegue.
-  Las rutas del servicio de búsqueda anterior (`/api/*`, `/pdf/*`) responden `410`.
+- `worker/`: lo que no es un archivo. Las herramientas de consulta (buscar en
+  las leyes y el Congreso, leer artículos, qué cambió en una reforma,
+  votaciones, legisladores) como servidor MCP en `/mcp` y API REST en `/api`
+  (`/openapi.json`); `/ley/{documento}/{artículo}` para leer y citar; y la
+  versión en Markdown del inicio, `/leyes` y la bitácora. Lee solo los
+  archivos del despliegue.
 
 ```bash
 npm install

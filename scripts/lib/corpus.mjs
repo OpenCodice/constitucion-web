@@ -1,12 +1,7 @@
 // El texto vigente de cada documento, servido desde constitucion.app para que
-// un agente lo lea con una URL, sin clonar nada (ver /ley en worker/index.js).
-//
-// Por documento se escriben dos archivos en public/ley/_/: el texto completo
-// (los artículos de main tal cual, en el orden de su índice, separados por una
-// línea en blanco) y un índice JSON con, por artículo, dónde empieza y acaba
-// en ese texto y qué commits lo tocaron. El Worker corta un artículo de ahí:
-// el sitio sigue sin depender de nada en tiempo de lectura, y no hacen falta
-// 64 mil archivos sueltos.
+// un agente lo lea con una URL, sin clonar nada (ver `archivosDocumento` y
+// worker/ley.js). Los artículos de main tal cual, en el orden de su índice,
+// con qué commits tocaron cada uno (de la bitácora).
 //
 // La misma ley está en leyes-federales y fiscal-mexicano con el mismo texto;
 // se sirve la de leyes-federales y la otra queda en `tambien_en`.
@@ -26,8 +21,6 @@ const AMBITO = {
   [REPOS.fiscal]: "fiscal",
 };
 
-export const rutaTexto = (doc) => `ley/_/${doc}.md`;
-export const rutaIndice = (doc) => `ley/_/${doc}.json`;
 
 const leerJson = (texto) => {
   try {
@@ -143,26 +136,20 @@ function armar(d, repo, a, rutas, blobs) {
     }
   }
 
-  let texto = "";
-  const articulos = [];
-  for (const k of claves) {
+  const articulos = claves.map((k) => {
     const t = (blobs.get(`${a.rev}:${presentes.get(k)}`) ?? "").replace(/\s+$/, "");
-    if (texto) texto += "\n\n";
-    const ini = texto.length;
-    texto += t;
     const e = entradas.get(k) ?? {};
-    articulos.push({
+    return {
       clave: k,
       etiqueta: e.etiqueta ?? encabezado(t) ?? k,
       ubicacion: ubicacion(e),
       derogado: e.derogado === true || undefined,
       ultima_reforma: e.ultima_reforma ?? undefined,
-      ini,
-      fin: texto.length,
+      url: `${SITIO}/ley/${d.clave}/${k}`,
       cambios: tocan.get(k) ?? [],
-    });
-  }
-  texto += "\n";
+      texto: t,
+    };
+  });
 
   const vigente = cambios.find((c) => c.fuente) ?? cambios[0];
   const otros = [...d.repos].filter((r) => r !== repo);
@@ -185,8 +172,55 @@ function armar(d, repo, a, rutas, blobs) {
     articulos,
     cambios: cambios.map(cambioCorto),
   };
-  return { clave: d.clave, texto, indice };
+  return { clave: d.clave, indice };
 }
+
+// Lo que se escribe de un documento, ruta → contenido:
+//
+// - `ley/{Documento}.md`: el texto completo, con su ficha en frontmatter, y
+//   `ley/{Documento}.json`: su índice (cada artículo sin su texto). Se sirven
+//   tal cual, sin pasar por el Worker.
+// - `ley/_/{Documento}/i.json` y `ley/_/{Documento}/{n}.json`: para que el
+//   Worker sirva un artículo sin leer la ley entera (los assets no aceptan
+//   `Range`): un índice mínimo (claves y en qué trozo está cada una) y los
+//   artículos en trozos de unos TROZO bytes.
+const TROZO = 96 * 1024;
+
+export function archivosDocumento({ clave, indice: i }) {
+  const { articulos, ...ficha } = i;
+  const archivos = new Map();
+  const frente = [
+    `documento: ${JSON.stringify(i.documento)}`,
+    `nombre: ${JSON.stringify(i.nombre)}`,
+    i.sigla ? `sigla: ${JSON.stringify(i.sigla)}` : null,
+    `articulos: ${articulos.length}`,
+    `url: ${JSON.stringify(`${SITIO}/ley/${i.documento}.md`)}`,
+    `indice: ${JSON.stringify(`${SITIO}/ley/${i.documento}`)}`,
+    i.cambios[0] ? `version: ${JSON.stringify(i.cambios[0].sha)}` : null,
+    i.fuente ? `fuente: ${JSON.stringify(i.fuente)}` : null,
+    `nota: ${JSON.stringify(NOTA)}`,
+  ].filter(Boolean);
+  archivos.set(`ley/${clave}.md`, `---\n${frente.join("\n")}\n---\n\n${articulos.map((a) => a.texto).join("\n\n")}\n`);
+  archivos.set(`ley/${clave}.json`, JSON.stringify({ ...ficha, articulos: articulos.map(({ texto, ...a }) => a) }));
+
+  const trozos = [[]];
+  let tam = 0;
+  const trozo = [];
+  for (const a of articulos) {
+    if (tam > TROZO) {
+      trozos.push([]);
+      tam = 0;
+    }
+    trozos.at(-1).push(a);
+    trozo.push(trozos.length - 1);
+    tam += Buffer.byteLength(a.texto) + 200;
+  }
+  trozos.forEach((xs, n) => archivos.set(`ley/_/${clave}/${n}.json`, JSON.stringify(xs.map(({ url, ...a }) => a))));
+  archivos.set(`ley/_/${clave}/i.json`, JSON.stringify({ ...ficha, claves: articulos.map((a) => a.clave), trozo }));
+  return archivos;
+}
+
+export const NOTA = "Texto extraído del PDF oficial por OpenCodice. No es la publicación oficial ni asesoría legal.";
 
 // La ficha de cada documento en el catálogo (/ley/catalogo.json): sin
 // artículos, para que un agente elija qué pedir.
@@ -222,7 +256,7 @@ export function llmsCompleto(fichas, generada) {
 
 > Cada documento publicado en OpenCodice con la URL de su índice (artículos, con su URL cada uno) y de su texto completo en Markdown. Guía corta: https://constitucion.app/llms.txt. Generado el ${generada.slice(0, 10)}.
 
-Para leer un artículo: \`https://constitucion.app/ley/{documento}/{artículo}\` (por ejemplo \`/ley/cpeum/123\`, \`/ley/lft/132\`, \`/ley/jalisco/constitucion/4\`). El artículo se escribe como sea: \`4\`, \`4o\`, \`004\`, \`77-bis-35-a\`, \`Regla 2.1.1\`. El servidor MCP está en \`https://constitucion.app/mcp\`.`,
+Para leer un artículo: \`https://constitucion.app/ley/{documento}/{artículo}\` (por ejemplo \`/ley/cpeum/123\`, \`/ley/lft/132\`, \`/ley/jalisco/constitucion/4\`). El artículo se escribe como sea: \`4\`, \`4o\`, \`004\`, \`77-bis-35-a\`, \`Regla 2.1.1\`. La API está en \`https://constitucion.app/api\` y el servidor MCP en \`https://constitucion.app/mcp\`.`,
   ];
   for (const [ambito, titulo] of Object.entries(NOMBRE_AMBITO)) {
     const xs = fichas.filter((f) => f.ambito === ambito);
