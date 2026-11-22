@@ -407,8 +407,8 @@ Para verlo en local: `npm install && npm run paginas && npm run dev`.
 ## Criterios
 
 - **Estilo:** texto grande en una columna angosta y centrada, sobrio y
-  legible, sin animaciones. IBM Plex Sans y Mono, servidas desde
-  `public/fuentes/` (sin terceros). La página es blanca, negra y gris; el
+  legible, sin animaciones. IBM Plex Sans y Mono, y Newsreader solo
+  en la marca del pie, servidas desde `public/fuentes/` (sin terceros). La página es blanca, negra y gris; el
   color, solo en los datos (la escala `--e1` a `--e7` de `estilo.css`, los
   hemiciclos y las gráficas), en los enlaces y en la ilustración del pie
   (`public/img/`, una por tema). Modo oscuro por `prefers-color-scheme`, con
