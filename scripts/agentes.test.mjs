@@ -292,3 +292,10 @@ test("diferenciaTexto: párrafos quitados y puestos con contexto", () => {
   const despues = "# Artículo 1.\n\nUno.\n\nDos y medio.\n\nTres.\n\nCuatro.\n\nCinco.";
   assert.equal(diferenciaTexto(antes, despues), "@@ 1 párrafo sin cambios @@\n  Uno.\n- Dos.\n+ Dos y medio.\n  Tres.\n@@ 2 párrafos sin cambios @@");
 });
+
+test("sin OAuth: el descubrimiento responde 404, no redirige", async () => {
+  for (const ruta of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp", "/.well-known/oauth-authorization-server", "/register"]) {
+    const r = await pedir(ruta);
+    assert.equal(r.status, 404, ruta);
+  }
+});

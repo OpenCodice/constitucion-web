@@ -7,7 +7,8 @@
 // - /mcp: las mismas herramientas como servidor MCP (mcp.js);
 // - la versión en Markdown de las páginas para quien la pide con
 //   `Accept: text/markdown` (el inicio, /leyes y la bitácora);
-// - /pdf/…, del servicio de búsqueda que se retiró, con un 410.
+// - /pdf/…, del servicio de búsqueda que se retiró, con un 410;
+// - /.well-known/… (el descubrimiento de OAuth), con un 404.
 //
 // Todo lee los archivos del propio despliegue (env.ASSETS); nada consulta
 // otro servicio en tiempo de lectura.
@@ -74,6 +75,11 @@ export default {
       );
     }
     if (ruta === "/" || ruta === "/leyes" || ruta.startsWith("/bitacora/")) return negociar(request, env, url);
+    // Los clientes MCP buscan aquí si hay OAuth; redirigirlos al inicio los
+    // confunde. Un 404 dice que el servidor no pide autenticación.
+    if (ruta.startsWith("/.well-known/") || ruta === "/register") {
+      return Response.json({ error: "No hay autenticación: el MCP (/mcp) y la API (/api) son abiertos." }, { status: 404, headers: { "Access-Control-Allow-Origin": "*" } });
+    }
     return Response.redirect(new URL("/", url), 302);
   },
 };
