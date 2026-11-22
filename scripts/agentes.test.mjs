@@ -11,6 +11,8 @@ import { HERRAMIENTAS } from "../worker/herramientas.js";
 import { diferenciaTexto } from "./lib/diferencias.mjs";
 import { archivosDocumento, fichaCatalogo } from "./lib/corpus.mjs";
 import { indiceBusqueda } from "./lib/busqueda.mjs";
+import { modeloCongreso } from "./lib/congreso.mjs";
+import { archivosVotos, buscadorDeLeyes, filtrosAsuntos, resumenVotaciones } from "./lib/abiertos.mjs";
 
 const art = (n, cuerpo) => `# Artículo ${n}.\n\n${cuerpo}`;
 const SHA_REFORMA = "a".repeat(40);
@@ -76,16 +78,39 @@ const LEGISLADORES = [
   { id: "beto", nombre: "Beto Ruiz", camara: "Cámara de Senadores", grupo: "Partido Acción Nacional", entidad: "queretaro", en_funciones: true, estatus: "Activo(a)", votaciones: 400, a_favor: 300, en_contra: 90, abstenciones: 0, ausencias: 10, ausencia: 0.025, iniciativas: 30, iniciativas_aprobadas: 1, url: "https://constitucion.app/congreso/legisladores/beto" },
   { id: "caro", nombre: "Caro Gil", camara: "Cámara de Diputados", grupo: "Morena", entidad: "puebla", en_funciones: false, estatus: "Baja(a)", votaciones: 5, a_favor: 0, en_contra: 0, abstenciones: 0, ausencias: 5, ausencia: 1, iniciativas: 0, iniciativas_aprobadas: 0, url: "https://constitucion.app/congreso/legisladores/caro" },
 ];
-const INICIATIVA = { id: "sil-5", fecha: "2026-09-14", titulo: "En materia de matrimonio igualitario", autores: [{ nombre: "Alma Vega", grupo: "Morena" }], estatus: "Pendiente", buscar: "En materia de matrimonio igualitario Alma Vega" };
+const INICIATIVA = { id: "sil-5", fecha: "2026-09-14", titulo: "En materia de matrimonio igualitario", autores: [{ nombre: "Alma Vega", grupo: "Morena" }], partido: "Morena", estatus: "Pendiente", resultado: "pendiente", leyes: [], buscar: "En materia de matrimonio igualitario" };
+const INICIATIVAS = [
+  { id: "sil-7", fecha: "2026-10-20", titulo: "Que reforma el artículo 30 de la Constitución, sobre la nacionalidad", autores: [{ nombre: "Beto Ruiz", id: "beto", grupo: "Partido Acción Nacional" }], partido: "PAN", estatus: "Desechada", resultado: "desechado", leyes: ["cpeum"], buscar: "Que reforma el artículo 30 de la Constitución, sobre la nacionalidad" },
+  INICIATIVA,
+  { id: "sil-3", fecha: "2026-02-01", titulo: "Que expide la Ley de aguas", autores: [{ nombre: "Beto Ruiz", id: "beto", grupo: "Partido Acción Nacional" }], partido: "PAN", estatus: "Pendiente", resultado: "pendiente", leyes: [], buscar: "Que expide la Ley de aguas" },
+];
+// El modelo de congreso-mexicano del que salen los votos con nombre de las
+// dos primeras votaciones; la tercera no los publica.
+const voto = (voter_id, option, grupo_fuente) => ({ voter_id, option, grupo_fuente });
+const MODELO = modeloCongreso({
+  organizaciones: [{ id: "camara-de-diputados", name: "Cámara de Diputados" }],
+  personas: [{ id: "ana", name: "Ana Pérez" }, { id: "beto", name: "Beto Ruiz" }, { id: "caro", name: "Caro Gil" }],
+  mandatos: [],
+  expedientes: [],
+  decretos: [],
+  votaciones: [
+    { id: "sil-1-1", organization_id: "camara-de-diputados", start_date: "2026-09-22", motion: { denominacion: "Que reforma el artículo 30 de la Constitución Política de los Estados Unidos Mexicanos", text: "Aprobado en lo general" }, counts: [{ option: "yes", value: 2 }, { option: "no", value: 1 }], votos_publicados: true,
+      votes: [voto("ana", "yes", "Morena"), voto("beto", "no", "PAN"), voto("caro", "yes", "Morena")], votos_faltantes: [{ grupo: "PAN", option: "no", value: 1, nombres_fuente: ["Fulano"] }] },
+    { id: "sil-1-2", organization_id: "camara-de-diputados", start_date: "2026-09-22", motion: { denominacion: "Reserva", text: "Aprobado en lo particular" }, counts: [], votos_publicados: true, votes: [voto("ana", "absent", "Morena"), voto("beto", "no", "PAN")] },
+    { id: "sil-2-1", organization_id: "camara-de-diputados", start_date: "2026-03-01", motion: { denominacion: "Ley de aguas", text: "Aprobado" }, counts: [], votes: [] },
+  ],
+});
 
 const ARCHIVOS = new Map();
 for (const d of [CPEUM, JALISCO]) for (const [ruta, contenido] of archivosDocumento(d)) ARCHIVOS.set(`/${ruta}`, contenido);
 const busqueda = indiceBusqueda([
   ...[CPEUM, JALISCO].map((d) => ({ coleccion: d.clave, tipo: "ley", nombre: d.indice.nombre, ambito: d.indice.ambito, unidades: d.indice.articulos.map((a) => ({ buscar: a.texto })) })),
-  { coleccion: "congreso/iniciativa", tipo: "iniciativa", nombre: "Iniciativas", unidades: [INICIATIVA] },
+  { coleccion: "congreso/iniciativa", tipo: "iniciativa", nombre: "Iniciativas", unidades: INICIATIVAS },
   { coleccion: "congreso/votacion", tipo: "votacion", nombre: "Votaciones", unidades: VOTACIONES.map((v) => ({ ...v, buscar: v.asunto })) },
 ]);
-for (const [ruta, contenido] of busqueda.archivos) ARCHIVOS.set(`/${ruta}`, contenido);
+for (const archivos of [busqueda.archivos, archivosVotos(MODELO, VOTACIONES), filtrosAsuntos([{ coleccion: "congreso/iniciativa", tipo: "iniciativa", unidades: INICIATIVAS }])]) {
+  for (const [ruta, contenido] of archivos) ARCHIVOS.set(`/${ruta}`, contenido);
+}
 for (const [ruta, contenido] of Object.entries({
   "/ley/catalogo.json": JSON.stringify({ documentos: [CPEUM, JALISCO].map(fichaCatalogo) }),
   "/congreso/votaciones.json": JSON.stringify({ nota: "nota", votaciones: VOTACIONES }),
@@ -97,6 +122,7 @@ for (const [ruta, contenido] of Object.entries({
   "/bitacora/cambios.json": JSON.stringify({
     cambios: [
       { documento: "cpeum", nombre: "CPEUM", tipo: "reforma", menor: false, ajuste_inicial: false, sha: SHA_REFORMA, fecha: "2026-11-15T00:00:00Z", publicacion: ["2026-10-07"], medio: "DOF", articulos_adicionados: [], articulos_modificados: ["004"], articulos_derogados: [], articulos_corregidos: [], pagina: "https://constitucion.app/bitacora/cpeum/aaaaaaaaaaaa" },
+      { documento: "cpeum", nombre: "CPEUM", tipo: "alta", menor: false, ajuste_inicial: false, sha: SHA_ALTA, fecha: "2026-06-09T00:00:00Z", publicacion: ["2026-06-02"], medio: "DOF", articulos_adicionados: [], articulos_modificados: [], articulos_derogados: [], articulos_corregidos: [], pagina: "https://constitucion.app/bitacora/cpeum/bbbbbbbbbbbb" },
     ],
   }),
 })) ARCHIVOS.set(ruta, contenido);
@@ -224,6 +250,85 @@ test("detalle_cambio: la última reforma con su página en Markdown", async () =
   assert.equal(e.status, 404);
 });
 
+test("leyes de un asunto: el nombre completo tras un verbo de reforma, y el más largo si se enciman", () => {
+  const nombradas = buscadorDeLeyes(
+    new Map([
+      ["cpeum", "Constitución Política de los Estados Unidos Mexicanos"],
+      ["lamp", "Ley de Amparo, Reglamentaria de los artículos 103 y 107 de la Constitución Política de los Estados Unidos Mexicanos"],
+      ["lgs", "Ley General de Salud"],
+      ["ladua", "Ley Aduanera"],
+      ["jalisco/constitucion", "Constitución Política del Estado de Jalisco"],
+    ]),
+  );
+  assert.deepEqual(nombradas("Que reforma el artículo 19 de la Constitución Política de los Estados Unidos Mexicanos, en materia de prisión preventiva."), ["cpeum"]);
+  assert.deepEqual(nombradas("Que reforma la Ley de Amparo, Reglamentaria de los artículos 103 y 107 de la Constitución Política de los Estados Unidos Mexicanos, y la LEY ADUANERA."), ["lamp", "ladua"]);
+  // Reglamentaria de un artículo: nombra a la Constitución sin reformarla.
+  assert.deepEqual(nombradas("Que expide la Ley General de Aguas, Reglamentaria del artículo 4o. de la Constitución Política de los Estados Unidos Mexicanos."), []);
+  // Sin verbo de reforma antes, es una mención.
+  assert.deepEqual(nombradas("Renuncia para los efectos del artículo 98 de la Constitución Política de los Estados Unidos Mexicanos."), []);
+  // El principio del nombre de otra ley.
+  assert.deepEqual(nombradas("Que expide la Ley General de Salud Mental y reforma la Ley General de Salud."), ["lgs"]);
+  const filas = resumenVotaciones(MODELO, new Map([["cpeum", "Constitución Política de los Estados Unidos Mexicanos"]]));
+  assert.deepEqual(filas.find((v) => v.id === "sil-1-1").leyes, [{ documento: "cpeum", nombre: "Constitución Política de los Estados Unidos Mexicanos", url: "https://constitucion.app/ley/cpeum", origen: "asunto" }]);
+});
+
+test("votaciones: por documento solo las de sus leyes, y por páginas", async () => {
+  // «Reforma constitucional…» no es de la Constitución de Jalisco aunque el asunto se le parezca.
+  assert.equal((await api("votaciones?documento=jalisco/constitucion")).total, 0);
+  const p2 = await api("votaciones?agrupar=false&limite=2&pagina=2");
+  assert.deepEqual([p2.total, p2.pagina, p2.paginas, p2.votaciones.map((v) => v.id)], [3, 2, 2, ["sil-2-1"]]);
+  assert.match(await (await pedir("/api/votaciones?agrupar=false&limite=2", md)).text(), /`sil-1-1`[\s\S]*\(`cpeum`\)[\s\S]*página 1 de 2; la siguiente, con `pagina`: 2/);
+});
+
+test("votaciones_por_ley: divididas por ley, con el periodo y lo que queda sin ley", async () => {
+  const r = await api("votaciones_por_ley");
+  assert.deepEqual(r.leyes.map((l) => [l.documento, l.votaciones, l.divididas, l.mas_dividida.id]), [["cpeum", 1, 1, "sil-1-1"]]);
+  assert.deepEqual([r.votaciones_contadas, r.sin_ley, r.periodo], [3, { votaciones: 2, divididas: 1 }, { desde: "2026-03-01", hasta: "2026-09-22" }]);
+  assert.equal((await api("votaciones_por_ley?division_minima=0.3")).leyes[0].divididas, 0);
+  assert.equal((await pedir("/api/votaciones_por_ley?division_minima=0.9")).status, 400);
+});
+
+test("votacion: el voto de cada legislador, por sentido y grupo", async () => {
+  const r = await api("votacion?id=sil-1-1");
+  assert.deepEqual(r.votos.map((x) => [x.id, x.sentido, x.grupo]), [["ana", "a_favor", "Morena"], ["beto", "en_contra", "PAN"], ["caro", "a_favor", "Morena"]]);
+  assert.deepEqual(r.sin_nombre, [{ grupo: "PAN", sentido: "en_contra", votos: 1 }]);
+  assert.deepEqual((await api("votacion?id=sil-1-1&sentido=en_contra")).votos.map((x) => x.nombre), ["Beto Ruiz"]);
+  assert.deepEqual((await api("votacion?id=sil-1-1&grupo=morena")).votos.length, 2);
+  assert.match(await (await pedir("/api/votacion?id=sil-1-1", md)).text(), /### A favor: 2\n\n- Morena \(2\): Ana Pérez; Caro Gil[\s\S]*### En contra: 1/);
+  assert.match(await (await pedir("/api/votacion?id=sil-2-1", md)).text(), /no publica el voto de cada legislador/);
+  assert.equal((await pedir("/api/votacion?id=nada")).status, 404);
+});
+
+test("votos_legislador: sus votaciones con su voto, por id o por nombre", async () => {
+  const r = await api("votos_legislador?legislador=beto%20ruiz");
+  assert.deepEqual(r.votaciones.map((v) => [v.id, v.voto]), [["sil-1-1", "en_contra"], ["sil-1-2", "en_contra"]]);
+  assert.equal(r.cuentas.en_contra, 2);
+  assert.deepEqual((await api("votos_legislador?legislador=ana&sentido=ausente")).votaciones.map((v) => v.id), ["sil-1-2"]);
+  assert.deepEqual((await api("votos_legislador?legislador=ana&documento=cpeum")).votaciones.map((v) => v.id), ["sil-1-1"]);
+  const varios = await pedir("/api/votos_legislador?legislador=a");
+  assert.equal(varios.status, 400);
+  assert.match((await varios.json()).error, /coincide con 2 personas/);
+});
+
+test("asuntos: por autor, ley, texto, desenlace y fechas, sin leer todas las fichas", async () => {
+  const r = await api("asuntos");
+  assert.deepEqual([r.total, r.asuntos.map((a) => a.id), r.periodo], [3, ["sil-7", "sil-5", "sil-3"], { desde: "2026-02-01", hasta: "2026-10-20", en_total: 3 }]);
+  assert.deepEqual((await api("asuntos?autor=beto")).asuntos.map((a) => a.id), ["sil-7", "sil-3"]);
+  assert.deepEqual((await api("asuntos?autor=Beto%20Ruiz&documento=CPEUM")).asuntos.map((a) => a.id), ["sil-7"]);
+  assert.deepEqual((await api("asuntos?texto=nacionalidad&desde=2026-10-01")).asuntos.map((a) => a.id), ["sil-7"]);
+  assert.deepEqual((await api("asuntos?partido=PAN&resultado=pendiente")).asuntos.map((a) => a.id), ["sil-3"]);
+  assert.deepEqual((await api("asuntos?hasta=2026-09-30&limite=1&pagina=2")).asuntos.map((a) => a.id), ["sil-3"]);
+  // El nombre de un autor ya no es texto de la búsqueda.
+  assert.equal((await api("buscar?texto=alma")).congreso.length, 0);
+});
+
+test("cambios_recientes: todos los tipos y desde cuándo hay registro", async () => {
+  const r = await api("cambios_recientes?documento=cpeum&tipo=todos");
+  assert.deepEqual(r.cambios.map((c) => c.tipo), ["reforma", "alta"]);
+  assert.deepEqual(r.registro, { desde: "2026-06-09", version_del_alta: "2026-06-02", reformas: 1, articulos_con_mas_reformas: [{ articulo: "004", reformas: 1 }] });
+  assert.match(await (await pedir("/api/cambios_recientes?documento=cpeum", md)).text(), /se registra desde su alta, el 2026-06-09[\s\S]*1 reforma registrada desde entonces/);
+});
+
 const rpc = async (cuerpo) => {
   const r = await pedir("/mcp", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify(cuerpo) });
   return { status: r.status, json: r.status === 202 ? null : await r.json() };
@@ -237,7 +342,7 @@ test("mcp: initialize, notificaciones, lista de herramientas y lotes", async () 
   assert.equal((await rpc({ jsonrpc: "2.0", method: "notifications/initialized" })).status, 202);
   const lista = (await rpc({ jsonrpc: "2.0", id: 2, method: "tools/list" })).json.result.tools;
   assert.deepEqual(lista.map((h) => h.name), HERRAMIENTAS.map((h) => h.name));
-  assert.ok(lista.every((h) => h.annotations.readOnlyHint && h.inputSchema.type === "object"));
+  assert.ok(lista.every((h) => h.annotations.readOnlyHint && h.inputSchema.type === "object" && h.inputSchema.properties.formato));
   assert.equal((await rpc({ jsonrpc: "2.0", id: 3, method: "otra/cosa" })).json.error.code, -32601);
   const lote = await rpc([{ jsonrpc: "2.0", id: 4, method: "ping" }, { jsonrpc: "2.0", method: "notifications/initialized" }]);
   assert.deepEqual(lote.json, [{ jsonrpc: "2.0", id: 4, result: {} }]);
@@ -251,6 +356,7 @@ test("mcp: las herramientas devuelven Markdown y los errores con isError", async
   assert.match((await llamar("buscar", { texto: "matrimonio igualitario" })).content[0].text, /## Iniciativas: 1[\s\S]*Alma Vega \(Morena\)/);
   assert.match((await llamar("votaciones", { orden: "division" })).content[0].text, /y otra votación de este asunto/);
   assert.match((await llamar("cambios_recientes", { documento: "cpeum" })).content[0].text, /modifica 004/);
+  assert.equal(JSON.parse((await llamar("votacion", { id: "sil-1-1", sentido: "en_contra", formato: "json" })).content[0].text).votos[0].id, "beto");
   const error = await llamar("indice_documento", { documento: "nada" });
   assert.equal(error.isError, true);
   assert.match(error.content[0].text, /buscar_documentos/);

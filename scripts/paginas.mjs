@@ -29,7 +29,7 @@ import { paginasCongreso } from "./congreso.mjs";
 import { urlFoto } from "./lib/congreso.mjs";
 import { SITIO, escribirTarjetas } from "./lib/tarjeta.mjs";
 import { leerCorpus, fichaCatalogo, llmsCompleto, archivosDocumento } from "./lib/corpus.mjs";
-import { resumenVotaciones, resumenLegisladores, coleccionesCongreso } from "./lib/abiertos.mjs";
+import { resumenVotaciones, resumenLegisladores, coleccionesCongreso, archivosVotos, filtrosAsuntos } from "./lib/abiertos.mjs";
 import { indiceBusqueda } from "./lib/busqueda.mjs";
 
 const raiz = (archivo) => fileURLToPath(new URL(`../${archivo}`, import.meta.url));
@@ -102,7 +102,7 @@ if (vinculos.ok) {
 const nombresLey = new Map(fichas.map((f) => [f.documento, f.nombre]));
 const votaciones = vinculos.ok ? resumenVotaciones(vinculos, nombresLey) : [];
 const legisladores = vinculos.ok ? resumenLegisladores(vinculos) : [];
-const nota = "De congreso-mexicano (SIL, Gaceta Parlamentaria y Senado). Las cuentas son las de cada fuente; `division` es la parte de los votos emitidos que tuvo el lado perdedor (0 unanimidad, 0.5 empate).";
+const nota = "De congreso-mexicano (SIL, Gaceta Parlamentaria y Senado). Las cuentas son las de cada fuente; `division` es la parte de los votos emitidos que tuvo el lado perdedor (0 unanimidad, 0.5 empate). `leyes` son las que reformó el decreto de la votación (`origen: decreto`) y las que su asunto reforma o expide por su nombre (`origen: asunto`).";
 if (vinculos.ok) {
   await mkdir(publico("congreso"), { recursive: true });
   await writeFile(publico("congreso/votaciones.json"), JSON.stringify({ generada, nota, votaciones }));
@@ -110,8 +110,11 @@ if (vinculos.ok) {
     publico("congreso/legisladores.json"),
     JSON.stringify({ generada, nota: "De congreso-mexicano. `ausencia` es la parte de sus votaciones nominales con nombre en que se le registró ausente.", legisladores }),
   );
+  await escribir(archivosVotos(vinculos, votaciones));
 }
 await rm(publico("buscar"), { recursive: true, force: true });
+const asuntos = vinculos.ok ? coleccionesCongreso(vinculos, votaciones, nombresLey) : [];
+await escribir(filtrosAsuntos(asuntos));
 const busqueda = indiceBusqueda([
   ...corpus.documentos.map((d) => ({
     coleccion: d.clave,
@@ -120,7 +123,7 @@ const busqueda = indiceBusqueda([
     ambito: d.indice.ambito,
     unidades: d.indice.articulos.map((a) => ({ buscar: a.texto })),
   })),
-  ...(vinculos.ok ? coleccionesCongreso(vinculos, votaciones) : []),
+  ...asuntos,
 ]);
 await escribir(busqueda.archivos);
 

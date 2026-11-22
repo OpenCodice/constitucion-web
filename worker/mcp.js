@@ -13,9 +13,17 @@ Cómo usarlo:
 - Un tema («¿qué dice la ley sobre el matrimonio entre personas del mismo sexo?»): buscar es literal, así que haz varias búsquedas con las palabras que usaría la ley o una iniciativa («matrimonio igualitario», «matrimonio mismo sexo», «matrimonio dos personas», «matrimonio hombre mujer») y luego leer_articulo para el texto.
 - Una ley: buscar_documentos da su clave (cpeum, lft, lgs, jalisco/constitucion…); indice_documento, sus artículos; leer_articulo, el texto.
 - Qué cambió en la última reforma de una ley: detalle_cambio (diff de cada artículo y su proceso legislativo).
-- Leyes o votaciones controvertidas: votaciones con orden «division».
+- Votaciones controvertidas: votaciones con orden «division». Las leyes con más votaciones divididas: votaciones_por_ley.
+- Quién votó qué: votacion (con el id que da votaciones) lista el voto de cada legislador; votos_legislador, las votaciones de una persona.
+- Lo que presentó un legislador, o las iniciativas sobre una ley: asuntos (con autor, documento, texto o fechas).
 - Legisladores más ausentes: legisladores con orden «ausencia».
+- Las listas vienen por páginas: la respuesta dice cuántas hay y \`pagina\` pide la siguiente. Cada herramienta acepta \`formato\`: «json» devuelve los mismos datos estructurados en vez de Markdown.
+- Los datos tienen principio: el registro de cada ley empieza en su alta en OpenCodice (cambios_recientes lo dice) y los del Congreso cubren solo el periodo que cada respuesta indica. Que no haya registro no significa que no haya pasado.
 No es la publicación oficial ni asesoría legal.`;
+
+// En el MCP cada herramienta acepta además \`formato\`; la API elige por Accept.
+const FORMATO = { type: "string", enum: ["markdown", "json"], description: "markdown (por omisión) o json: los mismos datos, estructurados." };
+const conFormato = (esquema) => ({ ...esquema, properties: { ...esquema.properties, formato: FORMATO } });
 
 const SOLO_LECTURA = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 
@@ -35,8 +43,9 @@ async function llamar(env, nombre, args) {
   const falta = faltantes(h, args);
   if (falta.length) return { content: [{ type: "text", text: `Falta ${falta.map((k) => `\`${k}\``).join(", ")}.` }], isError: true };
   try {
-    const { md } = await h.run(env, args);
-    return { content: [{ type: "text", text: md }] };
+    const { formato, ...resto } = args;
+    const { md, datos } = await h.run(env, resto);
+    return { content: [{ type: "text", text: formato === "json" ? JSON.stringify(datos) : md }] };
   } catch (e) {
     if (!(e instanceof ErrorDatos)) console.error(e);
     return { content: [{ type: "text", text: e instanceof ErrorDatos ? e.message : "Error interno al leer los datos." }], isError: true };
@@ -52,14 +61,14 @@ async function atender(env, m) {
       return resultado(m.id, {
         protocolVersion: VERSIONES.includes(p.protocolVersion) ? p.protocolVersion : VERSIONES[0],
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "opencodice", title: "OpenCodice: la ley mexicana vigente y el Congreso", version: "2.0.0", websiteUrl: SITIO },
+        serverInfo: { name: "opencodice", title: "OpenCodice: la ley mexicana vigente y el Congreso", version: "2.1.0", websiteUrl: SITIO },
         instructions: INSTRUCCIONES,
       });
     case "ping":
       return resultado(m.id, {});
     case "tools/list":
       return resultado(m.id, {
-        tools: HERRAMIENTAS.map(({ name, title, description, inputSchema }) => ({ name, title, description, inputSchema, annotations: { title, ...SOLO_LECTURA } })),
+        tools: HERRAMIENTAS.map(({ name, title, description, inputSchema }) => ({ name, title, description, inputSchema: conFormato(inputSchema), annotations: { title, ...SOLO_LECTURA } })),
       });
     case "tools/call": {
       const r = await llamar(env, p.name, p.arguments ?? {});

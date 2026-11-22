@@ -79,7 +79,7 @@ export function openapi() {
     openapi: "3.1.0",
     info: {
       title: "OpenCodice",
-      version: "2.0.0",
+      version: "2.1.0",
       description: "El texto vigente de la ley mexicana (extraído de los PDF oficiales, con cada reforma registrada) y los datos del Congreso de la Unión. Solo lectura, sin autenticación, deterministas: ninguna respuesta es texto generado. También como servidor MCP en https://constitucion.app/mcp.",
       license: { name: "CC0 1.0 (datos)", url: "https://creativecommons.org/publicdomain/zero/1.0/" },
     },

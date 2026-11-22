@@ -19,11 +19,19 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     esquema y un `run` que devuelve `datos` (JSON) y `md`: `buscar`,
     `buscar_documentos`, `indice_documento`, `leer_articulo`,
     `historia_articulo`, `detalle_cambio` (la página en Markdown de un cambio
-    de la bitácora, por omisión la última reforma), `cambios_recientes`,
-    `votaciones` y `legisladores`. De ahí salen el MCP, la API y el OpenAPI.
+    de la bitácora, por omisión la última reforma), `cambios_recientes` (con
+    `documento`, desde cuándo se registra y sus artículos con más reformas),
+    `votaciones`, `votaciones_por_ley` (el agregado, con su método en la
+    respuesta), `votacion` (el voto de cada legislador), `votos_legislador`,
+    `legisladores` y `asuntos` (iniciativas y proposiciones por autor, ley,
+    texto, desenlace y fechas). De ahí salen el MCP, la API y el OpenAPI.
+    Toda lista se pagina con `paginar` de `datos.js` (`limite`, `pagina`) y
+    dice cuántas páginas hay; una respuesta que cubre un periodo lo dice.
   - `mcp.js` → `/mcp`: servidor MCP (Streamable HTTP, sin sesiones ni SSE).
     Sus `instructions` le dicen al modelo cómo responder un tema (varias
-    búsquedas literales), una reforma, lo controvertido y las ausencias. Un
+    búsquedas literales), una reforma, lo controvertido, quién votó qué, lo
+    que presentó un legislador y las ausencias; cada herramienta acepta ahí
+    `formato: "json"` (la API elige por `Accept`). Un
     GET del navegador explica cómo conectarse.
   - `api.js` → `/api` (lista), `/api/{herramienta}` (GET con parámetros, las
     listas separadas por coma, o POST con JSON; responde JSON o Markdown por
@@ -47,7 +55,12 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     fecha, `division`, en contra o ausentes; agrupa por asunto y cámara, sin
     tocar las filas en memoria) y `congreso/legisladores.json` (en funciones
     por omisión; orden por ausencia con un mínimo de votaciones). Los grupos se
-    aceptan por sigla.
+    aceptan por sigla. Una votación es de una ley solo por su lista `leyes`
+    (nunca por buscar el nombre en el asunto al consultar). Los votos con
+    nombre se leen de `congreso/_/votos/` (por votación) y
+    `congreso/_/votos-persona/` (por persona), y los asuntos se filtran con
+    `congreso/_/{tipo}/f.json` y el índice de la búsqueda, leyendo solo las
+    fichas de la página pedida.
   - `index.js` enruta y responde la versión en Markdown de `/` (`llms.txt`),
     `/leyes` (el catálogo) y la bitácora a quien la prefiere en `Accept`.
   - Se prueba en `scripts/agentes.test.mjs` con un despliegue sintético
@@ -70,7 +83,14 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
 - `scripts/lib/busqueda.mjs` — el índice de la búsqueda en `public/buscar/`
   (palabra → ids, en 256 archivos; `meta.json` con el rango de ids de cada
   colección y las palabras comunes, las que están en más del 4 % de las
-  unidades) y las fichas de los asuntos en `congreso/_/{tipo}/{n}.json`.
+  unidades) y las fichas de los asuntos en `congreso/_/{tipo}/{n}.json`. De un
+  asunto solo se indexa su título, no sus autores.
+- Para las herramientas, `abiertos.mjs` escribe además: en cada votación, las
+  leyes que su asunto reforma o expide por su nombre (`buscadorDeLeyes`:
+  nombre completo, tras un verbo de reforma, el más largo si se enciman;
+  `origen: asunto`, frente a `decreto`) y `otras_fuentes`; los votos con
+  nombre en trozos (`archivosVotos`); y los filtros de los asuntos
+  (`filtrosAsuntos`: fecha, desenlace, partido, autores y leyes por posición).
 - `scripts/paginas.mjs` — genera en cada despliegue (`deploy.yml` despliega
   también al terminar cada vigilancia) las páginas, que dependen de los repos de datos; el
   HTML no se versiona. Lee la API de GitHub (REST y GraphQL),

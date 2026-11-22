@@ -36,3 +36,15 @@ export const trozoDe = (env, doc, n) => json(env, `ley/_/${doc}/${n}.json`);
 export const indiceDe = (env, doc) => json(env, `ley/${doc}.json`);
 
 export class ErrorDatos extends Error {}
+
+// Una página de una lista: las herramientas que listan aceptan `limite` y
+// `pagina`, y dicen cuántas páginas hay.
+export function paginar(xs, { limite, pagina } = {}, def, max) {
+  const n = Math.min(Math.max(1, Number(limite) || def), max);
+  const paginas = Math.max(1, Math.ceil(xs.length / n));
+  const p = Math.max(1, Math.floor(Number(pagina)) || 1);
+  return { total: xs.length, pagina: p, paginas, elementos: xs.slice((p - 1) * n, p * n) };
+}
+
+export const pieDePagina = (r) =>
+  r.paginas > 1 ? `\n(página ${r.pagina} de ${r.paginas}${r.pagina < r.paginas ? `; la siguiente, con \`pagina\`: ${r.pagina + 1}` : ""})\n` : "";
