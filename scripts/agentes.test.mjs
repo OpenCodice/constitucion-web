@@ -12,7 +12,7 @@ import { diferenciaTexto } from "./lib/diferencias.mjs";
 import { archivosDocumento, fichaCatalogo } from "./lib/corpus.mjs";
 import { indiceBusqueda } from "./lib/busqueda.mjs";
 import { modeloCongreso } from "./lib/congreso.mjs";
-import { archivosVotos, buscadorDeLeyes, filtrosAsuntos, resumenVotaciones } from "./lib/abiertos.mjs";
+import { archivosVotos, buscadorDeLeyes, enLoGeneral, filtrosAsuntos, resumenVotaciones } from "./lib/abiertos.mjs";
 
 const art = (n, cuerpo) => `# Artículo ${n}.\n\n${cuerpo}`;
 const SHA_REFORMA = "a".repeat(40);
@@ -270,6 +270,12 @@ test("leyes de un asunto: el nombre completo tras un verbo de reforma, y el más
   assert.deepEqual(nombradas("Que expide la Ley General de Salud Mental y reforma la Ley General de Salud."), ["lgs"]);
   const filas = resumenVotaciones(MODELO, new Map([["cpeum", "Constitución Política de los Estados Unidos Mexicanos"]]));
   assert.deepEqual(filas.find((v) => v.id === "sil-1-1").leyes, [{ documento: "cpeum", nombre: "Constitución Política de los Estados Unidos Mexicanos", url: "https://constitucion.app/ley/cpeum", origen: "asunto" }]);
+});
+
+test("en lo general: no lo es la votación de los artículos reservados", () => {
+  assert.equal(enLoGeneral("Aprobado en lo general y en lo particular de los artículos no reservados"), true);
+  assert.equal(enLoGeneral("Aprobado en lo general y en lo particular de los artículos reservados 8, 11 y 12"), false);
+  assert.equal(enLoGeneral("Aprobado en lo particular"), false);
 });
 
 test("votaciones: por documento solo las de sus leyes, y por páginas", async () => {

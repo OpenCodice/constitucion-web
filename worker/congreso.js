@@ -247,6 +247,8 @@ export async function votacion(env, { id, sentido, grupo } = {}) {
   return {
     ...v,
     fuente_de_los_nombres: ficha?.fuente ?? null,
+    // Sin lista de nombres, las otras del mismo asunto y cámara que sí la tienen.
+    con_nombres_del_asunto: ficha || !v.expediente ? [] : r.votaciones.filter((x) => x.expediente === v.expediente && x.camara === v.camara && x.votos_con_nombre).map((x) => x.id),
     sin_nombre: (ficha?.sin_nombre ?? []).filter((f) => (!s || f.sentido === s[0]) && (!grupo || deGrupo(f.grupo, grupo))),
     filtro: { sentido: s?.[0] ?? null, grupo: grupo ?? null },
     votos,
@@ -260,7 +262,9 @@ export function mdVotacion(v) {
     `${v.asunto ?? ""}${v.resultado && v.resultado !== v.asunto ? `\n\n${v.resultado}` : ""}`,
     `${cuentasDe(v)}.${resumenGrupos(v) ? ` Por grupo (a favor-en contra-abstenciones): ${resumenGrupos(v)}.` : ""}${leyes ? `\n\nLeyes: ${leyes}.` : ""}${v.decreto ? `\n\nDecreto: ${v.decreto.titulo} (DOF ${v.decreto.fecha}) ${v.decreto.dof ?? ""}` : ""}${v.otras_fuentes?.length ? `\n\nLa misma votación según otra fuente: ${v.otras_fuentes.map((x) => `\`${x}\``).join(", ")}.` : ""}`,
   ];
-  if (!v.votos_con_nombre) partes.push("La fuente no publica el voto de cada legislador en esta votación: solo las cuentas.");
+  if (!v.votos_con_nombre) {
+    partes.push(`La fuente no publica el voto de cada legislador en esta votación: solo las cuentas.${v.con_nombres_del_asunto.length ? ` Del mismo asunto en esta cámara sí lo tienen: ${v.con_nombres_del_asunto.map((x) => `\`${x}\``).join(", ")}.` : ""}`);
+  }
   else {
     const filtro = [v.filtro.sentido, v.filtro.grupo].filter(Boolean).join(", ");
     partes.push(`## Votos con nombre${filtro ? ` (${filtro})` : ""}: ${v.votos.length}${v.fuente_de_los_nombres !== v.id ? `\n\nLos nombres son los de \`${v.fuente_de_los_nombres}\`.` : ""}`);

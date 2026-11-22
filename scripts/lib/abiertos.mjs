@@ -75,6 +75,11 @@ export function buscadorDeLeyes(nombresLey) {
   };
 }
 
+// El SIL rotula la votación de las reservas «Aprobado en lo general y en lo
+// particular de los artículos reservados»: esa no es la de lo general («…de
+// los artículos no reservados» sí).
+export const enLoGeneral = (texto) => /en lo general/i.test(texto) && !/art[ií]culos reservados/i.test(texto);
+
 export function resumenVotaciones(m, nombresLey = new Map()) {
   const nombradas = buscadorDeLeyes(nombresLey);
   return votacionesUnicas(m)
@@ -98,7 +103,7 @@ export function resumenVotaciones(m, nombresLey = new Map()) {
         camara: nombreOrg(m, v.organization_id),
         asunto: v.motion?.denominacion ?? texto ?? null,
         resultado: texto || null,
-        en_lo_general: /en lo general/i.test(`${texto} ${v.motion?.denominacion ?? ""}`),
+        en_lo_general: enLoGeneral(`${texto} ${v.motion?.denominacion ?? ""}`),
         ...c,
         division: Math.round(division(c) * 1000) / 1000,
         por_grupo: (v.group_results ?? []).map((g) => ({
