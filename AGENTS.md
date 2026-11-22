@@ -77,7 +77,8 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   leyes-federales y fiscal-mexicano (mismo texto) se sirve de leyes-federales.
 - `scripts/lib/abiertos.mjs` — `congreso/votaciones.json` (una fila por
   votación, sin duplicar la de otra fuente que apunta a la del SIL: cuentas
-  totales y por grupo, `division` = la parte de los votos emitidos que tuvo el
+  totales y por grupo (del conteo de la fuente o, si no lo publica, como
+  en muchas del Senado, de los votos con nombre: `por_grupo_origen`), `division` = la parte de los votos emitidos que tuvo el
   lado perdedor, `en_lo_general`, decreto y leyes) y
   `congreso/legisladores.json` (mandato actual, votos con nombre por
   sentido, ausencias y su tasa, iniciativas presentadas y aprobadas, `foto`), y los

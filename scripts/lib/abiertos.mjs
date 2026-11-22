@@ -80,11 +80,42 @@ export function buscadorDeLeyes(nombresLey) {
 // los artículos no reservados» sí).
 export const enLoGeneral = (texto) => /en lo general/i.test(texto) && !/art[ií]culos reservados/i.test(texto);
 
+// El SIL no publica el conteo por grupo de muchas votaciones del Senado, pero
+// sí el voto de cada senador: entonces se cuenta de ahí, con los votos que la
+// fuente no atribuye a nadie en el grupo que les da. `origen` dice de cuál.
+function porGrupo(m, v, conVotos) {
+  if (v.group_results?.length) {
+    const grupos = v.group_results.map((g) => ({ grupo: g.grupo, a_favor: g.yes ?? 0, en_contra: g.no ?? 0, abstenciones: g.abstain ?? 0, ausentes: g.absent ?? 0 }));
+    return { grupos, origen: "fuente" };
+  }
+  if (!conVotos) return { grupos: [], origen: null };
+  const grupos = new Map();
+  const sumar = (grupo, option, n) => {
+    const sentido = SENTIDOS[option];
+    if (!sentido || sentido === "sin_votar") return;
+    if (!grupos.has(grupo)) grupos.set(grupo, { grupo, a_favor: 0, en_contra: 0, abstenciones: 0, ausentes: 0 });
+    grupos.get(grupo)[sentido] += n;
+  };
+  // Los votos sin atribuir traen solo la etiqueta de la fuente («PAN»): van
+  // al grupo de los votos con nombre que traen esa misma etiqueta.
+  const nombre = (etiqueta) => etiqueta || "Sin grupo";
+  const porEtiqueta = new Map();
+  for (const x of conVotos.votes) {
+    if (!x.voter_id) continue;
+    const grupo = nombreOrg(m, x.group_id) ?? nombre(x.grupo_fuente);
+    if (x.grupo_fuente) porEtiqueta.set(x.grupo_fuente, grupo);
+    sumar(grupo, x.option, 1);
+  }
+  for (const f of conVotos.votos_faltantes ?? []) sumar(porEtiqueta.get(f.grupo) ?? nombre(f.grupo), f.option, Number(f.value) || 0);
+  return { grupos: [...grupos.values()], origen: "votos_con_nombre" };
+}
+
 export function resumenVotaciones(m, nombresLey = new Map()) {
   const nombradas = buscadorDeLeyes(nombresLey);
   return votacionesUnicas(m)
     .map(({ v, conVotos }) => {
       const c = cuentas(v.counts);
+      const grupos = porGrupo(m, v, conVotos);
       const decreto = v.expediente_id ? m.decretoPorExpediente.get(v.expediente_id) : null;
       const texto = v.motion?.text ?? "";
       // Las leyes de la votación: las que reformó su decreto y, haya o no
@@ -106,13 +137,8 @@ export function resumenVotaciones(m, nombresLey = new Map()) {
         en_lo_general: enLoGeneral(`${texto} ${v.motion?.denominacion ?? ""}`),
         ...c,
         division: Math.round(division(c) * 1000) / 1000,
-        por_grupo: (v.group_results ?? []).map((g) => ({
-          grupo: g.grupo,
-          a_favor: g.yes ?? 0,
-          en_contra: g.no ?? 0,
-          abstenciones: g.abstain ?? 0,
-          ausentes: g.absent ?? 0,
-        })),
+        por_grupo: grupos.grupos,
+        por_grupo_origen: grupos.origen,
         votos_con_nombre: Boolean(conVotos),
         otras_fuentes: (m.otrasFuentes.get(v.id) ?? []).map((x) => x.id).sort(),
         expediente: v.expediente_id ? `${SITIO}${urlExpediente(v.expediente_id)}` : null,

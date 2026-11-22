@@ -283,6 +283,29 @@ test("leyes de un asunto: el nombre completo tras un verbo de reforma, y el más
   assert.deepEqual(filas.find((v) => v.id === "sil-1-1").leyes, [{ documento: "cpeum", nombre: "Constitución Política de los Estados Unidos Mexicanos", url: "https://constitucion.app/ley/cpeum", origen: "asunto" }]);
 });
 
+test("votaciones: sin conteo por grupo de la fuente, se cuenta de los votos con nombre", () => {
+  const m = modeloCongreso({
+    organizaciones: [{ id: "camara-de-senadores", name: "Cámara de Senadores" }, { id: "partido-pan", name: "Partido Acción Nacional" }],
+    personas: [], mandatos: [], expedientes: [], decretos: [],
+    votaciones: [
+      { id: "sil-9-1", organization_id: "camara-de-senadores", start_date: "2026-10-01", motion: { text: "Aprobado" }, counts: [], votos_publicados: true,
+        votes: [{ voter_id: "a", option: "yes", group_id: "partido-pan", grupo_fuente: "PAN" }, { voter_id: "b", option: "no", group_id: "partido-pan", grupo_fuente: "PAN" }, { voter_id: "c", option: "absent", grupo_fuente: "SG" }],
+        votos_faltantes: [{ grupo: "PAN", option: "no", value: 2 }] },
+      { id: "sil-9-2", organization_id: "camara-de-senadores", start_date: "2026-10-01", motion: { text: "Aprobado" }, counts: [],
+        group_results: [{ grupo: "PAN", yes: 1, no: 0, abstain: 0, absent: 0 }] },
+      { id: "sil-9-3", organization_id: "camara-de-senadores", start_date: "2026-10-01", motion: { text: "Aprobado" }, counts: [], votes: [] },
+    ],
+  });
+  const filas = new Map(resumenVotaciones(m).map((v) => [v.id, v]));
+  assert.deepEqual(filas.get("sil-9-1").por_grupo, [
+    { grupo: "Partido Acción Nacional", a_favor: 1, en_contra: 3, abstenciones: 0, ausentes: 0 },
+    { grupo: "SG", a_favor: 0, en_contra: 0, abstenciones: 0, ausentes: 1 },
+  ]);
+  assert.equal(filas.get("sil-9-1").por_grupo_origen, "votos_con_nombre");
+  assert.deepEqual([filas.get("sil-9-2").por_grupo[0].grupo, filas.get("sil-9-2").por_grupo_origen], ["PAN", "fuente"]);
+  assert.deepEqual([filas.get("sil-9-3").por_grupo, filas.get("sil-9-3").por_grupo_origen], [[], null]);
+});
+
 test("en lo general: no lo es la votación de los artículos reservados", () => {
   assert.equal(enLoGeneral("Aprobado en lo general y en lo particular de los artículos no reservados"), true);
   assert.equal(enLoGeneral("Aprobado en lo general y en lo particular de los artículos reservados 8, 11 y 12"), false);

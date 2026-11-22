@@ -109,6 +109,9 @@ const resumenGrupos = (v) =>
     .map((g) => `${g.grupo} ${g.a_favor}-${g.en_contra}${g.abstenciones ? `-${g.abstenciones}` : ""}`)
     .join(", ");
 
+// Sin conteo por grupo de la fuente, se contó del voto de cada legislador.
+const deLosVotos = (v) => (v.por_grupo_origen === "votos_con_nombre" ? ", de los votos con nombre" : "");
+
 const cuentasDe = (v) =>
   `${v.a_favor} a favor, ${v.en_contra} en contra, ${cuenta(v.abstenciones, "abstención", "abstenciones")}, ${cuenta(v.ausentes, "ausente", "ausentes")} (división ${v.division})`;
 const leyesDe = (v) => v.leyes.map((l) => `${l.nombre ?? l.documento} (\`${l.documento}\`${l.origen === "asunto" ? ", por el asunto" : ""})`).join("; ");
@@ -117,7 +120,7 @@ function lineaVotacion(v, extra = "") {
   const leyes = leyesDe(v);
   const otras = v.otras_del_asunto ? ` (${v.otras_del_asunto === 1 ? "y otra votación" : `y ${v.otras_del_asunto} votaciones más`} de este asunto en esta cámara)` : "";
   return `- **${v.fecha ?? "s/f"} · ${v.camara}** · \`${v.id}\`${extra} · ${cuentasDe(v)}
-  ${v.asunto ?? v.resultado ?? ""}${otras}${leyes ? `\n  Leyes: ${leyes}` : ""}${resumenGrupos(v) ? `\n  Por grupo (a favor-en contra-abstenciones): ${resumenGrupos(v)}` : ""}
+  ${v.asunto ?? v.resultado ?? ""}${otras}${leyes ? `\n  Leyes: ${leyes}` : ""}${resumenGrupos(v) ? `\n  Por grupo (a favor-en contra-abstenciones${deLosVotos(v)}): ${resumenGrupos(v)}` : ""}
   ${v.url}`;
 }
 
@@ -260,7 +263,7 @@ export function mdVotacion(v) {
   const partes = [
     `# Votación \`${v.id}\`: ${v.fecha ?? "s/f"} · ${v.camara}`,
     `${v.asunto ?? ""}${v.resultado && v.resultado !== v.asunto ? `\n\n${v.resultado}` : ""}`,
-    `${cuentasDe(v)}.${resumenGrupos(v) ? ` Por grupo (a favor-en contra-abstenciones): ${resumenGrupos(v)}.` : ""}${leyes ? `\n\nLeyes: ${leyes}.` : ""}${v.decreto ? `\n\nDecreto: ${v.decreto.titulo} (DOF ${v.decreto.fecha}) ${v.decreto.dof ?? ""}` : ""}${v.otras_fuentes?.length ? `\n\nLa misma votación según otra fuente: ${v.otras_fuentes.map((x) => `\`${x}\``).join(", ")}.` : ""}`,
+    `${cuentasDe(v)}.${resumenGrupos(v) ? ` Por grupo (a favor-en contra-abstenciones${deLosVotos(v)}): ${resumenGrupos(v)}.` : ""}${leyes ? `\n\nLeyes: ${leyes}.` : ""}${v.decreto ? `\n\nDecreto: ${v.decreto.titulo} (DOF ${v.decreto.fecha}) ${v.decreto.dof ?? ""}` : ""}${v.otras_fuentes?.length ? `\n\nLa misma votación según otra fuente: ${v.otras_fuentes.map((x) => `\`${x}\``).join(", ")}.` : ""}`,
   ];
   if (!v.votos_con_nombre) {
     partes.push(`La fuente no publica el voto de cada legislador en esta votación: solo las cuentas.${v.con_nombres_del_asunto.length ? ` Del mismo asunto en esta cámara sí lo tienen: ${v.con_nombres_del_asunto.map((x) => `\`${x}\``).join(", ")}.` : ""}`);
