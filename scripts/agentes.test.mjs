@@ -327,6 +327,17 @@ test("legisladores: una votación con dos fuentes cuenta una vez, en la ficha y 
   assert.deepEqual([deLaApi.votaciones, deLaApi.ausencias, deLaApi.a_favor], [deLaFicha.length, 1, 1]);
 });
 
+test("cobertura: una consulta sin resultados dice hasta dónde llegan los datos", async () => {
+  const b = await api("buscar?texto=zzzinexistente");
+  assert.deepEqual([b.leyes.length, b.congreso.length], [0, 0]);
+  assert.ok(b.cobertura.leyes.documentos > 0);
+  assert.match(b.cobertura.congreso.votacion.desde, /^\d{4}-\d\d-\d\d$/);
+  assert.match(await (await pedir("/api/buscar?texto=zzzinexistente", md)).text(), /Sin resultados\.\n\nCobertura: \d+ documentos[\s\S]*no hay datos de los congresos de los estados/);
+  const v = await api("votaciones?desde=1990-01-01&hasta=1990-12-31");
+  assert.deepEqual([v.total, v.cobertura.votaciones, v.cobertura.desde, v.cobertura.hasta], [0, 3, "2026-03-01", "2026-09-22"]);
+  assert.match(await (await pedir("/api/votaciones?hasta=1990-12-31", md)).text(), /Ninguna votación coincide\. Cobertura: 3 votaciones nominales del 2026-03-01 al 2026-09-22/);
+});
+
 test("en lo general: no lo es la votación de los artículos reservados", () => {
   assert.equal(enLoGeneral("Aprobado en lo general y en lo particular de los artículos no reservados"), true);
   assert.equal(enLoGeneral("Aprobado en lo general y en lo particular de los artículos reservados 8, 11 y 12"), false);

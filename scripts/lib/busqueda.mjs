@@ -27,7 +27,9 @@ export function indiceBusqueda(colecciones) {
   const meta = [];
   let siguiente = 0;
   for (const c of colecciones) {
-    meta.push({ coleccion: c.coleccion, tipo: c.tipo, nombre: c.nombre, ambito: c.ambito, inicio: siguiente, n: c.unidades.length });
+    const fechas = c.tipo === "ley" ? [] : c.unidades.map((u) => u.fecha).filter(Boolean).sort();
+    const periodo = fechas.length ? { desde: fechas[0], hasta: fechas.at(-1) } : undefined;
+    meta.push({ coleccion: c.coleccion, tipo: c.tipo, nombre: c.nombre, ambito: c.ambito, periodo, inicio: siguiente, n: c.unidades.length });
     for (const u of c.unidades) {
       const id = siguiente++;
       for (const p of new Set(palabras(u.buscar))) {

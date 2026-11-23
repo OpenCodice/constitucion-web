@@ -152,6 +152,23 @@ export async function buscar(env, { texto, tipos, documento, ambito, limite = 10
     documentos_con_coincidencias: resultadoLeyes.length,
     articulos_con_coincidencias: resultadoLeyes.reduce((s, x) => s + x.coincidencias, 0),
     congreso: resultadoCongreso,
+    cobertura: cobertura(cols),
+  };
+}
+
+// Hasta dónde llegan los datos en que se buscó, para que una búsqueda sin
+// resultados no se lea como «nunca ocurrió».
+function cobertura(cols) {
+  const leyes = cols.filter((c) => c.tipo === "ley");
+  const estados = [...new Set(leyes.filter((c) => c.ambito === "estatal").map((c) => c.coleccion.split("/")[0]))].sort();
+  return {
+    leyes: {
+      documentos: leyes.length,
+      estados_con_leyes: estados,
+      nota: "El texto vigente. De los estados fuera de `estados_con_leyes` solo está su constitución.",
+    },
+    congreso: Object.fromEntries(cols.filter((c) => c.tipo !== "ley").map((c) => [c.tipo, { total: c.n, desde: c.periodo?.desde ?? null, hasta: c.periodo?.hasta ?? null }])),
+    nota: "Del Congreso de la Unión; no hay datos de los congresos de los estados ni de antes de la primera fecha de cada tipo.",
   };
 }
 
@@ -183,5 +200,10 @@ export function mdBusqueda(r) {
   }
   if (r.paginas > 1) partes.push(pieDePagina(r).trim());
   if (!r.leyes.length && !r.congreso.length) partes.push("Sin resultados.");
+  const c = r.cobertura;
+  const tipos = Object.entries(c.congreso).map(([t, x]) => `${TIPOS[t].toLowerCase()} (${x.total}${x.desde ? `, del ${x.desde} al ${x.hasta}` : ""})`);
+  partes.push(
+    `Cobertura: ${c.leyes.documentos} documentos con su texto vigente; leyes estatales además de la constitución solo de ${c.leyes.estados_con_leyes.join(", ") || "ningún estado"}.${tipos.length ? ` Del Congreso de la Unión: ${tipos.join("; ")}; no hay datos de los congresos de los estados ni de antes de esas fechas.` : ""}`,
+  );
   return `${partes.join("\n\n")}\n`;
 }

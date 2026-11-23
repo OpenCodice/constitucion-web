@@ -46,6 +46,20 @@ async function leerVotaciones(env) {
   return r;
 }
 
+// Hasta dónde llegan las votaciones publicadas, para que una consulta sin
+// resultados no se lea como «nunca se votó».
+function coberturaVotaciones(r) {
+  const fechas = r.votaciones.map((v) => v.fecha).filter(Boolean).sort();
+  return {
+    votaciones: r.votaciones.length,
+    desde: fechas[0] ?? null,
+    hasta: fechas.at(-1) ?? null,
+    camaras: [...new Set(r.votaciones.map((v) => v.camara).filter(Boolean))].sort(),
+    nota: "Votaciones nominales del Congreso de la Unión; no hay datos de antes de `desde` ni de los congresos de los estados.",
+  };
+}
+const mdCobertura = (c) => `Cobertura: ${c.votaciones} votaciones nominales del ${c.desde} al ${c.hasta} (${c.camaras.join(", ")}); no hay datos de antes ni de los congresos de los estados.`;
+
 // Las votaciones que pasan los filtros comunes, cada una con su posición en
 // el archivo (la que usan los trozos de votos con nombre).
 async function filtrar(env, r, { camara, documento, texto, grupo_en_contra, desde, hasta, en_lo_general } = {}) {
@@ -100,7 +114,7 @@ export async function votaciones(env, { orden = "fecha", agrupar = true, limite,
     xs = [...vistos.values()];
   }
   const p = paginar(xs, { limite, pagina }, 20, 100);
-  return { total: p.total, pagina: p.pagina, paginas: p.paginas, orden, nota: r.nota, votaciones: p.elementos };
+  return { total: p.total, pagina: p.pagina, paginas: p.paginas, orden, nota: r.nota, cobertura: coberturaVotaciones(r), votaciones: p.elementos };
 }
 
 const resumenGrupos = (v) =>
@@ -127,10 +141,10 @@ function lineaVotacion(v, extra = "") {
 const cabecera = (titulo, r, n) => `# ${titulo} (${r.total}${r.total > n ? `, se muestran ${n}` : ""}${r.orden ? `; orden: ${r.orden}` : ""})`;
 
 export function mdVotaciones(r) {
-  if (!r.votaciones.length) return "Ninguna votación coincide.\n";
+  if (!r.votaciones.length) return `Ninguna votación coincide. ${mdCobertura(r.cobertura)}\n`;
   return `${cabecera("Votaciones", r, r.votaciones.length)}
 
-${r.nota} Quién votó qué en una: herramienta \`votacion\` con su id.
+${r.nota} Quién votó qué en una: herramienta \`votacion\` con su id. ${mdCobertura(r.cobertura)}
 
 ${r.votaciones.map((v) => lineaVotacion(v)).join("\n")}
 ${pieDePagina(r)}`;
@@ -325,6 +339,7 @@ export async function votosLegislador(env, { legislador, sentido, orden = "fecha
     pagina: p.pagina,
     paginas: p.paginas,
     orden,
+    cobertura: coberturaVotaciones(r),
     votaciones: p.elementos,
   };
 }
@@ -340,7 +355,7 @@ ${[l.camara, l.grupo, l.url].filter(Boolean).join(" · ")}
 
 En las votaciones con nombre que pasan los filtros: ${resumen}. Una votación sin su nombre (la fuente no publicó la lista, o no era legislador) no aparece.
 
-${r.votaciones.length ? r.votaciones.map((v) => lineaVotacion(v, ` · **${titulos[v.voto]}**`)).join("\n") : "Ninguna votación coincide."}
+${r.votaciones.length ? r.votaciones.map((v) => lineaVotacion(v, ` · **${titulos[v.voto]}**`)).join("\n") : `Ninguna votación coincide. ${mdCobertura(r.cobertura)}`}
 ${pieDePagina(r)}`;
 }
 
