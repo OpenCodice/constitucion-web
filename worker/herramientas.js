@@ -362,7 +362,7 @@ export const HERRAMIENTAS = [
     name: "legisladores",
     title: "Legisladores",
     description:
-      "Diputados y senadores con su grupo, entidad y estatus, y sus cuentas: votaciones nominales con su nombre, a favor, en contra, abstenciones, ausencias (y su tasa), iniciativas presentadas y aprobadas. Ordena por ausencia (los más ausentes), asistencia, iniciativas o nombre. Por omisión solo los que están en funciones.",
+      "Diputados y senadores con su grupo, entidad y estatus, y sus cuentas: votaciones nominales con su nombre, a favor, en contra, abstenciones, ausencias (y su tasa), iniciativas presentadas y aprobadas. Ordena por ausencia (los más ausentes), asistencia, iniciativas o nombre. Por omisión solo los que están en funciones. La ausencia es en votaciones nominales (no inasistencia a sesiones) y la fuente no dice si fue justificada; las votaciones ocurridas durante una licencia no se cuentan, porque las listas no incluyen a quien está de licencia.",
     inputSchema: {
       type: "object",
       properties: {

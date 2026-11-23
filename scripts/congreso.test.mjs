@@ -214,6 +214,7 @@ test("legislador con iniciativas y votos", () => {
   assert.match(h, /En 1 votación otra fuente le registra un sentido distinto/);
   assert.match(h, /votos que la fuente no atribuye a nadie/);
   assert.match(h, /Licencias y reincorporaciones/);
+  assert.match(h, /Las listas de votación no incluyen a quien está de licencia/);
   assert.match(h, /Jalisco/);
 });
 

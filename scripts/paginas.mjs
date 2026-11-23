@@ -109,7 +109,7 @@ if (vinculos.ok) {
   await writeFile(publico("congreso/votaciones.json"), JSON.stringify({ generada, nota, votaciones }));
   await writeFile(
     publico("congreso/legisladores.json"),
-    JSON.stringify({ generada, nota: "De congreso-mexicano. `ausencia` es la parte de sus votaciones nominales con nombre en que se le registró ausente.", legisladores }),
+    JSON.stringify({ generada, nota: "De congreso-mexicano. `ausencia` es la parte de sus votaciones nominales con nombre en que se le registró ausente: no es inasistencia a sesiones, y la fuente no dice si la ausencia fue justificada. Quien está de licencia no aparece en las listas de votación, así que ese periodo no cuenta.", legisladores }),
   );
   await escribir(archivosVotos(vinculos, votaciones));
 }

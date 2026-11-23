@@ -857,6 +857,7 @@ function seccionVotosPersona(m, id, mandatos) {
     [v, ...(m.otrasFuentes.get(v.id) ?? [])].some((o) => o !== fuente && o.votes?.some((y) => y.voter_id === id && y.option !== voto.option)),
   ).length;
   if (conOtroSentido) notas.push(`en ${plural(conOtroSentido, "votación", "votaciones")} otra fuente le registra un sentido distinto; aquí se cuenta el del SIL cuando publica los nombres`);
+  if (mandatos.some((x) => x.licencias?.some((l) => /^Licencia/.test(l.tipo)))) notas.push("las listas de votación no incluyen a quien está de licencia: las votaciones de esos periodos no cuentan aquí");
   if (conFaltantes) notas.push(`${plural(conFaltantes, "votación", "votaciones")} de su cámara ${conFaltantes === 1 ? "tiene" : "tienen"} votos que la fuente no atribuye a nadie; si alguno es suyo, no aparece aquí`);
   const filas = votos.map(({ votacion: v, fuente, voto: x }) => [
     fechaCorta(v.start_date),
