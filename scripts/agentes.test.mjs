@@ -427,6 +427,7 @@ test("mcp: las herramientas devuelven Markdown y los errores con isError", async
 test("api: índice, OpenAPI de las mismas herramientas y Markdown por Accept", async () => {
   const i = await api("");
   assert.deepEqual(i.herramientas.map((h) => h.nombre), HERRAMIENTAS.map((h) => h.name));
+  assert.equal(i.herramientas.find((h) => h.nombre === "legisladores").parametros.camara, "Uno de: diputados, senado.");
   const o = await (await pedir("/openapi.json")).json();
   assert.equal(o.openapi, "3.1.0");
   assert.deepEqual(Object.keys(o.paths), HERRAMIENTAS.map((h) => `/api/${h.name}`));

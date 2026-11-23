@@ -37,7 +37,7 @@ function indice() {
       nombre: h.name,
       descripcion: h.description,
       url: `${SITIO}/api/${h.name}`,
-      parametros: Object.fromEntries(Object.entries(h.inputSchema.properties).map(([k, v]) => [k, v.description ?? v.type])),
+      parametros: Object.fromEntries(Object.entries(h.inputSchema.properties).map(([k, v]) => [k, v.description ?? (v.enum ? `Uno de: ${v.enum.join(", ")}.` : v.type)])),
       requeridos: h.inputSchema.required ?? [],
     })),
     archivos: ARCHIVOS.map(([ruta, descripcion]) => ({ url: `${SITIO}${ruta}`, descripcion })),
