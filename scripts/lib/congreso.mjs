@@ -81,6 +81,20 @@ const agregar = (mapa, clave, valor) => {
 
 // Construye el modelo y sus índices a partir de los registros ya leídos
 // (separado de la lectura para poder probarlo sin git).
+// Una votación de otra fuente (Gaceta, Senado) que apunta a una del SIL es
+// la misma votación: se cuenta una vez, con los votos con nombre de la que
+// los tenga.
+export function votacionesUnicas(m) {
+  const unicas = [];
+  for (const v of m.votaciones.values()) {
+    if (v.votacion_sil && m.votaciones.has(v.votacion_sil)) continue;
+    const pares = m.otrasFuentes.get(v.id) ?? [];
+    const conVotos = [v, ...pares].find((x) => x.votos_publicados && x.votes?.length) ?? null;
+    unicas.push({ v, conVotos });
+  }
+  return unicas;
+}
+
 export function modeloCongreso(r) {
   const porId = (xs) => new Map(xs.map((x) => [x.id, x]));
   const m = {
@@ -113,7 +127,7 @@ export function modeloCongreso(r) {
   for (const vs of m.votacionesPorExpediente.values()) vs.sort((a, b) => (a.start_date ?? "").localeCompare(b.start_date ?? "") || a.id.localeCompare(b.id));
   // Votos de cada persona.
   m.votosPorPersona = new Map();
-  for (const v of m.votaciones.values()) for (const x of v.votes ?? []) agregar(m.votosPorPersona, x.voter_id, { votacion: v, voto: x });
+  for (const { v, conVotos } of votacionesUnicas(m)) for (const x of conVotos?.votes ?? []) agregar(m.votosPorPersona, x.voter_id, { votacion: v, fuente: conVotos, voto: x });
   for (const vs of m.votosPorPersona.values()) vs.sort((a, b) => (b.votacion.start_date ?? "").localeCompare(a.votacion.start_date ?? ""));
   // Mandatos de cada persona.
   m.mandatosPorPersona = new Map();

@@ -5,7 +5,7 @@
 // bitácora; aquí solo se cuenta, nunca se interpreta.
 
 import { SITIO } from "./tarjeta.mjs";
-import { urlVotacion, urlLegislador, urlExpediente, urlFoto } from "./congreso.mjs";
+import { urlVotacion, urlLegislador, urlExpediente, urlFoto, votacionesUnicas } from "./congreso.mjs";
 import { plano } from "../../worker/texto.js";
 
 const SENTIDOS = { yes: "a_favor", no: "en_contra", abstain: "abstenciones", absent: "ausentes", "not voting": "sin_votar" };
@@ -21,20 +21,6 @@ export function cuentas(lista) {
 // Qué tan dividida fue: la parte de los votos emitidos (a favor más en contra)
 // que tuvo el lado perdedor. 0 es unanimidad; 0.5, empate.
 const division = (c) => (c.a_favor + c.en_contra ? Math.min(c.a_favor, c.en_contra) / (c.a_favor + c.en_contra) : 0);
-
-// Una votación de otra fuente (Gaceta, Senado) que apunta a una del SIL es
-// la misma votación: se cuenta una vez, con los votos con nombre de la que
-// los tenga.
-function votacionesUnicas(m) {
-  const unicas = [];
-  for (const v of m.votaciones.values()) {
-    if (v.votacion_sil && m.votaciones.has(v.votacion_sil)) continue;
-    const pares = m.otrasFuentes.get(v.id) ?? [];
-    const conVotos = [v, ...pares].find((x) => x.votos_publicados && x.votes?.length) ?? null;
-    unicas.push({ v, conVotos });
-  }
-  return unicas;
-}
 
 // Una ley «Reglamentaria del artículo 105 de la Constitución Política de los
 // Estados Unidos Mexicanos» nombra a la Constitución sin reformarla. Hasta la

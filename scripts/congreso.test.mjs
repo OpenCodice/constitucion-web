@@ -210,7 +210,8 @@ test("legislador con iniciativas y votos", () => {
   assert.match(h, /El SIL le atribuye 2 asuntos; 1 sigue pendiente/);
   assert.match(h, /2 iniciativas: 1 pendiente, 1 aprobada, 0 desechadas y 0 retiradas/);
   assert.match(h, /con 1 autor más/);
-  assert.match(h, /Votó con nombre en 2 votaciones nominales: a favor: <span class="dato">1<\/span>, en contra: <span class="dato">1<\/span>/);
+  assert.match(h, /Votó con nombre en 1 votación nominal: a favor: <span class="dato">1<\/span>\./);
+  assert.match(h, /En 1 votación otra fuente le registra un sentido distinto/);
   assert.match(h, /votos que la fuente no atribuye a nadie/);
   assert.match(h, /Licencias y reincorporaciones/);
   assert.match(h, /Jalisco/);

@@ -12,7 +12,7 @@ import { diferenciaTexto } from "./lib/diferencias.mjs";
 import { archivosDocumento, fichaCatalogo } from "./lib/corpus.mjs";
 import { indiceBusqueda } from "./lib/busqueda.mjs";
 import { modeloCongreso } from "./lib/congreso.mjs";
-import { archivosVotos, buscadorDeLeyes, enLoGeneral, filtrosAsuntos, resumenVotaciones } from "./lib/abiertos.mjs";
+import { archivosVotos, buscadorDeLeyes, enLoGeneral, filtrosAsuntos, resumenLegisladores, resumenVotaciones } from "./lib/abiertos.mjs";
 
 const art = (n, cuerpo) => `# Artículo ${n}.\n\n${cuerpo}`;
 const SHA_REFORMA = "a".repeat(40);
@@ -304,6 +304,27 @@ test("votaciones: sin conteo por grupo de la fuente, se cuenta de los votos con 
   assert.equal(filas.get("sil-9-1").por_grupo_origen, "votos_con_nombre");
   assert.deepEqual([filas.get("sil-9-2").por_grupo[0].grupo, filas.get("sil-9-2").por_grupo_origen], ["PAN", "fuente"]);
   assert.deepEqual([filas.get("sil-9-3").por_grupo, filas.get("sil-9-3").por_grupo_origen], [[], null]);
+});
+
+test("legisladores: una votación con dos fuentes cuenta una vez, en la ficha y en la API", () => {
+  const votos = [{ voter_id: "a", option: "absent" }, { voter_id: "b", option: "yes" }];
+  const m = modeloCongreso({
+    organizaciones: [{ id: "camara-de-diputados", name: "Cámara de Diputados" }],
+    personas: [{ id: "a", name: "Ana" }, { id: "b", name: "Beto" }],
+    mandatos: [{ id: "m-a", person_id: "a", organization_id: "camara-de-diputados", estatus: "Activo(a)" }, { id: "m-b", person_id: "b", organization_id: "camara-de-diputados", estatus: "Activo(a)" }],
+    expedientes: [], decretos: [],
+    votaciones: [
+      { id: "sil-7-1", organization_id: "camara-de-diputados", start_date: "2026-11-09", votos_publicados: true, votes: votos },
+      { id: "gaceta-7-1", votacion_sil: "sil-7-1", organization_id: "camara-de-diputados", start_date: "2026-11-09", votos_publicados: true, votes: votos },
+      { id: "sil-7-2", organization_id: "camara-de-diputados", start_date: "2026-11-10", votes: [] },
+      { id: "gaceta-7-2", votacion_sil: "sil-7-2", organization_id: "camara-de-diputados", start_date: "2026-11-10", votos_publicados: true, votes: [{ voter_id: "a", option: "yes" }] },
+    ],
+  });
+  m.asuntosPorPersona = new Map();
+  const deLaFicha = m.votosPorPersona.get("a");
+  assert.deepEqual(deLaFicha.map((x) => [x.votacion.id, x.fuente.id, x.voto.option]), [["sil-7-2", "gaceta-7-2", "yes"], ["sil-7-1", "sil-7-1", "absent"]]);
+  const deLaApi = resumenLegisladores(m).find((l) => l.id === "a");
+  assert.deepEqual([deLaApi.votaciones, deLaApi.ausencias, deLaApi.a_favor], [deLaFicha.length, 1, 1]);
 });
 
 test("en lo general: no lo es la votación de los artículos reservados", () => {

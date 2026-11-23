@@ -853,12 +853,16 @@ function seccionVotosPersona(m, id, mandatos) {
   for (const [o, xs] of cuentas) if (!NOMBRE_OPCION[o]) resumen.push(`${esc(o)}: ${numero(xs.length)}`);
   const notas = [];
   if (soloConteos) notas.push(`${plural(soloConteos, "votación nominal", "votaciones nominales")} de su cámara solo ${soloConteos === 1 ? "tiene" : "tienen"} conteos, sin el voto de cada quien`);
+  const conOtroSentido = votos.filter(({ votacion: v, fuente, voto }) =>
+    [v, ...(m.otrasFuentes.get(v.id) ?? [])].some((o) => o !== fuente && o.votes?.some((y) => y.voter_id === id && y.option !== voto.option)),
+  ).length;
+  if (conOtroSentido) notas.push(`en ${plural(conOtroSentido, "votación", "votaciones")} otra fuente le registra un sentido distinto; aquí se cuenta el del SIL cuando publica los nombres`);
   if (conFaltantes) notas.push(`${plural(conFaltantes, "votación", "votaciones")} de su cámara ${conFaltantes === 1 ? "tiene" : "tienen"} votos que la fuente no atribuye a nadie; si alguno es suyo, no aparece aquí`);
-  const filas = votos.map(({ votacion: v, voto: x }) => [
+  const filas = votos.map(({ votacion: v, fuente, voto: x }) => [
     fechaCorta(v.start_date),
     `<a href="${esc(urlVotacion(v.id))}">${esc(recortar(tituloVotacion(v), 160))}</a>${
       v.organization_id === "comision-permanente" ? ' <span class="tenue">· Comisión Permanente</span>' : ""
-    }${v.id.startsWith("sil-") ? "" : ` <span class="tenue">· ${esc(fuenteDe(v))}</span>`}`,
+    }${fuente.id.startsWith("sil-") ? "" : ` <span class="tenue">· ${esc(fuenteDe(fuente))}</span>`}`,
     esc(opcion(x.option)),
     esc(x.grupo_fuente ?? "—"),
   ]);
