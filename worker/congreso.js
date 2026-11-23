@@ -389,8 +389,21 @@ export async function legisladores(env, { camara, grupo, entidad, nombre, en_fun
   xs = xs.sort(ordenes[orden]);
   const porGrupo = {};
   for (const l of xs) porGrupo[l.grupo ?? "Sin grupo"] = (porGrupo[l.grupo ?? "Sin grupo"] ?? 0) + 1;
+  // Las cuentas de cada grupo en cada cámara: la suma de las de sus
+  // legisladores que pasan los filtros, no solo los de esta página.
+  const sumas = new Map();
+  for (const l of xs) {
+    const k = `${l.camara ?? ""}|${l.grupo ?? "Sin grupo"}`;
+    if (!sumas.has(k)) sumas.set(k, { camara: l.camara ?? null, grupo: l.grupo ?? "Sin grupo", legisladores: 0, votaciones: 0, a_favor: 0, en_contra: 0, abstenciones: 0, ausencias: 0, sin_votar: 0 });
+    const c = sumas.get(k);
+    c.legisladores++;
+    for (const campo of ["votaciones", "a_favor", "en_contra", "abstenciones", "ausencias", "sin_votar"]) c[campo] += l[campo] ?? 0;
+  }
+  const cuentasPorGrupo = [...sumas.values()]
+    .map((c) => ({ ...c, ausencia: c.votaciones ? Math.round((c.ausencias / c.votaciones) * 1000) / 1000 : null }))
+    .sort((a, b) => (a.camara ?? "").localeCompare(b.camara ?? "", "es") || b.legisladores - a.legisladores);
   const p = paginar(xs, { limite, pagina }, 25, 200);
-  return { total: p.total, pagina: p.pagina, paginas: p.paginas, por_grupo: porGrupo, orden, nota: r.nota, legisladores: p.elementos };
+  return { total: p.total, pagina: p.pagina, paginas: p.paginas, por_grupo: porGrupo, cuentas_por_grupo: cuentasPorGrupo, orden, nota: r.nota, legisladores: p.elementos };
 }
 
 export function mdLegisladores(r) {
@@ -407,6 +420,9 @@ export function mdLegisladores(r) {
   return `${cabecera("Legisladores", r, r.legisladores.length)}
 
 Por grupo: ${grupos}.
+
+Cuentas de cada grupo (la suma de las de estos legisladores; ausencia sobre sus votos con nombre):
+${r.cuentas_por_grupo.map((c) => `- ${c.camara ?? "Sin cámara"} · ${c.grupo} (${c.legisladores}): ${c.a_favor} a favor, ${c.en_contra} en contra, ${c.abstenciones} abstenciones, ${c.ausencias} ausencias (${pct(c.ausencia)})`).join("\n")}
 
 ${r.nota} Sus votos, uno por uno: herramienta \`votos_legislador\`; lo que presentó: \`asuntos\` con \`autor\`.
 

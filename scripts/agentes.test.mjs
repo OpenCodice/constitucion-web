@@ -249,6 +249,10 @@ test("legisladores: los más ausentes, en funciones por omisión, grupo por sigl
   assert.deepEqual(r.legisladores.map((l) => l.id), ["ana", "beto"]);
   assert.deepEqual(r.por_grupo, { Morena: 1, "Partido Acción Nacional": 1 });
   assert.deepEqual((await api("legisladores?grupo=PAN")).legisladores.map((l) => l.id), ["beto"]);
+  const todos = await api("legisladores?en_funciones=false&limite=1");
+  assert.equal(todos.legisladores.length, 1);
+  assert.equal(todos.cuentas_por_grupo.reduce((s, c) => s + c.legisladores, 0), todos.total);
+  for (const c of todos.cuentas_por_grupo) assert.equal(c.a_favor + c.en_contra + c.abstenciones + c.ausencias + c.sin_votar, c.votaciones);
   assert.deepEqual((await api("legisladores?en_funciones=false&orden=ausencias&minimo_votaciones=0")).legisladores.map((l) => l.id), ["ana", "beto", "caro"]);
   assert.match(await (await pedir("/api/legisladores?orden=ausencia", md)).text(), /\*\*Ana Pérez\*\*[\s\S]*200 ausencias \(66\.7 %\)/);
 });
