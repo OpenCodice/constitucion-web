@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { REPOS } from "./lib/comun.mjs";
 import { modelo, paginasBitacora } from "./bitacora.mjs";
+import { modeloCongreso } from "./lib/congreso.mjs";
 
 const SHA = (n) => String(n).padEnd(40, "0");
 
@@ -156,4 +157,40 @@ test("histórico: solo las versiones anteriores al alta, por su fecha de publica
   const json = JSON.parse(archivos.get("bitacora/cambios.json"));
   assert.deepEqual(json.versiones.map((v) => v.publicacion), ["2021-06-01", "2006-06-06"]);
   assert.ok(!json.cambios.some((c) => c.tipo === "version"));
+});
+
+test("cronología: cada decreto de la lista de la Cámara, con la página de su fecha si la hay", () => {
+  const m = modelo(conHistorico());
+  const publicacion = (fecha, archivos) => ({ fecha, archivos: archivos.map(([formato, n]) => ({ formato, url: `https://www.diputados.gob.mx/LeyesBiblio/ref/lgs/${n}` })) });
+  const decreto = (numero, fecha, archivos, mas = {}) => ({ numero, fecha, titulo: `DECRETO número ${numero}.`, publicaciones: [publicacion(fecha, archivos)], ...mas });
+  const cronologia = [
+      {
+        documento: "lgs",
+        url: "https://www.diputados.gob.mx/LeyesBiblio/ref/lgs.htm",
+        original: { titulo: "LEY General de Salud.", fecha: "1984-02-07", publicaciones: [publicacion("1984-02-07", [["imagen", "orig_ima.pdf"]])] },
+        decretos: [
+          decreto(1, "1987-05-27", [["imagen", "ref01_ima.pdf"]], { escaneado: true }),
+          decreto(2, "2021-06-01", [["pdf", "ref02.pdf"], ["word", "ref02.doc"]], { escaneado: false }),
+        ],
+        otras: [{ fecha: "2010-03-03", titulo: "SENTENCIA de la acción 1/2009.", clase: "Sentencia de la SCJN", publicaciones: [publicacion("2010-03-03", [["pdf", "sent01.pdf"]])] }],
+        notas_sin_decreto: ["1999-09-09"],
+      },
+  ];
+  const vacio = { organizaciones: [], personas: [], mandatos: [], expedientes: [], votaciones: [], decretos: [] };
+  const archivos = paginasBitacora(m, "2026-12-21T00:00:00Z", { ok: true, ...modeloCongreso({ ...vacio, cronologia }) });
+  const historia = archivos.get("bitacora/lgs/index.html");
+  const seccion = historia.slice(historia.indexOf('id="cronologia"'));
+  assert.ok(seccion.includes("Los 2 decretos que lo han reformado desde su publicación el 7 de febrero de 1984"));
+  assert.ok(seccion.includes('<a href="/bitacora/lgs/v2021-06-01">1 de junio de 2021</a>'), "la fecha con versión la enlaza");
+  assert.ok(seccion.includes("<span class=\"f\">27 de mayo de 1987</span>"), "sin versión, solo el decreto");
+  assert.ok(seccion.includes("ref01_ima.pdf\">imagen del Diario</a>") && seccion.includes("Uno existe solo como imagen"));
+  assert.ok(seccion.includes("Sentencia de la SCJN") && seccion.includes("1 publicación más"));
+  assert.ok(seccion.includes("9 sept 1999") || seccion.includes("9 sep 1999"), "las notas que la lista no trae se dicen");
+  assert.ok(seccion.indexOf("DECRETO número 2.") < seccion.indexOf("SENTENCIA") && seccion.indexOf("SENTENCIA") < seccion.indexOf("DECRETO número 1."));
+  assert.ok(!historia.includes('id="anteriores"'), "reemplaza a las fechas sueltas de las notas");
+  const md = archivos.get("bitacora/lgs/index.md");
+  assert.ok(md.includes("## Todas sus reformas") && md.includes("- 1987-05-27 · decreto 1: DECRETO número 1."));
+
+  const sin = paginasBitacora(modelo(conHistorico()), "2026-12-21T00:00:00Z", null).get("bitacora/lgs/index.html");
+  assert.ok(!sin.includes('id="cronologia"'));
 });

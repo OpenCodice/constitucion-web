@@ -326,6 +326,18 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
       `/bitacora/decretos/` los lista por año y la página de cada documento,
       en «Sus decretos», los suyos, con los conteos de la votación principal
       de cada cámara.
+    - Cronología (`cronologiaDe`, `seccionCronologia`): con el registro
+      `cronologia/{Documento}.json` de congreso-mexicano (la lista de la
+      Cámara de todo lo que ha reformado a la ley desde su publicación
+      original), la página del documento lleva «Todas sus reformas» en lugar
+      de «Antes de su alta»: cada decreto con su número, sus archivos (PDF,
+      Word o la imagen del Diario, que solo se enlaza), sus fes de erratas, su
+      proceso legislativo si la Cámara lo enlaza, y también las sentencias,
+      acuerdos y declaratorias que la lista recoge. La fecha lleva a la
+      reforma registrada, al alta o a la versión anterior de ese día, si
+      existe; las fechas de las notas que la lista no trae se dicen. Va
+      también en el `index.md` del documento. Sin ese registro (leyes
+      estatales, reglamentos), sigue «Antes de su alta».
     - `scripts/cadena.test.mjs` prueba los tres módulos con un modelo
       sintético: cadena completa, sin votos nominales, sin congresos locales,
       ley federal, decreto sin expediente, con candidatos y resuelto por un

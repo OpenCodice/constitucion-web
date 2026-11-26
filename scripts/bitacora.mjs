@@ -834,7 +834,7 @@ ${listaCambios(
 )}
 ${seccionVersiones(d)}
 ${seccionDecretos(m, d)}
-${reformasAnteriores(d)}
+${seccionCronologia(m, d) || reformasAnteriores(d)}
 ${seccionCitar(d, ultima)}`;
   return pagina({
     url: urlDocumento(d.clave),
@@ -1448,6 +1448,86 @@ function filaDecreto(e, { documento = null } = {}) {
   }</li>`;
 }
 
+// La lista de la Cámara de todo lo que ha reformado al documento desde su
+// publicación original, del más reciente al más antiguo: los decretos
+// numerados y lo demás que lista (sentencias, acuerdos, declaratorias).
+export function cronologiaDe(cronologia, d) {
+  if (!cronologia) return null;
+  // La fecha de un decreto lleva a su cambio registrado o, si es anterior al
+  // alta, a la versión del texto de ese día.
+  const conPagina = new Map();
+  for (const v of d.versiones ?? []) conPagina.set(v.dia, v);
+  for (const c of d.cambios) if (c.tipo === "reforma" || c.tipo === "alta") for (const p of c.publicaciones) conPagina.set(p, c);
+  const filas = [...cronologia.decretos, ...(cronologia.otras ?? [])]
+    .map((x) => ({ ...x, cambio: conPagina.get(x.fecha) ?? null }))
+    .sort((a, b) => b.fecha.localeCompare(a.fecha) || (b.numero ?? 0) - (a.numero ?? 0));
+  return { ...cronologia, filas };
+}
+
+const paginaDeFecha = (c) => (c.clase === "version" ? "versión del texto" : c.tipo === "alta" ? "alta en el registro" : "reforma registrada");
+const FORMATO_ARCHIVO = { pdf: "PDF", word: "Word", imagen: "imagen del Diario" };
+const fechaBreve = (iso) => new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
+
+function archivosPublicacion(p) {
+  return p.archivos.map((a) => `<a href="${esc(a.url)}">${FORMATO_ARCHIVO[a.formato] ?? esc(a.formato)}</a>`);
+}
+
+function filaCronologia(x) {
+  const [principal, ...resto] = [...x.publicaciones].sort((a, b) => Number(Boolean(a.etiqueta)) - Number(Boolean(b.etiqueta)));
+  const datos = [
+    x.numero ? `decreto ${numero(x.numero)}` : esc(x.clase ?? x.seccion ?? ""),
+    ...archivosPublicacion(principal),
+    ...resto.map((p) => {
+      const archivos = archivosPublicacion(p);
+      return `${esc(p.etiqueta ?? "otra publicación")} del ${esc(fechaBreve(p.fecha))}${archivos.length ? ` (${archivos.join(", ")})` : ""}`;
+    }),
+    x.proceso_legislativo ? `<a href="${esc(x.proceso_legislativo)}">proceso legislativo</a>` : "",
+    x.cambio ? `<a href="${esc(urlCambio(x.cambio))}">${paginaDeFecha(x.cambio)}</a>` : "",
+  ].filter(Boolean);
+  const fecha = esc(fechaLarga(x.fecha));
+  return `<li><span class="f">${x.cambio ? `<a href="${esc(urlCambio(x.cambio))}">${fecha}</a>` : fecha}</span><span class="q">${esc(x.titulo)}</span><span class="d">${datos.join(" · ")}</span></li>`;
+}
+
+// En la página de cada documento: todo lo que lo ha reformado desde que se
+// publicó, tenga o no versión de su texto.
+function seccionCronologia(m, d) {
+  const c = cronologiaDe(m.vinculos?.cronologias.get(d.clave), d);
+  if (!c?.filas.length) return "";
+  const decretos = c.decretos.length;
+  const conPagina = c.filas.filter((x) => x.cambio).length;
+  const escaneados = c.filas.filter((x) => x.escaneado).length;
+  const otras = c.filas.length - decretos;
+  const original = c.original
+    ? ` desde su publicación el ${fechaLarga(c.original.fecha)}${
+        c.original.publicaciones[0].archivos.length ? ` (${archivosPublicacion(c.original.publicaciones[0]).join(", ")})` : ""
+      }`
+    : "";
+  const sinDecreto = c.notas_sin_decreto ?? [];
+  return `<h2 id="cronologia">Todas sus reformas</h2>
+<p>
+  ${decretos === 1 ? "El decreto que lo ha reformado" : `Los ${numero(decretos)} decretos que lo han reformado`}${original}, según
+  <a href="${esc(c.url)}">la lista que lleva la Cámara de Diputados</a>${
+    otras ? `, con ${plural(otras, "publicación más", "publicaciones más")} que esa lista recoge (sentencias, acuerdos o declaratorias)` : ""
+  }. ${
+    conPagina
+      ? `${conPagina === 1 ? "Una lleva en su fecha el enlace" : `${numero(conPagina)} llevan en su fecha el enlace`} a la versión del texto o al cambio registrado de ese día; de las demás solo se enlaza el decreto.`
+      : "Aquí solo se enlaza cada decreto: de esas fechas no hay versión del texto."
+  }${
+    escaneados ? ` ${escaneados === 1 ? "Uno existe" : `${numero(escaneados)} existen`} solo como imagen del Diario Oficial: no se transcribe.` : ""
+  }${
+    sinDecreto.length
+      ? ` El texto vigente anota además ${plural(sinDecreto.length, "fecha de reforma", "fechas de reforma")} que la lista no trae: ${lista(sinDecreto.map((f) => esc(fechaBreve(f))))}.`
+      : ""
+  }
+</p>
+<details class="anteriores">
+<summary>Ver ${c.filas.length === 1 ? "la publicación" : `las ${numero(c.filas.length)} publicaciones`}</summary>
+<ul class="decretos">
+${c.filas.map(filaCronologia).join("\n")}
+</ul>
+</details>`;
+}
+
 const listaDecretos = (es, opciones) => `<ul class="decretos">\n${es.map((e) => filaDecreto(e, opciones)).join("\n")}\n</ul>`;
 
 // En la página de cada documento: sus decretos, con o sin commit.
@@ -1715,7 +1795,7 @@ export function paginasBitacora(m, generada, vinculos) {
   for (const d of m.documentos.values()) {
     archivos.set(`bitacora/${d.clave}/index.html`, paginaDocumento(m, d, generada));
     for (const c of d.cambios) archivos.set(`bitacora/${d.clave}/${c.id}.html`, paginaCambio(c, generada, vinculos));
-    archivos.set(`bitacora/${d.clave}/index.md`, mdDocumento(d));
+    archivos.set(`bitacora/${d.clave}/index.md`, mdDocumento(d, m.vinculos?.cronologias.get(d.clave)));
     for (const c of d.cambios) archivos.set(`bitacora/${d.clave}/${c.id}.md`, mdCambio(c, vinculos));
     for (const c of d.versiones ?? []) {
       archivos.set(`bitacora/${d.clave}/${c.id}.html`, paginaVersion(c, generada));
@@ -1845,7 +1925,7 @@ ${t ? diferenciaTexto(t.antes, t.despues) : "(sin texto)"}
   return `${partes.join("\n\n")}\n`;
 }
 
-function mdDocumento(d) {
+function mdDocumento(d, cronologia) {
   return `${frente({
     documento: d.clave,
     nombre: d.nombre,
@@ -1872,7 +1952,23 @@ Reconstruidas de las copias del PDF oficial que guardó el Internet Archive (rep
 ${d.versiones.map((c) => lineaMd(c, false)).join("\n")}
 `
     : ""
-}`;
+}${mdCronologia(cronologiaDe(cronologia, d))}`;
+}
+
+function mdCronologia(c) {
+  if (!c?.filas.length) return "";
+  const linea = (x) => {
+    const archivos = x.publicaciones.flatMap((p) => p.archivos.map((a) => `[${p.etiqueta ? `${p.etiqueta}, ` : ""}${FORMATO_ARCHIVO[a.formato] ?? a.formato}](${a.url})`));
+    const pagina = x.cambio ? ` · [${paginaDeFecha(x.cambio)}](${SITIO}${urlCambio(x.cambio)}.md)` : "";
+    return `- ${x.fecha}${x.numero ? ` · decreto ${x.numero}` : x.clase || x.seccion ? ` · ${x.clase ?? x.seccion}` : ""}: ${x.titulo}${archivos.length ? ` · ${archivos.join(" · ")}` : ""}${pagina}`;
+  };
+  return `
+## Todas sus reformas
+
+Los decretos que lo han reformado${c.original ? ` desde su publicación el ${c.original.fecha}` : ""}, según la lista de la Cámara de Diputados (${c.url}). Los que solo existen como imagen del Diario Oficial no se transcriben.
+
+${c.filas.map(linea).join("\n")}
+`;
 }
 
 function mdReformas(m) {

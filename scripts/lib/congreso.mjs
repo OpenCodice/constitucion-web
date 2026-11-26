@@ -1,5 +1,5 @@
-// Lee congreso-mexicano (legisladores, votaciones, expedientes, asuntos y
-// decretos) para la sección de proceso legislativo de la bitácora y las
+// Lee congreso-mexicano (legisladores, votaciones, expedientes, asuntos,
+// decretos y la cronología de reformas de cada ley) para la sección de proceso legislativo de la bitácora y las
 // páginas de /congreso.
 //
 // El repo pesa por las copias de las páginas oficiales (`fuentes/`), que aquí
@@ -104,6 +104,8 @@ export function modeloCongreso(r) {
     expedientes: porId(r.expedientes),
     votaciones: porId(r.votaciones),
     decretos: r.decretos.filter((d) => d.id),
+    // La lista de decretos de cada ley desde su publicación original.
+    cronologias: new Map((r.cronologia ?? []).map((c) => [c.documento, c])),
     asuntos: Object.fromEntries(Object.values(ASUNTOS).map((k) => [k, r[k] ?? []])),
   };
   // (Documento|Publicacion) y sha del commit de leyes → decretos.
@@ -156,7 +158,7 @@ export function modeloCongreso(r) {
 export async function leerCongreso() {
   try {
     const raiz = await carpeta();
-    const subs = ["organizaciones", "personas", "mandatos", "expedientes", "votaciones", "decretos", ...Object.keys(ASUNTOS)];
+    const subs = ["organizaciones", "personas", "mandatos", "expedientes", "votaciones", "decretos", "cronologia", ...Object.keys(ASUNTOS)];
     const leidos = await Promise.all(subs.map((s) => leerCarpeta(raiz, s)));
     const r = Object.fromEntries(subs.map((s, i) => [ASUNTOS[s] ?? s, leidos[i]]));
     const m = modeloCongreso(r);
