@@ -107,3 +107,53 @@ test("páginas: listas separadas y cambios.json", async () => {
   assert.equal(de(8).menor, false);
   assert.equal(de(8).alta, null);
 });
+
+// El histórico de la LGS: su primera versión, una reforma anterior al alta,
+// la versión con que se dio de alta y una posterior, más una ley sin alta.
+function conHistorico() {
+  const version = (n, publicacion, extra = {}) => ({
+    ...commit(100 + n, `${publicacion}T12:00:00Z`, "version", {
+      publicaciones: [publicacion],
+      origen: "portada",
+      fuente: "https://web.archive.org/web/2020id_/http://www.diputados.gob.mx/LeyesBiblio/pdf/142.pdf",
+      retirados: [],
+      ...extra,
+    }),
+    repo: "historico",
+    orden: n,
+  });
+  const commits = [
+    version(4, "2026-06-01", { modificados: ["004"], textos: texto("004") }),
+    version(3, "2026-01-15", { modificados: ["004"], textos: texto("004") }),
+    version(2, "2021-06-01", { modificados: ["004"], retirados: ["009"], textos: texto("004") }),
+    version(1, "2006-06-06", { padre: null, articulosArchivo: [{ estado: "A", ruta: "lgs/004.md" }] }),
+    version(5, "2010-01-01", { documento: "otra", padre: null }),
+  ];
+  return { ...historial(), historico: { ok: true, datos: { repo: "historico", commits } } };
+}
+
+test("histórico: solo las versiones anteriores al alta, por su fecha de publicación", () => {
+  const m = modelo(conHistorico());
+  assert.deepEqual(
+    m.versiones.map((v) => `${v.documento} ${v.id}`),
+    ["lgs v2021-06-01", "lgs v2006-06-06"],
+    "la versión del alta y las posteriores ya están en sus cambios; una ley sin alta no entra",
+  );
+  assert.equal(m.cambios.length, modelo(historial()).cambios.length, "no cuentan como cambios registrados");
+  assert.equal(modelo(historial()).versiones.length, 0);
+
+  const archivos = paginasBitacora(m, "2026-12-21T00:00:00Z", null);
+  const historia = archivos.get("bitacora/lgs/index.html");
+  assert.ok(historia.includes('id="versiones"') && historia.includes("/bitacora/lgs/v2021-06-01"));
+  const pagina = archivos.get("bitacora/lgs/v2021-06-01.html");
+  assert.ok(pagina.includes("Versión del 1 de junio de 2021") && pagina.includes('id="texto"'));
+  assert.ok(pagina.includes("retira art. 009"));
+  assert.ok(pagina.includes(`/bitacora/lgs/${SHA(2).slice(0, 12)}`), "tras la versión más reciente sigue el alta");
+  assert.ok(archivos.get("bitacora/lgs/v2006-06-06.html").includes("Primera versión reconstruida, con 1 artículo"));
+  assert.ok(archivos.get("bitacora/lgs/v2021-06-01.md").includes('tipo: "version"'));
+  assert.ok(!archivos.has("bitacora/lgs/v2026-01-15.html"));
+
+  const json = JSON.parse(archivos.get("bitacora/cambios.json"));
+  assert.deepEqual(json.versiones.map((v) => v.publicacion), ["2021-06-01", "2006-06-06"]);
+  assert.ok(!json.cambios.some((c) => c.tipo === "version"));
+});

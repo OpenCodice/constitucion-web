@@ -203,6 +203,26 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
       `alta` (sha del alta) y `archivos_metadata`. `/estado` cuenta por la
       clase de la bitácora (por sha) y, para lo que no esté en ella, por el
       título (`Metadatos de …`, `…: solo metadata`).
+    - Versiones anteriores: `historial.mjs` lee también `OpenCodice/historico`
+      (`leerHistorico`: una rama por documento, un commit `Tipo: version` por
+      versión, los artículos en `{documento}/{clave}.md` en todas las ramas) y
+      `versionesAnteriores` cuelga de cada documento vigente (`d.versiones`,
+      `m.versiones`) las de publicación anterior a la versión de su alta: de
+      ahí en adelante la historia ya está en sus cambios, así que la misma
+      (Documento, Publicacion) no sale dos veces. No entran en `m.cambios` ni
+      en ninguna cuenta: son texto reconstruido de capturas de Wayback, sin la
+      verificación de la vigilancia, y la página lo dice. En
+      `/bitacora/{Documento}/` van en «Versiones anteriores a su alta», y las
+      fechas de «Antes de su alta» que tienen versión la enlazan. Cada una
+      tiene su página en `/bitacora/{Documento}/v{Publicacion}` (y `.md`), con
+      su ficha (captura, sha256, extractor, rama) y la diferencia contra la
+      versión anterior que se conserva; la primera de la rama no tiene
+      diferencia. La dirección lleva la fecha y no el sha porque las ramas de
+      `historico` se regeneran. Todas las versiones de un documento comparten
+      una tarjeta para redes: son más de mil páginas y cada tarjeta es un
+      archivo del despliegue (el Worker admite 20 mil). `cambios.json` las
+      publica aparte, en `versiones`. El despliegue no se lanza cuando cambia
+      `historico`: las versiones nuevas entran con el siguiente.
     - `npm test` prueba las clases y páginas con un historial sintético
       (`scripts/bitacora.test.mjs`).
     - `scripts/lib/historial.mjs` clona cada repo de datos `--bare` en

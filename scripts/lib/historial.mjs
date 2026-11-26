@@ -175,6 +175,7 @@ function parsearLog(texto, repo) {
       modificados: lista(uno("Articulos-Modificados")),
       derogados: lista(uno("Articulos-Derogados")),
       corregidos: lista(uno("Articulos-Corregidos")),
+      retirados: lista(uno("Articulos-Retirados")),
       fuente: uno("Fuente"),
       sha256: uno("Fuente-Sha256"),
       extractor: uno("Extractor"),
@@ -185,7 +186,7 @@ function parsearLog(texto, repo) {
   return commits;
 }
 
-export const articulosDe = (c) => [...new Set([...c.adicionados, ...c.modificados, ...c.derogados, ...c.corregidos])];
+export const articulosDe = (c) => [...new Set([...c.adicionados, ...c.modificados, ...c.derogados, ...c.corregidos, ...(c.retirados ?? [])])];
 
 // ------------------------------------------------------------------ nombres
 
@@ -315,9 +316,76 @@ async function leerRepo(repo) {
   };
 }
 
-// { [repo]: { ok, datos: { repo, cabeza, commits, nombres } } }
+// ------------------------------------------------------------------ histórico
+// `historico` guarda las versiones anteriores de cada ley: una rama por
+// documento y un commit por versión (`Tipo: version`), con los artículos en
+// `{documento}/{clave}.md` en todas las ramas. Sus ramas se regeneran, así
+// que un sha de ahí no es referencia estable: la llave de una versión es
+// (Documento, Publicacion).
+
+export const REPO_HISTORICO = "historico";
+
+// Artículos de una versión de los que se lee el texto para su diferencia; una
+// reedición del PDF toca cientos y la página solo muestra los primeros.
+export const DIFERENCIAS_MAX = 150;
+
+async function abrirHistorico() {
+  if (process.env.REPOS_DATOS) {
+    const dir = join(process.env.REPOS_DATOS, REPO_HISTORICO);
+    if (!(await existe(dir))) throw new Error(`no existe ${dir}`);
+    return { dir, ramas: "refs/remotes/origin/" };
+  }
+  const dir = join(DATOS, `${REPO_HISTORICO}.git`);
+  if (await existe(dir)) {
+    await git(dir, ["fetch", "--quiet", "--prune", "origin", "+refs/heads/*:refs/heads/*"]);
+  } else {
+    await mkdir(DATOS, { recursive: true });
+    await git(DATOS, ["clone", "--quiet", "--bare", `https://github.com/${ORG}/${REPO_HISTORICO}`, dir]);
+  }
+  return { dir, ramas: "refs/heads/" };
+}
+
+async function leerHistorico() {
+  const { dir, ramas } = await abrirHistorico();
+  const refs = (await git(dir, ["for-each-ref", "--format=%(refname)", ramas]))
+    .toString("utf8")
+    .split("\n")
+    .filter((r) => r && !/\/(main|HEAD)$/.test(r));
+  if (!refs.length) return { repo: REPO_HISTORICO, commits: [] };
+  const log = await git(dir, [
+    "log",
+    "--no-merges",
+    "--no-renames",
+    "--name-status",
+    "--format=%x1e%H%x1f%P%x1f%cI%x1f%s%x1f%(trailers:only,unfold)",
+    ...refs,
+  ]);
+  const commits = parsearLog(log.toString("utf8"), REPO_HISTORICO).filter((c) => c.documento && c.tipo === "version");
+  const ruta = (c, clave) => `${c.documento}/${clave}.md`;
+  const pedidos = [];
+  for (const c of commits) {
+    c.articulosArchivo = c.archivos.filter((a) => a.ruta.startsWith(`${c.documento}/`) && a.ruta.endsWith(".md"));
+    c.archivosMetadata = [];
+    c.textos = {};
+    if (!c.padre) continue;
+    for (const clave of articulosDe(c).slice(0, DIFERENCIAS_MAX)) pedidos.push(`${c.padre}:${ruta(c, clave)}`, `${c.sha}:${ruta(c, clave)}`);
+  }
+  const blobs = await leerBlobs(dir, pedidos);
+  for (const c of commits) {
+    if (!c.padre) continue;
+    for (const clave of articulosDe(c).slice(0, DIFERENCIAS_MAX)) {
+      const r = ruta(c, clave);
+      c.textos[clave] = { ruta: r, antes: blobs.get(`${c.padre}:${r}`) ?? null, despues: blobs.get(`${c.sha}:${r}`) ?? null };
+    }
+  }
+  return { repo: REPO_HISTORICO, commits };
+}
+
+// { [repo]: { ok, datos: { repo, cabeza, commits, nombres } } }, más
+// `historico`: { ok, datos: { repo, commits } }.
 export async function leerHistorial() {
   const repos = Object.values(REPOS);
   const r = await Promise.all(repos.map((repo) => intentar(() => leerRepo(repo))));
-  return Object.fromEntries(repos.map((repo, i) => [repo, r[i]]));
+  const historico = await intentar(leerHistorico);
+  return { ...Object.fromEntries(repos.map((repo, i) => [repo, r[i]])), [REPO_HISTORICO]: historico };
 }

@@ -38,7 +38,7 @@ import {
   tabla,
   documento as paginaHtml,
 } from "./lib/comun.mjs";
-import { TIPOS_DOCUMENTO, articulosDe, dirMetadata } from "./lib/historial.mjs";
+import { TIPOS_DOCUMENTO, DIFERENCIAS_MAX, REPO_HISTORICO, articulosDe, dirMetadata } from "./lib/historial.mjs";
 import { diferenciaArticulo, diferenciaTexto, encabezado } from "./lib/diferencias.mjs";
 import { vinculosDe } from "./lib/vinculos.mjs";
 import { urlVotacion, urlLegislador, urlExpediente, urlSilExpediente } from "./lib/congreso.mjs";
@@ -56,9 +56,8 @@ const BASE = "/bitacora";
 // cuenta, como en el título de los commits.
 const EN_LINEA = 8;
 
-// Artículos cuya diferencia se muestra en la página de un cambio; los demás
-// se enlazan a GitHub. Una corrección grande toca un centenar.
-const DIFERENCIAS_MAX = 150;
+// La diferencia se muestra para a lo más DIFERENCIAS_MAX artículos por
+// cambio; los demás se enlazan a GitHub. Una corrección grande toca un centenar.
 
 const REFORMAS_EN_ATOM = 50;
 
@@ -69,7 +68,7 @@ const NOMBRE_TIPO = {
   retiro: "Retiro",
   metadatos: "Metadatos",
 };
-const NOMBRE_CLASE = { ...NOMBRE_TIPO, ajuste: "Ajuste inicial" };
+const NOMBRE_CLASE = { ...NOMBRE_TIPO, ajuste: "Ajuste inicial", version: "Versión anterior" };
 
 // Ventana de los ajustes iniciales, en días desde el commit de alta. Al dar de
 // alta un corpus se publicaba cada ley y en las horas siguientes se mejoraba
@@ -136,6 +135,7 @@ export function modelo(historial) {
       if (!c.documento || !TIPOS_DOCUMENTO.includes(c.tipo)) continue;
       cambios.push({
         ...c,
+        retirados: c.retirados ?? [],
         id: c.sha.slice(0, 12),
         dia: diaMexico(c.fecha),
         etiquetas: Object.fromEntries(articulosDe(c).map((k) => [k, etiquetaCorta(k, c.textos[k])])),
@@ -192,10 +192,48 @@ export function modelo(historial) {
     d.vida = vidaDocumento(d.reformasAnteriores, d.indice);
   }
 
+  const versiones = versionesAnteriores(historial[REPO_HISTORICO], documentos);
+
   const fallas = Object.entries(historial)
     .filter(([, r]) => !r.ok)
     .map(([repo, r]) => ({ repo, error: r.error }));
-  return { cambios, documentos, fallas };
+  return { cambios, documentos, versiones, fallas };
+}
+
+// Las versiones del histórico de cada documento vigente, anteriores a la
+// versión con que se dio de alta: de ahí en adelante su historia ya está en
+// sus cambios (la misma (Documento, Publicacion) no sale dos veces). No
+// entran en `cambios`: no las verificó la vigilancia y no cuentan como
+// reformas registradas. Su página se nombra por su fecha de publicación,
+// porque las ramas del histórico se regeneran y sus sha cambian.
+function versionesAnteriores(historico, documentos) {
+  const versiones = [];
+  for (const d of documentos.values()) d.versiones = [];
+  if (!historico?.ok) return versiones;
+  for (const c of historico.datos.commits) {
+    const d = documentos.get(c.documento);
+    const publicacion = c.publicaciones.at(-1);
+    if (!d || d.retirado || !publicacion) continue;
+    const alta = d.cambios.at(-1);
+    if (publicacion >= (alta.publicaciones.at(-1) ?? alta.dia)) continue;
+    const v = {
+      ...c,
+      id: `v${publicacion}`,
+      dia: publicacion,
+      clase: "version",
+      primera: !c.padre,
+      doc: d,
+      otros: [],
+      principal: false,
+      menor: false,
+      alta: null,
+      etiquetas: Object.fromEntries(articulosDe(c).map((k) => [k, etiquetaCorta(k, c.textos[k])])),
+    };
+    d.versiones.push(v);
+    versiones.push(v);
+  }
+  for (const d of documentos.values()) d.versiones.sort((a, b) => b.dia.localeCompare(a.dia));
+  return versiones;
 }
 
 // Una corrección o un cambio de metadatos es un ajuste inicial si es del mismo
@@ -258,15 +296,19 @@ function textoArchivos(c) {
 
 // Qué hizo el cambio, en una línea.
 function resumenCambio(c) {
-  if (c.tipo === "reforma") {
+  if (c.tipo === "version" && c.primera) {
+    return `Primera versión reconstruida, con ${plural(c.articulosArchivo.length, "artículo", "artículos")}`;
+  }
+  if (c.tipo === "reforma" || c.tipo === "version") {
     const partes = [
       [c.adicionados, "adiciona"],
       [c.modificados, "modifica"],
       [c.derogados, "deroga"],
+      [c.retirados ?? [], "retira"],
     ]
       .filter(([l]) => l.length)
       .map(([l, verbo]) => `${verbo} ${textoArticulos(c, l)}`);
-    const t = partes.join("; ") || "solo cambió la metadata";
+    const t = partes.join("; ") || (c.tipo === "version" ? "no cambia el texto de ningún artículo" : "solo cambió la metadata");
     return t.charAt(0).toUpperCase() + t.slice(1);
   }
   if (c.tipo === "correccion" && c.corregidos.length) return `Corrige la lectura de ${textoArticulos(c, c.corregidos)}`;
@@ -484,9 +526,10 @@ ${pestañas("", cuentas(m))}
 ${avisoFallas(m.fallas)}
 <p>
   Las reformas, por la fecha en que se publicaron en el Diario Oficial o en el periódico oficial
-  del estado. La historia de cada documento empieza en su alta: de las reformas anteriores
-  se conoce la fecha, que está en la página de cada documento, y de las federales más recientes,
-  su <a href="${BASE}/decretos/">decreto</a> con su proceso legislativo.
+  del estado. La historia de cada documento empieza en su alta. De las reformas anteriores
+  se conoce la fecha y, en las leyes federales desde 2006, las versiones del texto que se conservan,
+  en la página de cada documento; de las federales más recientes, su
+  <a href="${BASE}/decretos/">decreto</a> con su proceso legislativo.
 </p>
 ${
   porAño.length
@@ -576,11 +619,16 @@ function reformasAnteriores(d) {
   if (!r?.length) return "";
   const antes = r.filter((x) => x.fecha <= (fechaPublicacion(alta) ?? alta.dia));
   if (!antes.length) return "";
+  const conVersion = new Map((d.versiones ?? []).map((v) => [v.dia, v]));
   const porAño = agrupar([...antes].reverse(), (x) => x.fecha.slice(0, 4));
   return `<h2 id="anteriores">Antes de su alta</h2>
 <p>
-  Las reformas anteriores a su alta no están como cambios: su texto anota ${plural(antes.length, "fecha de reforma", "fechas de reforma")},
-  de ${fechaLarga(antes[0].fecha)} a ${fechaLarga(antes.at(-1).fecha)}.
+  Su texto anota ${plural(antes.length, "fecha de reforma anterior", "fechas de reforma anteriores")} a su alta,
+  de ${fechaLarga(antes[0].fecha)} a ${fechaLarga(antes.at(-1).fecha)}. ${
+    conVersion.size
+      ? `De ${numero(antes.filter((x) => conVersion.has(x.fecha)).length)} se conserva <a href="#versiones">la versión del texto</a>, enlazada en su fecha; de las demás solo se conoce la fecha.`
+      : "No están como cambios: de ellas solo se conoce la fecha."
+  }
 </p>
 <details class="anteriores">
 <summary>Ver las fechas</summary>
@@ -590,7 +638,11 @@ ${porAño
     ([año, xs]) =>
       `<li><strong>${año}</strong>: ${xs
         .reverse()
-        .map((x) => `<span class="fecha">${esc(new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${x.fecha}T00:00:00Z`)))}</span> (${plural(x.articulos, "art.", "arts.")})`)
+        .map((x) => {
+          const dia = esc(new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${x.fecha}T00:00:00Z`)));
+          const v = conVersion.get(x.fecha);
+          return `${v ? `<a href="${esc(urlCambio(v))}"><span class="fecha">${dia}</span></a>` : `<span class="fecha">${dia}</span>`} (${plural(x.articulos, "art.", "arts.")})`;
+        })
         .join(", ")}</li>`,
   )
   .join("\n")}
@@ -760,7 +812,9 @@ function paginaDocumento(m, d, generada) {
   const cuerpo = `<div class="ley-intro">
 <p>${vigente}</p>
 <p class="nota">
-  ${fuente ? `Fuente: <a href="${esc(fuente)}">${esc(new URL(fuente).hostname.replace(/^www\./, ""))}</a>. ` : ""}Desde su alta el ${fechaLarga(d.cambios.at(-1).dia)} se registraron ${lista(resumen)}.${ajustes}
+  ${fuente ? `Fuente: <a href="${esc(fuente)}">${esc(new URL(fuente).hostname.replace(/^www\./, ""))}</a>. ` : ""}Desde su alta el ${fechaLarga(d.cambios.at(-1).dia)} se registraron ${lista(resumen)}.${ajustes}${
+    d.versiones?.length ? ` De antes de su alta hay <a href="#versiones">${plural(d.versiones.length, "versión reconstruida", "versiones reconstruidas")}</a>, desde ${fechaLarga(d.versiones.at(-1).dia)}.` : ""
+  }
   ${enlaces}
 </p>
 ${botones}
@@ -773,6 +827,7 @@ ${listaCambios(
   d.cambios.filter((c) => c.clase !== "ajuste"),
   { conDocumento: false, fecha: "registro" },
 )}
+${seccionVersiones(d)}
 ${seccionDecretos(m, d)}
 ${reformasAnteriores(d)}
 ${seccionCitar(d, ultima)}`;
@@ -799,6 +854,7 @@ function fichaCambio(c) {
     metadatos: "solo cambió la metadata del documento, no el texto de sus artículos",
     ajuste: "ajuste inicial: se afinó la lectura del PDF en los días siguientes a su alta",
   }[c.clase];
+  if (c.tipo === "version") return fichaVersion(c);
   filas.push(["Tipo", `${esc(NOMBRE_TIPO[c.tipo])}${nota ? ` <span class="tenue">· ${nota}</span>` : ""}`]);
   if (c.alta) filas.push(["Ajuste de", `<a href="${esc(urlCambio(c.alta))}">${esc(tituloCambio(c.alta))}</a>`]);
   if (c.ajustes?.length) filas.push(["Ajustes iniciales", `<a href="#ajustes">${plural(c.ajustes.length, "commit", "commits")}</a>`]);
@@ -833,17 +889,48 @@ function fichaCambio(c) {
   return `<dl class="ficha">\n${filas.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("\n")}\n</dl>`;
 }
 
+// La ficha de una versión del histórico: de dónde salió y con qué se leyó.
+// El commit se enlaza, pero no es referencia: la rama se puede regenerar.
+function fichaVersion(c) {
+  const filas = [
+    ["Tipo", 'Versión anterior <span class="tenue">· texto reconstruido de una copia archivada del PDF oficial</span>'],
+    ["Publicación", `${c.medio ? `${esc(c.medio)}: ` : ""}<span class="fecha">${fechaLarga(fechaPublicacion(c))}</span> <span class="tenue">(${
+      c.origen === "notas" ? "la fecha más reciente en las notas de reforma de esa copia" : "fecha de la versión en la portada del PDF"
+    })</span>`],
+  ];
+  if (c.fuente) filas.push(["Copia archivada", `<a href="${esc(c.fuente)}">${esc(c.fuente)}</a>`]);
+  if (c.sha256) filas.push(["SHA-256 de la copia", `<code>${esc(c.sha256)}</code>`]);
+  if (c.extractor) {
+    const [repoExt, ver] = c.extractor.split("@");
+    filas.push(["Extractor", `<a href="${esc(`https://github.com/${repoExt}/tree/${ver}`)}"><code>${esc(c.extractor)}</code></a>`]);
+  }
+  filas.push([
+    "En el histórico",
+    `<a href="${esc(gh(c.repo, `/commits/${c.documento}`))}">rama <code>${esc(c.documento)}</code></a>, <a href="${esc(urlCommit(c))}">commit <code>${esc(c.sha.slice(0, 9))}</code></a> <span class="tenue">(la rama se puede regenerar: la referencia es el documento y su fecha de publicación)</span>`,
+  ]);
+  return `<dl class="ficha">\n${filas.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("\n")}\n</dl>`;
+}
+
 const ESTADO_ARTICULO = [
   ["adicionados", "Adicionado", "Adicionados"],
   ["modificados", "Modificado", "Modificados"],
   ["derogados", "Derogado", "Derogados"],
   ["corregidos", "Corregido", "Corregidos"],
+  ["retirados", "Retirado", "Retirados"],
 ];
 
 const ESTADO_ARCHIVO = { A: "agregado", M: "modificado", D: "borrado" };
 
 function seccionArticulos(c) {
   const claves = articulosDe(c);
+  if (c.tipo === "version" && (c.primera || !claves.length)) {
+    return `<h2 id="articulos">Artículos</h2>
+<p>
+  ${resumenCambio(c)}. Su texto completo en esta versión está en
+  <a href="${esc(gh(c.repo, `/tree/${c.sha}/${c.documento}`))}">GitHub</a>.
+</p>`;
+  }
+  const rama = c.tipo === "version" ? c.documento : "main";
   if (c.tipo === "alta" || c.tipo === "retiro") {
     const { ruta } = textoVigente({ ...c.doc, repos: new Set([c.repo]) });
     const rev = c.tipo === "retiro" ? `${c.sha}^` : c.sha;
@@ -881,7 +968,7 @@ ${as.map((a) => `<li><a href="${esc(gh(c.repo, `/blob/${a.estado === "D" ? `${c.
       const enlaces = [
         t.antes != null ? `<a href="${esc(gh(c.repo, `/blob/${c.sha}^/${t.ruta}`))}">antes</a>` : "",
         t.despues != null ? `<a href="${esc(gh(c.repo, `/blob/${c.sha}/${t.ruta}`))}">después</a>` : "",
-        `<a href="${esc(gh(c.repo, `/commits/main/${t.ruta}`))}">historial</a>`,
+        t.ruta ? `<a href="${esc(gh(c.repo, `/commits/${rama}/${t.ruta}`))}">historial</a>` : "",
       ].filter(Boolean);
       const cuerpo =
         t.antes == null && t.despues == null
@@ -909,7 +996,8 @@ ${resto > 0 ? `<p class="aviso">Faltan ${plural(resto, "artículo", "artículos"
 }
 
 function vecinos(c) {
-  const cs = c.doc.cambios;
+  // Tras la versión anterior más reciente sigue el alta del documento.
+  const cs = c.tipo === "version" ? [c.doc.cambios.at(-1), ...c.doc.versiones] : c.doc.cambios;
   const i = cs.indexOf(c);
   const anterior = cs[i + 1];
   const siguiente = cs[i - 1];
@@ -1186,6 +1274,7 @@ ${htmlCuadricula(d, { nombre: c.doc.nombre, resaltar: new Set(claves) })}
 
 function tituloCambio(c) {
   const f = fechaPublicacion(c);
+  if (c.tipo === "version") return `Versión del ${fechaLarga(f)}`;
   if (c.tipo === "reforma") return f ? `Reforma del ${fechaLarga(f)}` : `Reforma registrada el ${fechaLarga(c.dia)}`;
   if (c.clase === "ajuste") return `Ajuste inicial del ${fechaLarga(c.dia)}`;
   if (c.clase === "metadatos") return `Cambio de metadatos del ${fechaLarga(c.dia)}`;
@@ -1230,6 +1319,62 @@ ${vecinos(c)}`;
     sobre,
     generada,
   });
+}
+
+const AVISO_VERSION = `<p class="aviso">
+  Esta versión es anterior al alta del documento en OpenCodice. Su texto se reconstruyó de una
+  copia del PDF de la Cámara de Diputados que guardó el Internet Archive, con el mismo extractor
+  que el texto vigente; no pasó por la verificación de cada reforma nueva. Las diferencias son
+  contra la versión anterior que se conserva, que puede no ser la reforma inmediata anterior.
+</p>`;
+
+function paginaVersion(c, generada) {
+  const sobre = `<p class="sobre"><a href="${esc(urlDocumento(c.documento))}">${esc(c.doc.nombre)}</a> · <a href="${esc(urlDocumento(c.documento))}#versiones">versiones anteriores</a></p>`;
+  const cuerpo = `<p>${resumenCambio(c)}.</p>
+${AVISO_VERSION}
+${fichaCambio(c)}
+${seccionArticulos(c)}
+<h2>En la historia del documento</h2>
+${vecinos(c)}`;
+  const h1 = tituloCambio(c);
+  const resumen = `${resumenCambio(c).replace(/<[^>]+>/g, "")}.`;
+  return pagina({
+    url: urlCambio(c),
+    tipo: "article",
+    markdown: `${urlCambio(c)}.md`,
+    // Una sola tarjeta por documento para todas sus versiones: son miles de
+    // páginas y cada tarjeta distinta es un archivo más del despliegue.
+    tarjeta: { etiqueta: c.doc.nombre, titulo: "Versiones anteriores", detalle: "El texto de la ley en cada versión que se conserva, con lo que cambió de una a otra." },
+    titulo: `${h1} · ${c.doc.sigla ?? c.doc.nombre}`,
+    h1,
+    descripcion: `Versión anterior de ${c.doc.nombre}, publicada el ${fechaLarga(fechaPublicacion(c))}: ${resumen}`,
+    cuerpo,
+    sobre,
+    generada,
+  });
+}
+
+// Las versiones anteriores al alta, en la página del documento.
+function seccionVersiones(d) {
+  if (!d.versiones.length) return "";
+  const filas = d.versiones
+    .map(
+      (c) => `<li class="cambio">
+<p class="c-titulo">${etiquetaTipo(c)} <a href="${esc(urlCambio(c))}">${medioYFecha(c)}</a></p>
+<p class="c-datos">${resumenCambio(c)}</p>
+</li>`,
+    )
+    .join("\n");
+  return `<h2 id="versiones">Versiones anteriores a su alta</h2>
+<p>
+  ${plural(d.versiones.length, "versión", "versiones")} del texto, de ${fechaLarga(d.versiones.at(-1).dia)} a ${fechaLarga(d.versiones[0].dia)},
+  reconstruidas de las copias del PDF oficial que guardó el Internet Archive
+  (<a href="${esc(gh(REPO_HISTORICO, `/tree/${d.clave}`))}">rama <code>${esc(d.clave)}</code> de historico</a>). Solo están
+  las versiones de las que se conserva una copia: entre dos de ellas puede haber más de una reforma.
+</p>
+<ul class="cambios">
+${filas}
+</ul>`;
 }
 
 // ------------------------------------------------------------------ decretos
@@ -1448,6 +1593,25 @@ function cambiosJson(m, generada) {
           pagina: `${SITIO}${urlCambio(c)}`,
           commit: urlCommit(c),
         })),
+      nota_versiones: "Versiones anteriores al alta de cada documento, del repositorio historico: texto reconstruido de copias archivadas del PDF oficial, no verificado por la vigilancia. Su llave es (documento, publicacion): las ramas de historico se regeneran y sus sha cambian.",
+      versiones: (m.versiones ?? [])
+        .slice()
+        .sort((a, b) => b.dia.localeCompare(a.dia) || a.documento.localeCompare(b.documento))
+        .map((c) => ({
+          documento: c.documento,
+          nombre: c.doc.nombre,
+          publicacion: c.dia,
+          publicacion_origen: c.origen,
+          medio: c.medio,
+          primera: c.primera,
+          articulos_adicionados: c.adicionados,
+          articulos_modificados: c.modificados,
+          articulos_retirados: c.retirados,
+          fuente: c.fuente,
+          fuente_sha256: c.sha256,
+          extractor: c.extractor,
+          pagina: `${SITIO}${urlCambio(c)}`,
+        })),
     },
     null,
     1,
@@ -1548,6 +1712,10 @@ export function paginasBitacora(m, generada, vinculos) {
     for (const c of d.cambios) archivos.set(`bitacora/${d.clave}/${c.id}.html`, paginaCambio(c, generada, vinculos));
     archivos.set(`bitacora/${d.clave}/index.md`, mdDocumento(d));
     for (const c of d.cambios) archivos.set(`bitacora/${d.clave}/${c.id}.md`, mdCambio(c, vinculos));
+    for (const c of d.versiones ?? []) {
+      archivos.set(`bitacora/${d.clave}/${c.id}.html`, paginaVersion(c, generada));
+      archivos.set(`bitacora/${d.clave}/${c.id}.md`, mdCambio(c, null));
+    }
   }
   archivos.set("bitacora/index.md", mdReformas(m));
   archivos.set("bitacora/decretos/index.html", indiceDecretos(m, generada));
@@ -1633,7 +1801,7 @@ function mdCambio(c, vinculos) {
       clase: c.clase,
       publicacion: c.publicaciones,
       medio: c.medio,
-      registrado: c.dia,
+      registrado: c.tipo === "version" ? null : c.dia,
       fuente: c.fuente,
       fuente_sha256: c.sha256,
       extractor: c.extractor,
@@ -1644,18 +1812,23 @@ function mdCambio(c, vinculos) {
     `# ${tituloCambio(c)}: ${c.doc.nombre}`,
     `${sinHtml(resumenCambio(c))}.`,
   ];
+  if (c.tipo === "version") {
+    partes.push(
+      "Versión anterior al alta del documento, reconstruida de una copia del PDF oficial que guardó el Internet Archive; no pasó por la verificación de cada reforma nueva. Las diferencias son contra la versión anterior que se conserva, que puede no ser la reforma inmediata anterior. La rama del histórico se puede regenerar: la referencia estable es el documento y su fecha de publicación.",
+    );
+  }
   if (c.otros.length) partes.push(`El mismo hecho está registrado también en ${c.otros.map((o) => `${o.repo} (${SITIO}${urlCambio(o)}.md)`).join(", ")}.`);
   if (c.alta) partes.push(`Ajuste inicial del alta: ${SITIO}${urlCambio(c.alta)}.md`);
   const proceso = mdProceso(c, vinculos);
   if (proceso) partes.push(proceso);
-  if (c.tipo === "alta" || c.tipo === "retiro" || !claves.length) {
+  if (c.tipo === "alta" || c.tipo === "retiro" || c.primera || !claves.length) {
     if (!c.doc.retirado) partes.push(`Índice y texto vigente: ${urlLey(c.documento)}`);
     return `${partes.join("\n\n")}\n`;
   }
   const mostrados = claves.slice(0, DIFERENCIAS_MAX);
   for (const k of mostrados) {
     const t = c.textos[k];
-    const enlace = estado[k] === "Derogado" || c.doc.retirado ? "" : `\n\nTexto vigente: ${urlLey(c.documento, k)}`;
+    const enlace = estado[k] === "Derogado" || estado[k] === "Retirado" || c.doc.retirado ? "" : `\n\nTexto vigente: ${urlLey(c.documento, k)}`;
     const titulo = (encabezado(t?.despues) ?? encabezado(t?.antes) ?? c.etiquetas[k] ?? k).replace(/[.\s]+$/, "");
     partes.push(`## ${titulo} (${(estado[k] ?? "").toLowerCase()})${enlace}
 
@@ -1684,7 +1857,17 @@ ${d.cambios
   .filter((c) => c.clase !== "ajuste")
   .map((c) => lineaMd(c, false))
   .join("\n")}
-`;
+${
+  d.versiones?.length
+    ? `
+## Versiones anteriores a su alta
+
+Reconstruidas de las copias del PDF oficial que guardó el Internet Archive (repositorio historico, rama ${d.clave}). Solo las versiones de las que se conserva una copia.
+
+${d.versiones.map((c) => lineaMd(c, false)).join("\n")}
+`
+    : ""
+}`;
 }
 
 function mdReformas(m) {
