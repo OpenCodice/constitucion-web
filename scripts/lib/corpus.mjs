@@ -7,7 +7,7 @@
 // se sirve la de leyes-federales y la otra queda en `tambien_en`.
 
 import { REPOS, ORG } from "./comun.mjs";
-import { arbol, clon, dirArticulos, dirMetadata, esArticulo, leerBlobs, articulosDe } from "./historial.mjs";
+import { arbol, clon, clonHistorico, dirArticulos, dirMetadata, esArticulo, leerBlobs, articulosDe } from "./historial.mjs";
 import { encabezado } from "./diferencias.mjs";
 import { SITIO } from "./tarjeta.mjs";
 
@@ -184,6 +184,8 @@ function armar(d, repo, a, rutas, blobs) {
     github: `https://github.com/${ORG}/${repo}/tree/main/${base}`,
     articulos,
     cambios: cambios.map(cambioCorto),
+    // Las versiones anteriores a su alta que se conservan (ver `leerAnteriores`).
+    anteriores: d.versiones?.length ? { versiones: d.versiones.length, desde: d.versiones.at(-1).dia, hasta: d.versiones[0].dia } : undefined,
   };
   return { clave: d.clave, indice };
 }
@@ -230,6 +232,72 @@ export function archivosDocumento({ clave, indice: i }) {
   }
   trozos.forEach((xs, n) => archivos.set(`ley/_/${clave}/${n}.json`, JSON.stringify(xs.map(({ url, ...a }) => a))));
   archivos.set(`ley/_/${clave}/i.json`, JSON.stringify({ ...ficha, claves: articulos.map((a) => a.clave), trozo }));
+  return archivos;
+}
+
+// ------------------------------------------------------------------ versiones anteriores
+// El texto de cada artículo en las versiones anteriores al alta del
+// documento (`d.versiones` de la bitácora, del repositorio historico), para
+// que el Worker responda «el artículo a tal fecha» sin salir del despliegue.
+//
+// Por artículo, una línea de tiempo: [posición de la versión, texto] cada vez
+// que su archivo cambió; `null` si esa versión lo retiró y `true` si desde
+// ahí su texto ya es el vigente, que no se repite (es el caso de casi todos
+// los artículos de la primera versión).
+
+// { versiones, lineas } de un documento, o null si no tiene versiones
+// anteriores. `vigentes`: clave → texto vigente.
+export async function leerAnteriores(d, vigentes) {
+  if (!d.versiones?.length) return null;
+  const { dir } = await clonHistorico();
+  const versiones = [...d.versiones].reverse();
+  const base = `${d.clave}/`;
+  const pedidos = [];
+  for (const v of versiones) for (const f of v.articulosArchivo) if (f.estado !== "D") pedidos.push(`${v.sha}:${f.ruta}`);
+  const blobs = await leerBlobs(dir, pedidos);
+  const lineas = new Map();
+  versiones.forEach((v, i) => {
+    for (const f of v.articulosArchivo) {
+      const clave = f.ruta.slice(base.length, -3);
+      if (!lineas.has(clave)) lineas.set(clave, []);
+      lineas.get(clave).push([i, f.estado === "D" ? null : (blobs.get(`${v.sha}:${f.ruta}`) ?? "").replace(/\s+$/, "")]);
+    }
+  });
+  for (const [clave, linea] of lineas) {
+    const ultimo = linea.at(-1);
+    if (ultimo[1] != null && ultimo[1] === vigentes.get(clave)) ultimo[1] = true;
+  }
+  return {
+    versiones: versiones.map((v) => ({
+      publicacion: v.dia,
+      origen: v.origen,
+      medio: v.medio,
+      fuente: v.fuente,
+      fuente_sha256: v.sha256,
+      bitacora: `${SITIO}/bitacora/${v.documento}/${v.id}`,
+    })),
+    lineas,
+  };
+}
+
+// `ley/_/{Documento}/h.json` (las versiones y en qué trozo está la línea de
+// cada artículo) y `ley/_/{Documento}/h{n}.json` (las líneas, por trozos).
+export function archivosAnteriores(clave, { versiones, lineas }) {
+  const archivos = new Map();
+  const trozos = [{}];
+  const trozo = {};
+  let tam = 0;
+  for (const [k, linea] of [...lineas].sort(([x], [y]) => x.localeCompare(y, "es", { numeric: true }))) {
+    if (tam > TROZO) {
+      trozos.push({});
+      tam = 0;
+    }
+    trozos.at(-1)[k] = linea;
+    trozo[k] = trozos.length - 1;
+    tam += linea.reduce((n, [, t]) => n + (typeof t === "string" ? Buffer.byteLength(t) : 0) + 16, 0);
+  }
+  trozos.forEach((x, n) => archivos.set(`ley/_/${clave}/h${n}.json`, JSON.stringify(x)));
+  archivos.set(`ley/_/${clave}/h.json`, JSON.stringify({ documento: clave, versiones, trozo }));
   return archivos;
 }
 

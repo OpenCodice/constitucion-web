@@ -329,6 +329,10 @@ export const REPO_HISTORICO = "historico";
 // reedición del PDF toca cientos y la página solo muestra los primeros.
 export const DIFERENCIAS_MAX = 150;
 
+// Se abre una vez por corrida: la bitácora y el corpus leen el mismo clon.
+let historico;
+export const clonHistorico = () => (historico ??= abrirHistorico());
+
 async function abrirHistorico() {
   if (process.env.REPOS_DATOS) {
     const dir = join(process.env.REPOS_DATOS, REPO_HISTORICO);
@@ -346,7 +350,7 @@ async function abrirHistorico() {
 }
 
 async function leerHistorico() {
-  const { dir, ramas } = await abrirHistorico();
+  const { dir, ramas } = await clonHistorico();
   const refs = (await git(dir, ["for-each-ref", "--format=%(refname)", ramas]))
     .toString("utf8")
     .split("\n")

@@ -29,7 +29,7 @@ import { paginasCongreso } from "./congreso.mjs";
 import { urlFoto } from "./lib/congreso.mjs";
 import { SITIO, escribirTarjetas, fijarFirma } from "./lib/tarjeta.mjs";
 import { nivel } from "./lib/cuadros.mjs";
-import { leerCorpus, fichaCatalogo, llmsCompleto, archivosDocumento } from "./lib/corpus.mjs";
+import { leerCorpus, fichaCatalogo, llmsCompleto, archivosDocumento, leerAnteriores, archivosAnteriores } from "./lib/corpus.mjs";
 import { resumenVotaciones, resumenLegisladores, coleccionesCongreso, archivosVotos, filtrosAsuntos } from "./lib/abiertos.mjs";
 import { indiceBusqueda } from "./lib/busqueda.mjs";
 
@@ -55,6 +55,20 @@ const escribir = (mapa, n = 32) =>
   });
 await rm(publico("ley"), { recursive: true, force: true });
 await enParalelo(corpus.documentos, 8, (d) => escribir(archivosDocumento(d), 8));
+// Las versiones anteriores al alta, para leer un artículo a una fecha. Si el
+// histórico no se puede leer, /ley sirve solo lo vigente.
+let anteriores = 0;
+for (const d of corpus.documentos) {
+  if (!d.indice.anteriores) continue;
+  try {
+    const a = await leerAnteriores(bitacora.documentos.get(d.clave), new Map(d.indice.articulos.map((x) => [x.clave, x.texto])));
+    await escribir(archivosAnteriores(d.clave, a), 8);
+    anteriores++;
+  } catch (e) {
+    corpus.fallas.push({ repo: "historico", error: e.message });
+    break;
+  }
+}
 await writeFile(
   publico("ley/catalogo.json"),
   JSON.stringify(
@@ -166,7 +180,7 @@ ${paginas.map((a) => `<url><loc>${urlDe(a)}</loc></url>`).join("\n")}
 
 const fallas = contarFallas(datos) + bitacora.fallas.length + corpus.fallas.length;
 console.log(
-  `${corpus.documentos.length} documentos en /ley (${busqueda.palabras} palabras en el índice), index.html, estado.html, leyes.html, ${archivos.size} archivos de la bitácora (${bitacora.cambios.length} cambios, ${bitacora.documentos.size} documentos) y ${congreso.size} del Congreso generados, ${tarjetas.total} tarjetas (${tarjetas.nuevas} nuevas) y el sitemap${
+  `${corpus.documentos.length} documentos en /ley (${anteriores} con versiones anteriores; ${busqueda.palabras} palabras en el índice), index.html, estado.html, leyes.html, ${archivos.size} archivos de la bitácora (${bitacora.cambios.length} cambios, ${bitacora.documentos.size} documentos) y ${congreso.size} del Congreso generados, ${tarjetas.total} tarjetas (${tarjetas.nuevas} nuevas) y el sitemap${
     fallas ? ` con ${fallas} fuentes sin responder` : ""
   }`,
 );

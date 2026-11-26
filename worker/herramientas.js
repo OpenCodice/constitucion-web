@@ -10,6 +10,10 @@ import {
   buscarDocumentos,
   datosArticulo,
   datosHistoria,
+  articuloEnFecha,
+  anterioresDeArticulo,
+  mdEnFecha,
+  ES_FECHA,
   documentoOError,
   leerArticulo,
   lineaDocumento,
@@ -119,20 +123,30 @@ export const HERRAMIENTAS = [
   {
     name: "leer_articulo",
     title: "Leer artículos",
-    description: "Texto vigente de uno o varios artículos, tal como se extrajo del PDF oficial (con sus notas de reforma), con su URL para citar, su versión (commit) y su fuente.",
+    description: "Texto de uno o varios artículos, tal como se extrajo del PDF oficial (con sus notas de reforma), con su URL para citar, su versión y su fuente. Por omisión el vigente; con `fecha`, el que tenía ese día: en las leyes federales y la Constitución se conservan versiones desde 2006 (reconstruidas de copias archivadas del PDF, no todas las reformas), y la respuesta dice de qué versión es el texto.",
     inputSchema: {
       type: "object",
       properties: {
         documento,
         articulos: { type: "array", items: { type: "string" }, maxItems: 20, description: "Artículos como se escriban: «1», «4o», «123», «77 Bis 35 A», «Regla 2.1.1». A lo más 20." },
+        fecha: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "AAAA-MM-DD: el texto que tenían ese día en lugar del vigente." },
       },
       required: ["documento", "articulos"],
     },
-    async run(env, { documento: k, articulos, articulo }) {
+    async run(env, { documento: k, articulos, articulo, fecha }) {
       const pedidos = (typeof articulos === "string" ? articulos.split(",") : articulos) ?? (articulo ? [articulo] : []);
       if (!pedidos.length) throw new ErrorDatos("Falta `articulos`.");
       if (pedidos.length > 20) throw new ErrorDatos("A lo más 20 artículos por llamada.");
       const d = await documentoOError(env, k);
+      if (fecha != null && fecha !== "") {
+        if (!ES_FECHA.test(String(fecha))) throw new ErrorDatos("`fecha` va como AAAA-MM-DD.");
+        const enFecha = [];
+        for (const p of pedidos) enFecha.push({ p, ...(await articuloEnFecha(env, d.documento, p, String(fecha))) });
+        return {
+          datos: { documento: d.documento, fecha, articulos: enFecha.map(({ p, datos, falta }) => datos ?? { pedido: p, error: falta }) },
+          md: enFecha.map(({ datos, falta }) => (datos ? mdEnFecha(datos) : `${falta}\n`)).join("\n"),
+        };
+      }
       const leidos = [];
       for (const p of pedidos) leidos.push({ p, ...(await leerArticulo(env, d.documento, p)) });
       return {
@@ -144,13 +158,14 @@ export const HERRAMIENTAS = [
   {
     name: "historia_articulo",
     title: "Historia de un artículo",
-    description: "Los cambios registrados de un artículo (reformas, correcciones de extracción, alta), con su fecha de publicación, su página en la bitácora y la URL del texto en cada versión, y las fechas de reforma anteriores al registro que anotan las notas de su texto.",
+    description: "Los cambios registrados de un artículo (reformas, correcciones de extracción, alta), con su fecha de publicación, su página en la bitácora y la URL del texto en cada versión; las versiones anteriores a su alta que se conservan en las que cambió (`versiones_anteriores`, desde 2006 en las leyes federales y la Constitución); y las fechas de reforma que anotan las notas de su texto.",
     inputSchema: { type: "object", properties: { documento, articulo: { type: "string" } }, required: ["documento", "articulo"] },
     async run(env, { documento: k, articulo }) {
       const d = await documentoOError(env, k);
       const { minimo, articulo: a } = await leerArticulo(env, d.documento, articulo);
       if (!a) throw new ErrorDatos(`${d.nombre} no tiene un artículo «${articulo}». Su índice: ${SITIO}/ley/${d.documento}`);
-      return { datos: datosHistoria(minimo, a), md: mdHistoria(minimo, a) };
+      const anteriores = await anterioresDeArticulo(env, minimo, a.clave);
+      return { datos: datosHistoria(minimo, a, anteriores), md: mdHistoria(minimo, a, anteriores) };
     },
   },
   {
@@ -162,13 +177,19 @@ export const HERRAMIENTAS = [
       type: "object",
       properties: {
         documento,
-        cambio: { type: "string", description: "«ultima_reforma» (por omisión), «ultimo» (cualquier tipo) o el sha del commit (al menos 7 caracteres, de historia_articulo o cambios_recientes)." },
+        cambio: { type: "string", description: "«ultima_reforma» (por omisión), «ultimo» (cualquier tipo), el sha del commit (al menos 7 caracteres, de historia_articulo o cambios_recientes) o, para una versión anterior al alta, su fecha de publicación (AAAA-MM-DD, de `versiones_anteriores` en historia_articulo)." },
       },
       required: ["documento"],
     },
     async run(env, { documento: k, cambio = "ultima_reforma" }) {
       const d = await documentoOError(env, k);
       const minimo = await minimoDe(env, d.documento);
+      if (ES_FECHA.test(cambio)) {
+        const pagina = `bitacora/${d.documento}/v${cambio}`;
+        const md = await leerTexto(env, `${pagina}.md`);
+        if (!md) throw new ErrorDatos(`De ${d.nombre} no se conserva una versión anterior publicada el ${cambio}. Las que hay: ${SITIO}/bitacora/${d.documento}/#versiones`);
+        return { datos: { documento: d.documento, nombre: d.nombre, tipo: "version", publicacion: [cambio], bitacora: `${SITIO}/${pagina}`, markdown: md }, md };
+      }
       const cs = minimo.cambios;
       const c =
         cambio === "ultima_reforma"

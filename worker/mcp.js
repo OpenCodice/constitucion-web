@@ -13,6 +13,7 @@ Cómo usarlo:
 - Un tema («¿qué dice la ley sobre el matrimonio entre personas del mismo sexo?»): buscar es literal, así que haz varias búsquedas con las palabras que usaría la ley o una iniciativa («matrimonio igualitario», «matrimonio mismo sexo», «matrimonio dos personas», «matrimonio hombre mujer») y luego leer_articulo para el texto.
 - Una ley: buscar_documentos da su clave (cpeum, lft, lgs, jalisco/constitucion…); indice_documento, sus artículos; leer_articulo, el texto.
 - Qué cambió en la última reforma de una ley: detalle_cambio (diff de cada artículo y su proceso legislativo).
+- Qué decía un artículo en una fecha pasada: leer_articulo con \`fecha\`. De las leyes federales y la Constitución se conservan versiones desde 2006, no todas las reformas: la respuesta dice de qué versión es el texto, y historia_articulo lista las versiones en que cambió.
 - Votaciones controvertidas: votaciones con orden «division». Las leyes con más votaciones divididas: votaciones_por_ley.
 - Quién votó qué: votacion (con el id que da votaciones) lista el voto de cada legislador; votos_legislador, las votaciones de una persona.
 - Lo que presentó un legislador, o las iniciativas sobre una ley: asuntos (con autor, documento, texto o fechas).

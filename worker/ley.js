@@ -4,7 +4,7 @@
 
 import { mapaClaves, resolverClave } from "./claves.js";
 import { plano } from "./texto.js";
-import { SITIO, NOTA, ErrorDatos, catalogo, minimoDe, trozoDe, indiceDe } from "./datos.js";
+import { SITIO, NOTA, ErrorDatos, catalogo, minimoDe, trozoDe, indiceDe, anterioresDe, trozoAnterior } from "./datos.js";
 
 export const urlArticulo = (doc, clave) => `${SITIO}/ley/${doc}/${clave}`;
 const corto = (sha) => sha.slice(0, 12);
@@ -138,7 +138,108 @@ export function mdArticulo(minimo, a) {
   })}\n${d.texto}\n`;
 }
 
-export function datosHistoria(minimo, a) {
+// ------------------------------------------------------------------ a una fecha
+
+export const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/;
+const NOTA_ANTERIOR =
+  "Versión anterior al alta del documento en OpenCodice, reconstruida de una copia archivada del PDF oficial; no pasó por la verificación de cada reforma nueva. Solo se conservan algunas versiones: entre `version` y la fecha pedida puede haber reformas de las que no hay copia.";
+
+// La versión con que se dio de alta el documento: de ahí en adelante su
+// historia está en sus cambios; antes, en las versiones anteriores.
+const versionDeAlta = (minimo) => {
+  const alta = minimo.cambios.at(-1);
+  return alta?.publicacion?.at(-1) ?? alta?.dia ?? null;
+};
+
+// El texto de un artículo en una fecha (AAAA-MM-DD). `pedido` como se
+// escriba; puede ser un artículo que ya no está en el texto vigente.
+// Devuelve { minimo, datos } o { minimo, falta } con el motivo.
+export async function articuloEnFecha(env, doc, pedido, fecha) {
+  const { minimo, articulo: a } = await leerArticulo(env, doc, pedido);
+  const url = (clave) => `${urlArticulo(minimo.documento, clave)}@${fecha}`;
+  const base = (clave, etiqueta) => ({ documento: minimo.documento, nombre: minimo.nombre, clave, etiqueta, fecha, url: url(clave) });
+  const alta = versionDeAlta(minimo);
+  if (alta && fecha >= alta) {
+    if (!a) return { minimo, falta: `${minimo.nombre} no tiene un artículo «${pedido}» en su texto vigente.` };
+    const cs = a.cambios.map((i) => minimo.cambios[i]);
+    const posterior = cs.filter((c) => c.tipo === "reforma" && (c.publicacion?.at(-1) ?? c.dia) > fecha).at(-1);
+    if (!posterior) {
+      const d = datosArticulo(minimo, a);
+      const version = minimo.cambios.find((c) => c.publicacion?.length)?.publicacion.at(-1) ?? null;
+      return { minimo, datos: { ...base(a.clave, a.etiqueta), origen: "vigente", version, permanente: d.permanente, fuente: d.fuente, nota: NOTA, texto: a.texto } };
+    }
+    // Lo reformó después una reforma registrada: su texto de entonces es el
+    // del commit anterior a ella, que está en GitHub.
+    const previo = minimo.cambios[minimo.cambios.indexOf(posterior) + 1];
+    return {
+      minimo,
+      datos: {
+        ...base(a.clave, a.etiqueta),
+        origen: "commit",
+        version: previo.publicacion?.at(-1) ?? previo.dia,
+        commit: previo.sha,
+        texto_url: `https://raw.githubusercontent.com/OpenCodice/${minimo.repo}/${previo.sha}/${minimo.carpeta}${a.clave}.md`,
+        nota: NOTA,
+      },
+    };
+  }
+  const h = minimo.anteriores ? await anterioresDe(env, minimo.documento) : null;
+  if (!h) return { minimo, falta: `De ${minimo.nombre} no se conservan versiones anteriores a su alta${alta ? ` (versión del ${alta})` : ""}.` };
+  const clave = a?.clave ?? resolverClave(mapaClaves(Object.keys(h.trozo)), String(pedido ?? ""));
+  if (!clave) return { minimo, falta: `${minimo.nombre} no tiene un artículo «${pedido}», ni vigente ni en sus versiones anteriores.` };
+  let vi = -1;
+  h.versiones.forEach((v, i) => {
+    if (v.publicacion <= fecha) vi = i;
+  });
+  if (vi < 0) return { minimo, falta: `La versión más antigua que se conserva de ${minimo.nombre} es la publicada el ${h.versiones[0].publicacion}.` };
+  const linea = h.trozo[clave] == null ? [] : ((await trozoAnterior(env, minimo.documento, h.trozo[clave]))?.[clave] ?? []);
+  const entrada = linea.filter(([i]) => i <= vi).at(-1);
+  const v = h.versiones[vi];
+  if (!entrada || entrada[1] == null) {
+    return { minimo, falta: `El artículo «${pedido}» no está en la versión de ${minimo.nombre} publicada el ${v.publicacion}, la que se conserva para el ${fecha}.` };
+  }
+  const texto = entrada[1] === true ? a?.texto : entrada[1];
+  return {
+    minimo,
+    datos: {
+      ...base(clave, a?.etiqueta ?? clave),
+      origen: "historico",
+      version: v.publicacion,
+      // Desde cuándo tiene este texto, entre las versiones que se conservan.
+      texto_desde: h.versiones[entrada[0]].publicacion,
+      bitacora: v.bitacora,
+      fuente: v.fuente,
+      fuente_sha256: v.fuente_sha256,
+      nota: NOTA_ANTERIOR,
+      texto,
+    },
+  };
+}
+
+export function mdEnFecha(d) {
+  const { texto, texto_url, clave, ...campos } = d;
+  return `${yaml({ ...campos, articulo: clave, texto_url })}\n${texto ?? `El texto de esa versión está en ${texto_url}`}\n`;
+}
+
+// Las versiones anteriores al alta en que cambió el artículo, de la más
+// reciente a la más antigua.
+export async function anterioresDeArticulo(env, minimo, clave) {
+  if (!minimo.anteriores) return [];
+  const h = await anterioresDe(env, minimo.documento);
+  if (!h || h.trozo[clave] == null) return [];
+  const linea = (await trozoAnterior(env, minimo.documento, h.trozo[clave]))?.[clave] ?? [];
+  return linea
+    .map(([i, t]) => ({
+      publicacion: h.versiones[i].publicacion,
+      medio: h.versiones[i].medio,
+      retirado: t == null || undefined,
+      bitacora: h.versiones[i].bitacora,
+      texto_en_esa_version: `${urlArticulo(minimo.documento, clave)}@${h.versiones[i].publicacion}`,
+    }))
+    .reverse();
+}
+
+export function datosHistoria(minimo, a, anteriores = []) {
   return {
     documento: minimo.documento,
     clave: a.clave,
@@ -150,6 +251,7 @@ export function datosHistoria(minimo, a) {
       const c = minimo.cambios[i];
       return { ...c, texto_en_esa_version: `${urlArticulo(minimo.documento, a.clave)}@${corto(c.sha)}` };
     }),
+    versiones_anteriores: anteriores,
   };
 }
 
@@ -167,13 +269,22 @@ export function lineaCambio(c, extra = "") {
   return `- ${c.dia} · ${NOMBRE_CLASE[c.clase] ?? c.tipo}${pub} · [bitácora](${c.bitacora})${extra}`;
 }
 
-export function mdHistoria(minimo, a) {
-  const h = datosHistoria(minimo, a);
+export function mdHistoria(minimo, a, anteriores = []) {
+  const h = datosHistoria(minimo, a, anteriores);
+  const previas = anteriores.length
+    ? `
+## Versiones anteriores a su alta
+
+Las versiones que se conservan en las que este artículo cambió, reconstruidas de copias archivadas del PDF oficial (sin la verificación de cada reforma nueva). Su texto a cualquier fecha: \`${h.url}@AAAA-MM-DD\`.
+
+${anteriores.map((v) => `- ${v.publicacion} · ${v.retirado ? "ya no está en esa versión" : `[texto en esa versión](${v.texto_en_esa_version})`} · [bitácora](${v.bitacora})`).join("\n")}
+`
+    : "";
   return `${yaml({ documento: h.documento, articulo: h.clave, etiqueta: h.etiqueta, url: h.url, ultima_reforma: h.ultima_reforma })}
 # ${sinPunto(a.etiqueta)}: historia en OpenCodice
 
 ${h.cambios.map((c) => lineaCambio(c, ` · [texto en esa versión](${c.texto_en_esa_version})`)).join("\n") || "Sin cambios registrados."}
-
+${previas}
 La historia de cada documento en OpenCodice empieza en su alta. Las reformas anteriores no están como commits; sus fechas están en las notas del texto (por ejemplo _Párrafo reformado DOF 07-10-2026_)${h.ultima_reforma ? ` y la más reciente según esas notas es del ${h.ultima_reforma}` : ""}.${h.reformas_segun_notas?.length ? ` Las notas de su texto vigente anotan ${h.reformas_segun_notas.length === 1 ? "una fecha" : `${h.reformas_segun_notas.length} fechas`} de reforma: ${h.reformas_segun_notas.join(", ")}. Una nota que la reforma siguiente sustituyó ya no está en el texto, así que pueden faltar fechas.` : ""} Lo que cambió en cada reforma, con la diferencia de su texto y su proceso legislativo, está en su página de la bitácora (detalle_cambio en el MCP).
 `;
 }
@@ -303,13 +414,20 @@ export async function rutaLey(request, env) {
 
   let [pedido, sub] = resto;
   if (resto.length > 2 || (sub && sub !== "historia")) {
-    return noEncontrado(request, `Ruta desconocida: \`${url.pathname}\`.`, `Un artículo es \`/ley/${doc.documento}/{artículo}\` y su historia, \`/ley/${doc.documento}/{artículo}/historia\`.`);
+    return noEncontrado(request, `Ruta desconocida: \`${url.pathname}\`.`, `Un artículo es \`/ley/${doc.documento}/{artículo}\`; su historia, \`/ley/${doc.documento}/{artículo}/historia\`; y su texto a una fecha, \`/ley/${doc.documento}/{artículo}@AAAA-MM-DD\`.`);
   }
   let version = null;
   const arroba = pedido.indexOf("@");
   if (arroba >= 0) {
     version = pedido.slice(arroba + 1).toLowerCase();
     pedido = pedido.slice(0, arroba);
+  }
+  if (version && ES_FECHA.test(version)) {
+    const { datos, falta } = await articuloEnFecha(env, doc.documento, pedido, version);
+    if (!datos) return noEncontrado(request, falta, `Su texto vigente y su historia: ${SITIO}/ley/${doc.documento}.`);
+    if (formato === "json") return respuestaJson(datos, 200, canonica(datos.url));
+    if (datos.texto == null) return Response.redirect(datos.texto_url, 302);
+    return respuestaMd(request, mdEnFecha(datos), 200, canonica(datos.url));
   }
   const { minimo, articulo: a } = await leerArticulo(env, doc.documento, pedido);
   if (!a) {
@@ -325,7 +443,8 @@ export async function rutaLey(request, env) {
   }
   if (sub === "historia") {
     const u = `${urlArticulo(doc.documento, a.clave)}/historia`;
-    return formato === "json" ? respuestaJson(datosHistoria(minimo, a), 200, canonica(u)) : respuestaMd(request, mdHistoria(minimo, a), 200, canonica(u));
+    const anteriores = await anterioresDeArticulo(env, minimo, a.clave);
+    return formato === "json" ? respuestaJson(datosHistoria(minimo, a, anteriores), 200, canonica(u)) : respuestaMd(request, mdHistoria(minimo, a, anteriores), 200, canonica(u));
   }
   const u = urlArticulo(doc.documento, a.clave);
   return formato === "json" ? respuestaJson(datosArticulo(minimo, a), 200, canonica(u)) : respuestaMd(request, mdArticulo(minimo, a), 200, canonica(u));

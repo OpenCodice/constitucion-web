@@ -32,6 +32,10 @@ export const catalogo = (env) => json(env, "ley/catalogo.json");
 // en qué trozo está cada una (`scripts/lib/corpus.mjs`).
 export const minimoDe = (env, doc) => json(env, `ley/_/${doc}/i.json`);
 export const trozoDe = (env, doc, n) => json(env, `ley/_/${doc}/${n}.json`);
+// Las versiones anteriores al alta: cuáles hay y la línea de tiempo de cada
+// artículo, por trozos (`archivosAnteriores` de corpus.mjs).
+export const anterioresDe = (env, doc) => json(env, `ley/_/${doc}/h.json`);
+export const trozoAnterior = (env, doc, n) => json(env, `ley/_/${doc}/h${n}.json`);
 // El índice público, con la etiqueta y ubicación de cada artículo.
 export const indiceDe = (env, doc) => json(env, `ley/${doc}.json`);
 

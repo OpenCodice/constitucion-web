@@ -39,7 +39,12 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   - `ley.js` → `/ley/…` para leer y citar: `/ley` (catálogo), `/ley/{estado}`,
     `/ley/{Documento}` (índice por título y capítulo),
     `/ley/{Documento}/{artículo}` (frontmatter con ubicación, URL canónica,
-    versión, enlace permanente y fuente), `…/historia`, `…@{sha}` (302 al
+    versión, enlace permanente y fuente), `…/historia`, `…@{AAAA-MM-DD}` (el
+    texto en esa fecha, `articuloEnFecha`: antes de la versión del alta, de
+    las versiones anteriores, `ley/_/{Documento}/h.json` y sus trozos; después,
+    el vigente si ninguna reforma registrada posterior lo tocó, o un 302 al
+    commit anterior a esa reforma; lo que no se conserva es un 404 que dice
+    desde cuándo hay), `…@{sha}` (302 al
     archivo en ese commit, solo si es del documento) y `.json`. El artículo se
     acepta como se escriba (`claves.js`) y se sirve sin redirigir, con la URL
     canónica en el frontmatter y en `Link`; al navegador le llega como
@@ -75,6 +80,14 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   No un archivo por artículo: son 67 mil y crecen con cada estado, y un Worker
   admite 20 mil archivos (100 mil en el plan de pago). La misma ley de
   leyes-federales y fiscal-mexicano (mismo texto) se sirve de leyes-federales.
+  Las versiones anteriores al alta (`leerAnteriores`, `archivosAnteriores`,
+  de `d.versiones` de la bitácora y el clon de `historico`): por artículo,
+  una línea de tiempo [posición de la versión, texto] cada vez que su archivo
+  cambió; `null` si esa versión lo retiró y `true` si desde ahí su texto ya
+  es el vigente, que no se repite (casi todos los de la primera versión).
+  `leer_articulo` las sirve con `fecha`, `historia_articulo` lista las de
+  cada artículo (`versiones_anteriores`) y `detalle_cambio` acepta la fecha
+  de una versión.
 - `scripts/lib/abiertos.mjs` — `congreso/votaciones.json` (una fila por
   votación, sin duplicar la de otra fuente que apunta a la del SIL: cuentas
   totales y por grupo (del conteo de la fuente o, si no lo publica, como

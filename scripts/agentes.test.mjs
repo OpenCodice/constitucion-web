@@ -9,7 +9,7 @@ import { palabras, codificar, decodificar } from "../worker/texto.js";
 import worker, { prefiereMarkdown } from "../worker/index.js";
 import { HERRAMIENTAS } from "../worker/herramientas.js";
 import { diferenciaTexto } from "./lib/diferencias.mjs";
-import { archivosDocumento, fichaCatalogo } from "./lib/corpus.mjs";
+import { archivosDocumento, archivosAnteriores, fichaCatalogo } from "./lib/corpus.mjs";
 import { indiceBusqueda } from "./lib/busqueda.mjs";
 import { modeloCongreso } from "./lib/congreso.mjs";
 import { archivosVotos, buscadorDeLeyes, enLoGeneral, filtrosAsuntos, resumenLegisladores, resumenVotaciones } from "./lib/abiertos.mjs";
@@ -45,7 +45,7 @@ function documento(clave, extra, textos) {
   };
 }
 
-const CPEUM = documento("cpeum", { nombre: "Constitución Política de los Estados Unidos Mexicanos", sigla: "CPEUM", ambito: "constitucion", entidad: null }, [
+const CPEUM = documento("cpeum", { nombre: "Constitución Política de los Estados Unidos Mexicanos", sigla: "CPEUM", ambito: "constitucion", entidad: null, anteriores: { versiones: 2, desde: "2011-06-10", hasta: "2019-06-06" } }, [
   ["001", art("1o", "Toda persona gozará de los derechos humanos.")],
   ["004", art("4o", "La mujer y el hombre son iguales ante la ley.")],
   ["077-bis-35-a", art("77 Bis 35 A", "El salario mínimo se fijará anualmente.")],
@@ -102,8 +102,23 @@ const MODELO = modeloCongreso({
   ],
 });
 
+// Las versiones anteriores al alta de la Constitución: el 1o no cambió desde
+// la primera (su texto es el vigente), el 4o cambió en las dos y el 130 Bis
+// salió en la segunda; el 77 Bis 35 A no existía.
+const version = (publicacion) => ({ publicacion, origen: "portada", medio: "DOF", fuente: `https://web.archive.org/web/${publicacion}/CPEUM.pdf`, fuente_sha256: "c".repeat(64), bitacora: `https://constitucion.app/bitacora/cpeum/v${publicacion}` });
+const ANTERIORES = {
+  versiones: [version("2011-06-10"), version("2019-06-06")],
+  lineas: new Map([
+    ["001", [[0, true]]],
+    ["004", [[0, art("4o", "El varón y la mujer son iguales ante la ley.")], [1, art("4o", "La mujer y el hombre son iguales ante la ley. Texto de 2019.")]]],
+    ["130-bis", [[0, art("130 Bis", "Texto que después se retiró.")], [1, null]]],
+  ]),
+};
+
 const ARCHIVOS = new Map();
 for (const d of [CPEUM, JALISCO]) for (const [ruta, contenido] of archivosDocumento(d)) ARCHIVOS.set(`/${ruta}`, contenido);
+for (const [ruta, contenido] of archivosAnteriores("cpeum", ANTERIORES)) ARCHIVOS.set(`/${ruta}`, contenido);
+ARCHIVOS.set("/bitacora/cpeum/v2019-06-06.md", "# Versión del 6 de junio de 2019\n");
 const busqueda = indiceBusqueda([
   ...[CPEUM, JALISCO].map((d) => ({ coleccion: d.clave, tipo: "ley", nombre: d.indice.nombre, ambito: d.indice.ambito, unidades: d.indice.articulos.map((a) => ({ buscar: a.texto })) })),
   { coleccion: "congreso/iniciativa", tipo: "iniciativa", nombre: "Iniciativas", unidades: INICIATIVAS },
@@ -481,4 +496,50 @@ test("sin OAuth: el descubrimiento responde 404, no redirige", async () => {
     const r = await pedir(ruta);
     assert.equal(r.status, 404, ruta);
   }
+});
+
+test("un artículo a una fecha: versiones anteriores al alta, lo vigente y lo que no se conserva", async () => {
+  const en = async (ruta) => (await pedir(`/ley/cpeum/${ruta}.json`)).json();
+  const de2015 = await en("4@2015-01-01");
+  assert.equal(de2015.origen, "historico");
+  assert.equal(de2015.version, "2011-06-10");
+  assert.match(de2015.texto, /El varón y la mujer/);
+  assert.equal((await en("4o@2019-06-06")).texto_desde, "2019-06-06", "el día de la publicación ya rige esa versión");
+  assert.match((await en("4@2026-01-01")).texto, /Texto de 2019/, "entre la última versión anterior y el alta rige la última");
+
+  const primero = await en("1@2012-12-31");
+  assert.equal(primero.origen, "historico");
+  assert.match(primero.texto, /derechos humanos/, "el texto que no cambió es el vigente, sin repetirlo en el despliegue");
+
+  const retirado = await en("130 bis@2012-01-01");
+  assert.match(retirado.texto, /después se retiró/, "un artículo que ya no está en el texto vigente");
+  assert.equal((await pedir("/ley/cpeum/130-bis@2020-01-01", md)).status, 404);
+  assert.equal((await pedir("/ley/cpeum/77-bis-35-a@2015-01-01", md)).status, 404, "aún no existía");
+  const antes = await pedir("/ley/cpeum/4@2001-01-01", md);
+  assert.equal(antes.status, 404);
+  assert.match(await antes.text(), /más antigua que se conserva[\s\S]*2011-06-10/);
+
+  const hoy = await en("1@2026-12-01");
+  assert.equal(hoy.origen, "vigente");
+  assert.equal(hoy.version, "2026-10-07");
+  const entre = await en("4@2026-07-01");
+  assert.equal(entre.origen, "commit", "lo reformó una reforma registrada después de esa fecha");
+  assert.equal(entre.commit, SHA_ALTA);
+  assert.equal((await pedir("/ley/cpeum/4@2026-07-01", md)).status, 302);
+  assert.equal((await pedir("/ley/jalisco/constitucion/1@2015-01-01", md)).status, 404, "sin versiones anteriores");
+
+  const texto = await (await pedir("/ley/cpeum/4@2015-01-01", md)).text();
+  assert.match(texto, /^---\n[\s\S]*origen: "historico"[\s\S]*version: "2011-06-10"[\s\S]*---\n\n# Artículo 4o\./);
+});
+
+test("API: leer_articulo con fecha, historia con versiones anteriores y el detalle de una versión", async () => {
+  const r = await api("leer_articulo?documento=cpeum&articulos=4,77-bis-35-a&fecha=2015-01-01");
+  assert.equal(r.articulos[0].version, "2011-06-10");
+  assert.match(r.articulos[1].error, /no está en la versión/);
+  assert.equal((await pedir("/api/leer_articulo?documento=cpeum&articulos=4&fecha=ayer")).status, 400);
+  const h = await api("historia_articulo?documento=cpeum&articulo=4");
+  assert.deepEqual(h.versiones_anteriores.map((v) => v.publicacion), ["2019-06-06", "2011-06-10"]);
+  assert.equal(h.versiones_anteriores[0].texto_en_esa_version, "https://constitucion.app/ley/cpeum/004@2019-06-06");
+  assert.match(await (await pedir("/ley/cpeum/4/historia", md)).text(), /## Versiones anteriores a su alta[\s\S]*2011-06-10/);
+  assert.match((await api("detalle_cambio?documento=cpeum&cambio=2019-06-06")).markdown, /Versión del 6 de junio de 2019/);
 });
