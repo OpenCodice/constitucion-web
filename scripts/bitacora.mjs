@@ -583,6 +583,7 @@ ${ds
       n("reforma") ? plural(n("reforma"), "reforma", "reformas") : "sin reformas registradas",
       n("correccion") ? plural(n("correccion"), "corrección", "correcciones") : "",
       d.retirado ? "retirado" : "",
+      d.versiones?.length ? `${plural(d.versiones.length, "versión anterior", "versiones anteriores")}, desde ${d.versiones.at(-1).dia.slice(0, 4)}` : "",
       `último cambio el <span class="fecha">${fechaLarga(d.cambios[0].dia)}</span>`,
     ].filter(Boolean);
     return `<li><p class="c-titulo"><a href="${esc(urlDocumento(d.clave))}">${esc(d.nombre)}</a></p><p class="c-datos">${datos.join(" · ")}</p></li>`;
@@ -593,7 +594,11 @@ ${ds
   const cuerpo = `${INTRO}
 ${pestañas("/documentos", cuentas(m))}
 ${avisoFallas(m.fallas)}
-<p>Cada documento con su historia: su alta, sus reformas y las correcciones de su extracción.</p>
+<p>Cada documento con su historia: su alta, sus reformas y las correcciones de su extracción.${
+  m.versiones?.length
+    ? ` De ${plural(docs.filter((d) => d.versiones?.length).length, "documento", "documentos")} se conservan además ${plural(m.versiones.length, "versión anterior", "versiones anteriores")} a su alta, reconstruidas de copias archivadas del PDF oficial; cada página dice cuáles y de qué fechas de reforma no hay copia.`
+    : ""
+}</p>
 ${bloques}`;
   return pagina({
     url: `${BASE}/documentos`,

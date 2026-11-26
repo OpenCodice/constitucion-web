@@ -315,6 +315,8 @@ export function fichaCatalogo({ indice: i }) {
     entidad: i.entidad,
     articulos: i.articulos.length,
     ultimo_cambio: ultimo ? { tipo: ultimo.tipo, dia: ultimo.dia, publicacion: ultimo.publicacion } : null,
+    // Cuántas versiones anteriores a su alta se conservan y de qué fechas.
+    versiones_anteriores: i.anteriores ?? null,
     url: `${SITIO}/ley/${i.documento}`,
     texto: `${SITIO}/ley/${i.documento}.md`,
     historia: `${SITIO}/bitacora/${i.documento}/`,

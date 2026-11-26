@@ -314,6 +314,7 @@ export function mdIndice(indice) {
     articulos: indice.articulos.length,
     fuente: indice.fuente,
     version_pdf: indice.version_pdf,
+    versiones_anteriores: indice.anteriores ? `${indice.anteriores.versiones}, de ${indice.anteriores.desde} a ${indice.anteriores.hasta}` : null,
     texto: `${SITIO}/ley/${indice.documento}.md`,
     json: `${SITIO}/ley/${indice.documento}.json`,
     historia: `${SITIO}/bitacora/${indice.documento}/`,
