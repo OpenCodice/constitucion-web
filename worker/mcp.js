@@ -16,7 +16,7 @@ Cómo usarlo:
 - Qué decía un artículo en una fecha pasada: leer_articulo con \`fecha\`. De las leyes federales y la Constitución se conservan versiones desde 2006, no todas las reformas: la respuesta dice de qué versión es el texto, y historia_articulo lista las versiones en que cambió.
 - Votaciones controvertidas: votaciones con orden «division». Las leyes con más votaciones divididas: votaciones_por_ley.
 - Quién votó qué: votacion (con el id que da votaciones) lista el voto de cada legislador; votos_legislador, las votaciones de una persona.
-- Lo que presentó un legislador, o las iniciativas sobre una ley: asuntos (con autor, documento, texto o fechas).
+- Lo que presentó un legislador, las iniciativas sobre una ley o todas las de un tema («Salud», «Seguridad Pública»: la clasificación del SIL, que no depende de las palabras del título): asuntos (con autor, documento, tema, texto o fechas).
 - Legisladores más ausentes: legisladores con orden «ausencia».
 - Las listas vienen por páginas: la respuesta dice cuántas hay y \`pagina\` pide la siguiente. Cada herramienta acepta \`formato\`: «json» devuelve los mismos datos estructurados en vez de Markdown.
 - Los datos tienen principio: el registro de cada ley empieza en su alta en OpenCodice (cambios_recientes lo dice) y los del Congreso cubren solo el periodo que cada respuesta indica. Que no haya registro no significa que no haya pasado.

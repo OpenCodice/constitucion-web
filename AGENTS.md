@@ -53,9 +53,11 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     ley entera costaría CPU (hasta 2.7 MB).
   - `busqueda.js`: la búsqueda literal sobre el índice de
     `scripts/lib/busqueda.mjs`: intersección de las listas de cada palabra
-    (sin acentos ni mayúsculas, `texto.js`), agrupada por colección; las
-    palabras comunes se ignoran y se dice. Fragmentos solo de las primeras
-    leyes, para no leer decenas de trozos.
+    (sin acentos ni mayúsculas, y por su raíz: `raiz` de `texto.js` hace que
+    singular y plural cuenten igual con una regla fija sobre la terminación),
+    agrupada por colección. Solo se ignoran las palabras vacías de la lista
+    fija `VACIAS` («de», «la», «que»), y se dice. Fragmentos solo de las
+    primeras leyes, para no leer decenas de trozos.
   - `tema.js`: la vista por tema, `tema` para agentes y `/tema?q=…` para
     personas (la página base `tema.html`, de `scripts/tema.mjs`, con el
     resultado en su lugar; sin JavaScript). Es la búsqueda literal agrupada
@@ -104,16 +106,20 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
   sentido, ausencias y su tasa, iniciativas presentadas y aprobadas, `foto`), y los
   asuntos como colecciones para la búsqueda.
 - `scripts/lib/busqueda.mjs` — el índice de la búsqueda en `public/buscar/`
-  (palabra → ids, en 256 archivos; `meta.json` con el rango de ids de cada
-  colección y las palabras comunes, las que están en más del 4 % de las
-  unidades) y las fichas de los asuntos en `congreso/_/{tipo}/{n}.json`. De un
-  asunto solo se indexa su título, no sus autores.
+  (raíz de palabra → ids, en 256 archivos; una palabra que está en más de
+  1,500 unidades, como «salud» o «artículo», va sola en
+  `buscar/g/{palabra}.json`, y `meta.json` las lista junto con el rango de ids
+  de cada colección) y las fichas de los asuntos en
+  `congreso/_/{tipo}/{n}.json`. De un asunto solo se indexa su título, no sus
+  autores.
 - Para las herramientas, `abiertos.mjs` escribe además: en cada votación, las
   leyes que su asunto reforma o expide por su nombre (`buscadorDeLeyes`:
   nombre completo, tras un verbo de reforma, el más largo si se enciman;
   `origen: asunto`, frente a `decreto`) y `otras_fuentes`; los votos con
   nombre en trozos (`archivosVotos`); y los filtros de los asuntos
-  (`filtrosAsuntos`: fecha, desenlace, partido, autores y leyes por posición).
+  (`filtrosAsuntos`: fecha, desenlace, partido, autores, leyes y temas del SIL
+  por posición; `asuntos` filtra por `tema`, una lista cerrada que no depende
+  de las palabras del título).
 - `scripts/paginas.mjs` — genera en cada despliegue (`deploy.yml` despliega
   también al terminar cada vigilancia) las páginas, que dependen de los repos de datos; el
   HTML no se versiona. Lee la API de GitHub (REST y GraphQL),

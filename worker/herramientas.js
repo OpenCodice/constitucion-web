@@ -65,7 +65,7 @@ export const HERRAMIENTAS = [
     name: "buscar",
     title: "Buscar en las leyes y el Congreso",
     description:
-      "Búsqueda literal en todo lo publicado: los artículos de todas las leyes (Constitución, leyes federales, fiscales y estatales) y los asuntos del Congreso (iniciativas, proposiciones, dictámenes, decretos del DOF y votaciones, por su título). Devuelve las unidades con todas las palabras, en cualquier orden (sin distinguir acentos ni mayúsculas; no busca frases), agrupadas por ley y por tipo, con un fragmento. No es semántica: para un tema, busca varias veces con las palabras que usaría la ley o una iniciativa (p. ej. para matrimonio entre personas del mismo sexo: «matrimonio igualitario», «matrimonio mismo sexo», «matrimonio dos personas»). Para iniciativas por autor, ley, fecha o desenlace: asuntos. La respuesta dice su cobertura (qué estados tienen leyes además de su constitución y desde qué fecha hay cada tipo de asunto): sin resultados no significa que no haya ocurrido.",
+      "Búsqueda literal en todo lo publicado: los artículos de todas las leyes (Constitución, leyes federales, fiscales y estatales) y los asuntos del Congreso (iniciativas, proposiciones, dictámenes, decretos del DOF y votaciones, por su título). Devuelve las unidades con todas las palabras, en cualquier orden (sin distinguir acentos, mayúsculas ni singular y plural; no busca frases), agrupadas por ley y por tipo, con un fragmento. No es semántica: para un tema, busca varias veces con las palabras que usaría la ley o una iniciativa (p. ej. para matrimonio entre personas del mismo sexo: «matrimonio igualitario», «matrimonio mismo sexo», «matrimonio dos personas»). Para iniciativas por autor, ley, tema del SIL, fecha o desenlace: asuntos. La respuesta dice su cobertura (qué estados tienen leyes además de su constitución y desde qué fecha hay cada tipo de asunto): sin resultados no significa que no haya ocurrido.",
     inputSchema: {
       type: "object",
       properties: {
@@ -377,7 +377,7 @@ export const HERRAMIENTAS = [
     name: "asuntos",
     title: "Iniciativas y proposiciones",
     description:
-      "Las iniciativas (o proposiciones con punto de acuerdo, o dictámenes negativos) presentadas en el Congreso, de la más reciente a la más antigua, con su id, autores, estatus y enlace al SIL. Filtra por autor (un legislador), ley que reforma o expide por su nombre, palabras del título, partido, desenlace y fechas de presentación. La respuesta dice el periodo que cubren los datos.",
+      "Las iniciativas (o proposiciones con punto de acuerdo, o dictámenes negativos) presentadas en el Congreso, de la más reciente a la más antigua, con su id, autores, estatus y enlace al SIL. Filtra por autor (un legislador), ley que reforma o expide por su nombre, palabras del título, tema de la clasificación del SIL, partido, desenlace y fechas de presentación. La respuesta dice el periodo que cubren los datos.",
     inputSchema: {
       type: "object",
       properties: {
@@ -385,6 +385,7 @@ export const HERRAMIENTAS = [
         autor: { type: "string", description: "Legislador que lo presentó: su id o palabras de su nombre que den con una sola persona." },
         documento: { ...documento, description: "Solo los que reforman o expiden esta ley por su nombre en el título." },
         texto: { type: "string", description: "Palabras del título, todas deben aparecer: «prisión preventiva», «guardia nacional»." },
+        tema: { type: "string", description: "Uno de los temas con que el SIL clasifica cada asunto: «Salud», «Seguridad Pública», «Hacienda Pública». No depende de las palabras del título; si no existe, el error lista los que hay." },
         partido: { type: "string", description: "Partido que la fuente le atribuye: «PAN», «Morena», «MC»." },
         resultado: { type: "string", enum: ["pendiente", "aprobado", "desechado", "retirado"], description: "Su desenlace." },
         desde: fecha("Presentados desde esta fecha"),

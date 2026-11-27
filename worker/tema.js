@@ -46,6 +46,7 @@ async function asuntosDelTema(env, tipo, texto, limite) {
     hasta: fechas.at(-1) ?? null,
     por_resultado: contar(posiciones.map((i) => f.resultados[f.resultado[i]] ?? "sin dato")),
     por_partido: contar(posiciones.map((i) => f.partidos[f.partido[i]] ?? "sin dato")),
+    por_tema_sil: cruce(f.temas ?? {}),
     por_ley: cruce(f.leyes),
     por_autor: cruce(f.autores),
     ejemplos: (await Promise.all(posiciones.slice(0, limite).map((i) => asuntoDe(env, col, i)))).filter(Boolean),
@@ -111,7 +112,7 @@ export async function tema(env, { texto, limite } = {}) {
     ignoradas: b.ignoradas,
     sin_resultados_para: b.sin_resultados_para,
     metodo:
-      "Una unidad es del tema si tiene todas las palabras (sin acentos ni mayúsculas; no hay sinónimos): los artículos por su texto, y los asuntos, decretos y votaciones por su título. Los asuntos se atribuyen a la ley que su título reforma o expide por su nombre; las votaciones se agrupan por asunto y cámara; los autores son los que tienen registro de legislador.",
+      "Una unidad es del tema si tiene todas las palabras (sin acentos ni mayúsculas; singular y plural cuentan igual; no hay sinónimos): los artículos por su texto, y los asuntos, decretos y votaciones por su título. Los asuntos se atribuyen a la ley que su título reforma o expide por su nombre; las votaciones se agrupan por asunto y cámara; los autores son los que tienen registro de legislador.",
     vigente: {
       documentos: b.documentos_con_coincidencias,
       articulos: b.articulos_con_coincidencias,
@@ -136,7 +137,7 @@ const lista = (c, nombres = {}) =>
 export function mdTema(r) {
   const partes = [`# Tema: «${r.consulta}»`];
   const notas = [r.metodo];
-  if (r.ignoradas.length) notas.push(`Se ignoraron por comunes: ${r.ignoradas.join(", ")}.`);
+  if (r.ignoradas.length) notas.push(`Se ignoraron por no tener contenido propio: ${r.ignoradas.join(", ")}.`);
   if (r.sin_resultados_para.length) notas.push(`Ninguna unidad contiene: ${r.sin_resultados_para.join(", ")}.`);
   notas.push("Para otro ángulo del mismo tema, repite con las palabras que usaría la ley o una iniciativa.");
   partes.push(notas.join(" "));
@@ -155,7 +156,7 @@ export function mdTema(r) {
   for (const a of r.asuntos) {
     if (!a.total) continue;
     partes.push(
-      `## ${a.nombre}: ${a.total} (del ${a.desde} al ${a.hasta})\n\nPor desenlace: ${lista(a.por_resultado)}. Por partido: ${lista(a.por_partido)}.\n\n${a.ejemplos.map((x) => lineaAsunto(a.tipo, x)).join("\n")}${a.total > a.ejemplos.length ? `\n\n(las ${a.ejemplos.length} más recientes; todas, con la herramienta \`asuntos\`: tipo «${a.tipo}», texto «${r.consulta}»)` : ""}`,
+      `## ${a.nombre}: ${a.total} (del ${a.desde} al ${a.hasta})\n\nPor desenlace: ${lista(a.por_resultado)}. Por partido: ${lista(a.por_partido)}.${Object.keys(a.por_tema_sil).length ? ` Temas con que el SIL los clasifica: ${lista(a.por_tema_sil)} (todos los de un tema, con la herramienta \`asuntos\` y \`tema\`).` : ""}\n\n${a.ejemplos.map((x) => lineaAsunto(a.tipo, x)).join("\n")}${a.total > a.ejemplos.length ? `\n\n(las ${a.ejemplos.length} más recientes; todas, con la herramienta \`asuntos\`: tipo «${a.tipo}», texto «${r.consulta}»)` : ""}`,
     );
   }
 
@@ -218,10 +219,16 @@ function htmlVotacion(v) {
   return `<li><span class="dato">${esc(v.fecha ?? "")}</span> <a href="${local(v.url)}">${esc(v.asunto ?? v.resultado ?? v.id)}</a><small>${esc(v.camara ?? "")} · ${num(v.a_favor)} a favor, ${num(v.en_contra)} en contra, ${cuantos(v.abstenciones, "abstención", "abstenciones")}${otras}</small></li>`;
 }
 
+// Los temas con que el SIL clasifica esos asuntos: los más frecuentes.
+function temasSil(a) {
+  const temas = enOrden(a.por_tema_sil ?? {}).slice(0, 5);
+  return temas.length ? ` Temas según el SIL: ${temas.map(([t, n]) => `${esc(t)} (${num(n)})`).join(", ")}.` : "";
+}
+
 export function htmlTema(r) {
   const partes = [];
   const avisos = [];
-  if (r.ignoradas.length) avisos.push(`Se ignoraron por comunes: ${esc(r.ignoradas.join(", "))}.`);
+  if (r.ignoradas.length) avisos.push(`Se ignoraron por no tener contenido propio: ${esc(r.ignoradas.join(", "))}.`);
   if (r.sin_resultados_para.length) avisos.push(`Nada de lo publicado contiene: ${esc(r.sin_resultados_para.join(", "))}.`);
   if (avisos.length) partes.push(`<p class="aviso">${avisos.join(" ")}</p>`);
 
@@ -249,7 +256,7 @@ export function htmlTema(r) {
       .map(([k, n]) => `${num(n)} ${NOMBRE_RESULTADO[k] ?? k}`)
       .join(", ");
     partes.push(`<section><h2>${esc(a.nombre)}</h2>
-<p class="resumen">${num(a.total)}, del ${esc(a.desde)} al ${esc(a.hasta)}: ${esc(desenlace)}.</p>
+<p class="resumen">${num(a.total)}, del ${esc(a.desde)} al ${esc(a.hasta)}: ${esc(desenlace)}.${temasSil(a)}</p>
 <ul class="tema-lista">${a.ejemplos.map(htmlAsunto).join("\n")}</ul>${a.total > a.ejemplos.length ? `<p class="resumen">Se muestran las ${a.ejemplos.length} más recientes.</p>` : ""}</section>`);
   }
 

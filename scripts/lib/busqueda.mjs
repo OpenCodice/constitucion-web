@@ -5,19 +5,20 @@
 // nunca semántica.
 //
 // - `buscar/meta.json`: las colecciones, cada una con el rango de ids de sus
-//   unidades, y las palabras que no se indexan por comunes.
-// - `buscar/{xx}.json`: palabra → ids, repartidas en PARTES archivos.
+//   unidades, y las palabras que van en su propio archivo.
+// - `buscar/{xx}.json`: palabra → ids, repartidas en PARTES archivos;
+//   `buscar/g/{palabra}.json`, la lista de una palabra muy frecuente.
+//   Las palabras entran por su raíz (`raiz` de texto.js: singular y plural
+//   cuentan igual) y las vacías de la lista fija `VACIAS` no entran.
 // - `congreso/_/{tipo}/{n}.json`: las fichas de los asuntos, de POR_TROZO en
 //   POR_TROZO (los artículos ya están en `ley/_/`).
 
-import { palabras, parteDe, codificar } from "../../worker/texto.js";
+import { terminos, parteDe, codificar, VACIAS } from "../../worker/texto.js";
 
-// Una palabra que está en más de esta parte de las unidades no distingue
-// nada («artículo», «de», «ley»): no se indexa y la búsqueda la ignora.
-// En un corpus chico (las pruebas) ninguna palabra es común: hace falta
-// además que esté en al menos MIN_COMUN unidades.
-const MAX_FRECUENCIA = 0.04;
-const MIN_COMUN = 1000;
+// Una palabra que está en más unidades que estas va en su propio archivo
+// (`buscar/g/{palabra}.json`): así los 256 archivos compartidos siguen chicos
+// y su lista solo se lee cuando alguien la busca.
+const MAX_COMPARTIDA = 1500;
 export const POR_TROZO = 400;
 
 // colecciones: [{ coleccion, tipo, nombre, ambito?, unidades: [{ buscar }] }]
@@ -32,7 +33,8 @@ export function indiceBusqueda(colecciones) {
     meta.push({ coleccion: c.coleccion, tipo: c.tipo, nombre: c.nombre, ambito: c.ambito, periodo, inicio: siguiente, n: c.unidades.length });
     for (const u of c.unidades) {
       const id = siguiente++;
-      for (const p of new Set(palabras(u.buscar))) {
+      for (const p of new Set(terminos(u.buscar))) {
+        if (VACIAS.has(p)) continue;
         if (!ids.has(p)) ids.set(p, []);
         ids.get(p).push(id);
       }
@@ -44,12 +46,12 @@ export function indiceBusqueda(colecciones) {
       }
     }
   }
-  const limite = Math.max(siguiente * MAX_FRECUENCIA, MIN_COMUN);
-  const vacias = [];
+  const grandes = [];
   const partes = new Map();
   for (const [p, xs] of ids) {
-    if (xs.length > limite) {
-      vacias.push(p);
+    if (xs.length > MAX_COMPARTIDA) {
+      grandes.push(p);
+      archivos.set(`buscar/g/${p}.json`, JSON.stringify(codificar(xs)));
       continue;
     }
     const k = parteDe(p);
@@ -57,6 +59,6 @@ export function indiceBusqueda(colecciones) {
     partes.get(k)[p] = codificar(xs);
   }
   for (const [k, contenido] of partes) archivos.set(`buscar/${k}.json`, JSON.stringify(contenido));
-  archivos.set("buscar/meta.json", JSON.stringify({ unidades: siguiente, vacias: vacias.sort(), colecciones: meta }));
-  return { archivos, palabras: ids.size, vacias: vacias.length };
+  archivos.set("buscar/meta.json", JSON.stringify({ unidades: siguiente, grandes: grandes.sort(), colecciones: meta }));
+  return { archivos, palabras: ids.size, grandes: grandes.length };
 }

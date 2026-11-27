@@ -441,7 +441,7 @@ const comunes = (a, b) => {
   return a.filter((x) => s.has(x));
 };
 
-export async function asuntos(env, { tipo = "iniciativa", texto, autor, documento, partido, resultado, desde, hasta, limite, pagina } = {}) {
+export async function asuntos(env, { tipo = "iniciativa", texto, autor, documento, tema, partido, resultado, desde, hasta, limite, pagina } = {}) {
   if (!TIPOS_ASUNTO[tipo]) throw new ErrorDatos(`Tipo desconocido: ${tipo}. Usa ${Object.keys(TIPOS_ASUNTO).join(", ")}.`);
   const coleccion = `congreso/${tipo}`;
   const f = await json(env, `congreso/_/${tipo}/f.json`);
@@ -467,6 +467,19 @@ export async function asuntos(env, { tipo = "iniciativa", texto, autor, document
     if (!doc) throw new ErrorDatos(`No hay un documento «${documento}». Su clave se busca con buscar_documentos.`);
     cruzar(f.leyes[doc.documento] ?? []);
   }
+  // El tema es uno de los que el SIL asigna a cada asunto: una lista cerrada.
+  let temaSil = null;
+  if (tema) {
+    const nombres = Object.keys(f.temas ?? {});
+    const pedido = plano(tema).trim();
+    temaSil = nombres.find((t) => plano(t) === pedido) ?? null;
+    const parecidos = temaSil ? [] : nombres.filter((t) => plano(t).includes(pedido));
+    if (!temaSil && parecidos.length === 1) [temaSil] = parecidos;
+    if (!temaSil) {
+      throw new ErrorDatos(`No hay un tema «${tema}» en la clasificación del SIL. ${parecidos.length ? `Parecidos: ${parecidos.join("; ")}.` : `Los temas: ${nombres.sort((a, b) => a.localeCompare(b, "es")).join("; ")}.`}`);
+    }
+    cruzar(f.temas[temaSil]);
+  }
   if (resultado && !f.resultados.includes(resultado)) throw new ErrorDatos(`Resultado desconocido: ${resultado}. Usa ${f.resultados.filter(Boolean).join(", ")}.`);
   const xs = (posiciones ?? Array.from({ length: f.n }, (_, i) => i))
     .filter(
@@ -489,6 +502,7 @@ export async function asuntos(env, { tipo = "iniciativa", texto, autor, document
     por_resultado: porResultado,
     autor: persona ? { id: persona.id, nombre: persona.nombre } : null,
     documento: doc?.documento ?? null,
+    tema: temaSil,
     palabras_ignoradas: busqueda?.ignoradas ?? [],
     periodo: { desde: fechas.at(-1) ?? null, hasta: fechas[0] ?? null, en_total: f.n },
     asuntos: (await Promise.all(p.elementos.map((i) => asuntoDe(env, col, i)))).filter(Boolean),
@@ -496,14 +510,14 @@ export async function asuntos(env, { tipo = "iniciativa", texto, autor, document
 }
 
 export function mdAsuntos(r) {
-  const filtros = [r.autor && `de ${r.autor.nombre}`, r.documento && `que reforman o expiden \`${r.documento}\` por su nombre`].filter(Boolean).join(", ");
+  const filtros = [r.autor && `de ${r.autor.nombre}`, r.documento && `que reforman o expiden \`${r.documento}\` por su nombre`, r.tema && `del tema «${r.tema}» (clasificación del SIL)`].filter(Boolean).join(", ");
   const resumen = Object.entries(r.por_resultado)
     .sort((a, b) => b[1] - a[1])
     .map(([k, n]) => `${n} ${k}`)
     .join(", ");
   return `${cabecera(`${TIPOS_ASUNTO[r.tipo]}${filtros ? ` ${filtros}` : ""}`, r, r.asuntos.length)}
 
-De congreso-mexicano (SIL): ${r.periodo.en_total} en total, presentadas del ${r.periodo.desde} al ${r.periodo.hasta}; no hay datos de antes. De la más reciente a la más antigua.${resumen ? ` Por desenlace: ${resumen}.` : ""}${r.palabras_ignoradas.length ? ` Se ignoraron por comunes: ${r.palabras_ignoradas.join(", ")}.` : ""}
+De congreso-mexicano (SIL): ${r.periodo.en_total} en total, presentadas del ${r.periodo.desde} al ${r.periodo.hasta}; no hay datos de antes. De la más reciente a la más antigua.${resumen ? ` Por desenlace: ${resumen}.` : ""}${r.palabras_ignoradas.length ? ` Se ignoraron por no tener contenido propio: ${r.palabras_ignoradas.join(", ")}.` : ""}
 
 ${r.asuntos.length ? r.asuntos.map((a) => lineaAsunto(r.tipo, a)).join("\n") : "Ningún asunto coincide."}
 ${pieDePagina(r)}`;

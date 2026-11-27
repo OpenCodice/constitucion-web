@@ -7,7 +7,7 @@
 // Lee el índice de `scripts/lib/busqueda.mjs`: palabra → ids de unidad, y de
 // cada colección su rango de ids.
 
-import { palabras, parteDe, decodificar } from "./texto.js";
+import { palabras, raiz, parteDe, decodificar, VACIAS } from "./texto.js";
 import { SITIO, ErrorDatos, json, minimoDe, paginar, pieDePagina } from "./datos.js";
 import { articuloPorPosicion, urlArticulo } from "./ley.js";
 
@@ -63,25 +63,28 @@ export async function asuntoDe(env, col, pos) {
 // Los ids de las unidades que tienen todas las palabras, y qué se hizo con
 // cada palabra.
 async function unidadesCon(env, m, texto) {
-  const vacias = new Set(m.vacias);
   const todas = [...new Set(palabras(texto))];
-  const ignoradas = todas.filter((p) => vacias.has(p));
-  const usadas = todas.filter((p) => !vacias.has(p));
+  const ignoradas = todas.filter((p) => VACIAS.has(p));
+  const usadas = todas.filter((p) => !VACIAS.has(p));
   if (!usadas.length) {
     throw new ErrorDatos(
-      todas.length
-        ? `Las palabras «${ignoradas.join(" ")}» son demasiado comunes para buscarlas solas; agrega una más específica.`
-        : "Falta el texto a buscar.",
+      todas.length ? `Las palabras «${ignoradas.join(" ")}» no dicen de qué tema se trata; agrega una más específica.` : "Falta el texto a buscar.",
     );
   }
-  const partes = await Promise.all([...new Set(usadas.map(parteDe))].map(async (k) => [k, (await json(env, `buscar/${k}.json`)) ?? {}]));
-  const porParte = new Map(partes);
-  const listas = usadas.map((p) => {
-    const c = porParte.get(parteDe(p))[p];
-    return c ? decodificar(c) : [];
-  });
+  // Cada palabra se busca por su raíz: singular y plural cuentan igual.
+  const raices = usadas.map(raiz);
+  const grandes = new Set(m.grandes ?? []);
+  const leida = new Map(
+    await Promise.all(
+      [...new Set(raices)].map(async (r) => {
+        if (grandes.has(r)) return [r, (await json(env, `buscar/g/${r}.json`)) ?? ""];
+        return [r, ((await json(env, `buscar/${parteDe(r)}.json`)) ?? {})[r] ?? ""];
+      }),
+    ),
+  );
+  const listas = raices.map((r) => (leida.get(r) ? decodificar(leida.get(r)) : []));
   const sinNada = usadas.filter((_, i) => !listas[i].length);
-  return { ids: sinNada.length ? [] : interseccion(listas), usadas, ignoradas, sinNada };
+  return { ids: sinNada.length ? [] : interseccion(listas), usadas, raices, ignoradas, sinNada };
 }
 
 // Las posiciones, dentro de una colección, de las unidades con todas las palabras.
@@ -99,7 +102,7 @@ export const coleccionDeTipo = async (env, coleccion) => (await meta(env))?.cole
 export async function buscar(env, { texto, tipos, documento, ambito, limite = 10, pagina } = {}) {
   const m = await meta(env);
   if (!m) throw new ErrorDatos("El índice de búsqueda no está disponible en este despliegue.");
-  const { ids, usadas, ignoradas, sinNada } = await unidadesCon(env, m, texto);
+  const { ids, usadas, raices, ignoradas, sinNada } = await unidadesCon(env, m, texto);
 
   const tiposPedidos = new Set((tipos?.length ? tipos : TIPOS_BUSQUEDA).filter((t) => TIPOS[t]));
   const cols = m.colecciones;
@@ -126,7 +129,7 @@ export async function buscar(env, { texto, tipos, documento, ambito, limite = 10
         const minimo = await minimoDe(env, col.coleccion);
         for (const p of ejemplos) {
           const a = await articuloPorPosicion(env, minimo, p);
-          if (a) r.articulos.push({ clave: a.clave, etiqueta: a.etiqueta, url: urlArticulo(col.coleccion, a.clave), fragmento: fragmento(a.texto, usadas) });
+          if (a) r.articulos.push({ clave: a.clave, etiqueta: a.etiqueta, url: urlArticulo(col.coleccion, a.clave), fragmento: fragmento(a.texto, raices) });
         }
       }
       return r;
@@ -184,9 +187,9 @@ export const lineaAsunto = (tipo, a) => {
 export function mdBusqueda(r) {
   const partes = [`# Búsqueda: «${r.consulta}»`];
   const notas = [];
-  if (r.ignoradas.length) notas.push(`Se ignoraron por comunes: ${r.ignoradas.join(", ")}.`);
+  if (r.ignoradas.length) notas.push(`Se ignoraron por no tener contenido propio: ${r.ignoradas.join(", ")}.`);
   if (r.sin_resultados_para.length) notas.push(`Ninguna unidad contiene: ${r.sin_resultados_para.join(", ")}.`);
-  notas.push("Búsqueda literal: unidades con todas las palabras (sin acentos ni mayúsculas). Prueba también con sinónimos y con las palabras que usaría la ley.");
+  notas.push("Búsqueda literal: unidades con todas las palabras (sin acentos ni mayúsculas; singular y plural cuentan igual). Prueba también con sinónimos y con las palabras que usaría la ley.");
   partes.push(notas.join(" "));
   if (r.leyes.length) {
     const lineas = r.leyes.map((l) => {

@@ -279,6 +279,7 @@ export function coleccionesCongreso(m, votaciones, nombresLey = new Map()) {
           estatus: a.estatus?.texto ?? null,
           resultado: a.estatus?.resultado ?? null,
           leyes: nombradas(a.denominacion),
+          temas: a.temas ?? [],
           expediente: a.expediente_id ? `${SITIO}${urlExpediente(a.expediente_id)}` : null,
           sil: a.seguimiento ? `http://sil.gobernacion.gob.mx/Librerias/pp_ReporteSeguimiento.php?Seguimiento=${a.seguimiento}` : null,
           buscar: a.denominacion ?? "",
@@ -313,8 +314,8 @@ export function coleccionesCongreso(m, votaciones, nombresLey = new Map()) {
 
 // Lo que hace falta para filtrar los asuntos de una colección sin leer sus
 // fichas (`congreso/_/{tipo}/f.json`): de cada uno, en su orden, la fecha, el
-// desenlace y el partido, y en qué posiciones están los de cada autor y los
-// que nombran cada ley.
+// desenlace y el partido, y en qué posiciones están los de cada autor, los
+// que nombran cada ley y los de cada tema con que el SIL los clasifica.
 export function filtrosAsuntos(colecciones) {
   const archivos = new Map();
   for (const c of colecciones) {
@@ -324,7 +325,9 @@ export function filtrosAsuntos(colecciones) {
     const partidos = valores("partido");
     const autores = {};
     const leyes = {};
+    const temas = {};
     c.unidades.forEach((u, i) => {
+      for (const t of new Set(u.temas ?? [])) (temas[t] ??= []).push(i);
       for (const id of new Set((u.autores ?? []).map((a) => a.id).filter(Boolean))) (autores[id] ??= []).push(i);
       for (const d of u.leyes ?? []) (leyes[d] ??= []).push(i);
     });
@@ -339,6 +342,7 @@ export function filtrosAsuntos(colecciones) {
         partido: c.unidades.map((u) => partidos.indexOf(u.partido ?? null)),
         autores,
         leyes,
+        temas,
       }),
     );
   }

@@ -6,7 +6,7 @@ import { paginaTema } from "./tema.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { normalizarClave, mapaClaves, resolverClave } from "../worker/claves.js";
-import { palabras, codificar, decodificar } from "../worker/texto.js";
+import { palabras, raiz, VACIAS, codificar, decodificar } from "../worker/texto.js";
 import worker, { prefiereMarkdown } from "../worker/index.js";
 import { HERRAMIENTAS } from "../worker/herramientas.js";
 import { diferenciaTexto } from "./lib/diferencias.mjs";
@@ -82,7 +82,7 @@ const LEGISLADORES = [
 ];
 const INICIATIVA = { id: "sil-5", fecha: "2026-09-14", titulo: "En materia de matrimonio igualitario", autores: [{ nombre: "Alma Vega", grupo: "Morena" }], partido: "Morena", estatus: "Pendiente", resultado: "pendiente", leyes: [], buscar: "En materia de matrimonio igualitario" };
 const INICIATIVAS = [
-  { id: "sil-7", fecha: "2026-10-20", titulo: "Que reforma el artículo 30 de la Constitución, sobre la nacionalidad", autores: [{ nombre: "Beto Ruiz", id: "beto", grupo: "Partido Acción Nacional" }], partido: "PAN", estatus: "Desechada", resultado: "desechado", leyes: ["cpeum"], buscar: "Que reforma el artículo 30 de la Constitución, sobre la nacionalidad" },
+  { id: "sil-7", fecha: "2026-10-20", titulo: "Que reforma el artículo 30 de la Constitución, sobre la nacionalidad", autores: [{ nombre: "Beto Ruiz", id: "beto", grupo: "Partido Acción Nacional" }], partido: "PAN", estatus: "Desechada", resultado: "desechado", leyes: ["cpeum"], temas: ["Derechos Humanos"], buscar: "Que reforma el artículo 30 de la Constitución, sobre la nacionalidad" },
   INICIATIVA,
   { id: "sil-3", fecha: "2026-02-01", titulo: "Que expide la Ley de aguas", autores: [{ nombre: "Beto Ruiz", id: "beto", grupo: "Partido Acción Nacional" }], partido: "PAN", estatus: "Pendiente", resultado: "pendiente", leyes: [], buscar: "Que expide la Ley de aguas" },
 ];
@@ -583,4 +583,45 @@ test("tema: una sola respuesta con lo vigente, los asuntos, las votaciones y qui
   assert.match(await (await pedir("/tema?q=%3F%3F")).text(), /class="aviso"/);
   assert.match(await (await pedir("/tema?q=matrimonio", md)).text(), /^# Tema: «matrimonio»/);
   assert.match(await (await pedir("/tema?q=%3Cscript%3E")).text(), /value="&lt;script&gt;"/);
+});
+
+test("búsqueda: singular y plural cuentan igual, y solo las palabras vacías se ignoran", async () => {
+  for (const [a, b] of [["vapeadores", "vapeador"], ["jueces", "juez"], ["bases", "base"], ["leyes", "ley"], ["países", "país"], ["matrimonios", "matrimonio"]]) {
+    assert.equal(raiz(palabras(a)[0]), raiz(palabras(b)[0]), `${a} y ${b}`);
+  }
+  // Una «s» que no es de plural y las palabras cortas quedan como están.
+  assert.deepEqual(["crisis", "tres", "mes", "2024"].map(raiz), ["crisis", "tres", "mes", "2024"]);
+  assert.ok(VACIAS.has("de") && !VACIAS.has("salud") && !VACIAS.has("nacional"));
+
+  const plural = await api("buscar?texto=matrimonios");
+  assert.equal(plural.articulos_con_coincidencias, 1);
+  assert.equal(plural.congreso[0].ejemplos[0].titulo, INICIATIVA.titulo);
+  const conVacias = await api("buscar?texto=el%20matrimonio%20de");
+  assert.deepEqual(conVacias.ignoradas, ["el", "de"]);
+  assert.equal(conVacias.articulos_con_coincidencias, 1);
+  const r = await pedir("/api/buscar?texto=de%20la");
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /no dicen de qué tema/);
+});
+
+test("índice: una palabra muy frecuente va en su propio archivo y se busca igual", () => {
+  const unidades = Array.from({ length: 1600 }, (_, i) => ({ buscar: i % 2 ? "salud pública" : "salud y vapeadores" }));
+  const { archivos } = indiceBusqueda([{ coleccion: "x", tipo: "ley", nombre: "X", unidades }]);
+  const meta = JSON.parse(archivos.get("buscar/meta.json"));
+  assert.deepEqual(meta.grandes, ["salud"]);
+  assert.equal(decodificar(JSON.parse(archivos.get("buscar/g/salud.json"))).length, 1600);
+  // «y» es vacía: no entra al índice.
+  assert.ok(![...archivos.values()].some((a) => /"y":/.test(a)));
+});
+
+test("asuntos por tema del SIL: una lista cerrada, sin depender de las palabras del título", async () => {
+  const r = await api("asuntos?tema=derechos%20humanos");
+  assert.equal(r.tema, "Derechos Humanos");
+  assert.deepEqual(r.asuntos.map((a) => a.id), ["sil-7"]);
+  assert.equal((await api("asuntos?tema=humanos")).total, 1);
+  const no = await pedir("/api/asuntos?tema=astronomia");
+  assert.equal(no.status, 404);
+  assert.match((await no.json()).error, /Los temas: Derechos Humanos\./);
+  const t = await api("tema?texto=nacionalidad");
+  assert.deepEqual(t.asuntos.find((a) => a.tipo === "iniciativa").por_tema_sil, { "Derechos Humanos": 1 });
 });
