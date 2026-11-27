@@ -11,7 +11,7 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/", "/leyes", "/bitacora/*"]
+    "run_worker_first": ["/", "/leyes", "/tema", "/bitacora/*"]
   },
   "observability": { "enabled": true },
   // v2 retira el Durable Object del limitador de peticiones del servicio de

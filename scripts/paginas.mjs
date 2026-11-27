@@ -30,6 +30,7 @@ import { urlFoto } from "./lib/congreso.mjs";
 import { SITIO, escribirTarjetas, fijarFirma } from "./lib/tarjeta.mjs";
 import { nivel } from "./lib/cuadros.mjs";
 import { leerCorpus, fichaCatalogo, llmsCompleto, archivosDocumento, leerAnteriores, archivosAnteriores } from "./lib/corpus.mjs";
+import { paginaTema } from "./tema.mjs";
 import { resumenVotaciones, resumenLegisladores, coleccionesCongreso, archivosVotos, filtrosAsuntos } from "./lib/abiertos.mjs";
 import { indiceBusqueda } from "./lib/busqueda.mjs";
 
@@ -150,6 +151,7 @@ datos.congreso = vinculos.ok ? { legisladores, votaciones } : null;
 await Promise.all([
   writeFile(publico("estado.html"), paginaEstado(datos, generada)),
   writeFile(publico("leyes.html"), paginaLeyes(datos, generada)),
+  writeFile(publico("tema.html"), paginaTema()),
   writeFile(publico("index.html"), paginaInicio(datos, generada)),
 ]);
 
@@ -168,7 +170,7 @@ const tarjetas = await escribirTarjetas(publico("og"), raiz(".tarjetas"));
 // La dirección de cada página, como la sirve Cloudflare: sin `.html` y con
 // `/` final en los `index.html`.
 const urlDe = (archivo) => `${SITIO}/${archivo.replace(/(^|\/)index\.html$/, "$1").replace(/\.html$/, "")}`;
-const paginas = ["index.html", "leyes.html", "estado.html", ...archivos.keys(), ...congreso.keys()].filter((a) => a.endsWith(".html"));
+const paginas = ["index.html", "leyes.html", "tema.html", "estado.html", ...archivos.keys(), ...congreso.keys()].filter((a) => a.endsWith(".html"));
 await writeFile(
   publico("sitemap.xml"),
   `<?xml version="1.0" encoding="UTF-8"?>

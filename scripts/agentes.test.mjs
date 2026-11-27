@@ -2,6 +2,7 @@
 // Markdown), sobre un despliegue sintético armado con las mismas funciones
 // que escriben los archivos de verdad (`archivosDocumento`, `indiceBusqueda`).
 
+import { paginaTema } from "./tema.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { normalizarClave, mapaClaves, resolverClave } from "../worker/claves.js";
@@ -132,6 +133,7 @@ for (const [ruta, contenido] of Object.entries({
   "/congreso/votaciones.json": JSON.stringify({ nota: "nota", votaciones: VOTACIONES }),
   "/congreso/legisladores.json": JSON.stringify({ nota: "nota", legisladores: LEGISLADORES }),
   "/llms.txt": "# OpenCodice\n",
+  "/tema.html": paginaTema(),
   "/index.html": "<!doctype html><title>Inicio</title>",
   "/bitacora/cpeum/aaaaaaaaaaaa.html": "<!doctype html><title>Reforma</title>",
   "/bitacora/cpeum/aaaaaaaaaaaa.md": "# Reforma del 7 de octubre de 2026\n\n## Proceso legislativo\n",
@@ -542,4 +544,43 @@ test("API: leer_articulo con fecha, historia con versiones anteriores y el detal
   assert.equal(h.versiones_anteriores[0].texto_en_esa_version, "https://constitucion.app/ley/cpeum/004@2019-06-06");
   assert.match(await (await pedir("/ley/cpeum/4/historia", md)).text(), /## Versiones anteriores a su alta[\s\S]*2011-06-10/);
   assert.match((await api("detalle_cambio?documento=cpeum&cambio=2019-06-06")).markdown, /Versión del 6 de junio de 2019/);
+});
+
+test("tema: una sola respuesta con lo vigente, los asuntos, las votaciones y quién los presentó", async () => {
+  const r = await api("tema?texto=matrimonio");
+  assert.equal(r.vigente.articulos, 1);
+  assert.equal(r.vigente.leyes[0].documento, "jalisco/constitucion");
+  const ini = r.asuntos.find((a) => a.tipo === "iniciativa");
+  assert.equal(ini.total, 1);
+  assert.deepEqual(ini.por_resultado, { pendiente: 1 });
+  assert.equal(ini.ejemplos[0].titulo, INICIATIVA.titulo);
+  assert.match(r.metodo, /todas las palabras/);
+  assert.ok(r.cobertura.leyes.documentos > 0);
+
+  // Los asuntos se atribuyen a la ley que nombran y a su autor con registro.
+  const n = await api("tema?texto=nacionalidad");
+  assert.equal(n.por_ley[0].documento, "cpeum");
+  assert.equal(n.por_ley[0].iniciativas, 1);
+  assert.deepEqual(n.quienes.map((q) => [q.id, q.iniciativas]), [["beto", 1]]);
+
+  const texto = await (await pedir("/api/tema?texto=matrimonio", md)).text();
+  assert.match(texto, /^# Tema: «matrimonio»/);
+  assert.match(texto, /## Texto vigente: 1 artículos? en 1 documentos?/);
+  assert.match(texto, /## Iniciativas: 1/);
+  assert.match(texto, /Cobertura:/);
+  assert.equal((await pedir("/api/tema")).status, 400);
+
+  // Para personas: la página base sin consulta, y con ella el resultado en su lugar.
+  const base = await (await pedir("/tema")).text();
+  assert.match(base, /<form class="tema-form"/);
+  assert.match(base, /<!-- resultado -->/);
+  const html = await (await pedir("/tema?q=Matrimonio")).text();
+  assert.match(html, /name="q" value="Matrimonio"/);
+  assert.match(html, /<h2>Texto vigente<\/h2>/);
+  assert.match(html, /<h2>Iniciativas<\/h2>/);
+  assert.match(html, /<h2>Qué cubre<\/h2>/);
+  assert.doesNotMatch(html, /<!-- resultado -->/);
+  assert.match(await (await pedir("/tema?q=%3F%3F")).text(), /class="aviso"/);
+  assert.match(await (await pedir("/tema?q=matrimonio", md)).text(), /^# Tema: «matrimonio»/);
+  assert.match(await (await pedir("/tema?q=%3Cscript%3E")).text(), /value="&lt;script&gt;"/);
 });

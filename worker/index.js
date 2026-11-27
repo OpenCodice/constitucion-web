@@ -5,6 +5,7 @@
 // - /ley/…: un artículo, el índice de un documento y su historia (ley.js);
 // - /api/…: las herramientas como API REST (api.js) y /openapi.json;
 // - /mcp: las mismas herramientas como servidor MCP (mcp.js);
+// - /tema?q=…: la vista por tema para personas (tema.js);
 // - la versión en Markdown de las páginas para quien la pide con
 //   `Accept: text/markdown` (el inicio, /leyes y la bitácora);
 // - /pdf/…, del servicio de búsqueda que se retiró, con un 410;
@@ -17,6 +18,7 @@ import { mdCatalogo, respuestaMd, respuestaJson, rutaLey } from "./ley.js";
 import { catalogo } from "./datos.js";
 import { rutaMcp } from "./mcp.js";
 import { rutaApi, openapi } from "./api.js";
+import { rutaTema } from "./tema.js";
 
 // ¿Prefiere Markdown a HTML? Por los pesos `q` del Accept; sin mención de
 // HTML basta con que pida Markdown.
@@ -74,6 +76,7 @@ export default {
         { status: 410 },
       );
     }
+    if (ruta === "/tema") return rutaTema(request, env, prefiereMarkdown(request.headers.get("Accept")));
     if (ruta === "/" || ruta === "/leyes" || ruta.startsWith("/bitacora/")) return negociar(request, env, url);
     // Los clientes MCP buscan aquí si hay OAuth; redirigirlos al inicio los
     // confunde. Un 404 dice que el servidor no pide autenticación.

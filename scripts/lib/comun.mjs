@@ -322,7 +322,7 @@ export function cabecera(ruta) {
 }
 
 const PIE_COLUMNAS = [
-  ["Consultar", [["/leyes", "Leyes"], ["/bitacora/", "Bitácora"], ["/congreso/", "Congreso"], ["/estado", "Status"]]],
+  ["Consultar", [["/leyes", "Leyes"], ["/bitacora/", "Bitácora"], ["/congreso/", "Congreso"], ["/tema", "Temas"], ["/estado", "Status"]]],
   ["Para agentes de IA", [["/mcp", "Servidor MCP"], ["/api", "API"], ["/openapi.json", "OpenAPI"], ["/llms.txt", "llms.txt"]]],
   [
     "Organización",

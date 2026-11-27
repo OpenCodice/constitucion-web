@@ -40,7 +40,7 @@ const SIN_DATOS = "Los datos del Congreso no están disponibles en este desplieg
 
 // ------------------------------------------------------------------ votaciones
 
-async function leerVotaciones(env) {
+export async function leerVotaciones(env) {
   const r = await json(env, "congreso/votaciones.json");
   if (!r) throw new ErrorDatos(SIN_DATOS);
   return r;
@@ -97,22 +97,24 @@ function ordenar(xs, orden) {
   return xs.sort(ORDENES[orden]);
 }
 
+// Un mismo asunto se vota varias veces (en lo general, en lo particular, en
+// cada cámara): queda la primera de cada asunto y cámara en el orden dado,
+// con cuántas más hubo.
+export function agruparPorAsunto(xs) {
+  // Copias: las filas vienen de la memoria del isolate, compartida entre peticiones.
+  const vistos = new Map();
+  for (const v of xs) {
+    const k = `${v.camara}|${v.expediente ?? plano(v.asunto ?? v.id)}`;
+    if (vistos.has(k)) vistos.get(k).otras_del_asunto++;
+    else vistos.set(k, { ...v, otras_del_asunto: 0 });
+  }
+  return [...vistos.values()];
+}
+
 export async function votaciones(env, { orden = "fecha", agrupar = true, limite, pagina, ...filtros } = {}) {
   const r = await leerVotaciones(env);
   let xs = ordenar((await filtrar(env, r, filtros)).map(({ v }) => v), orden);
-  // Un mismo asunto se vota varias veces (en lo general, en lo particular, en
-  // cada cámara): agrupado, queda la primera de cada asunto y cámara en el
-  // orden pedido, con cuántas más hubo.
-  if (!esFalso(agrupar)) {
-    // Copias: las filas vienen de la memoria del isolate, compartida entre peticiones.
-    const vistos = new Map();
-    for (const v of xs) {
-      const k = `${v.camara}|${v.expediente ?? plano(v.asunto ?? v.id)}`;
-      if (vistos.has(k)) vistos.get(k).otras_del_asunto++;
-      else vistos.set(k, { ...v, otras_del_asunto: 0 });
-    }
-    xs = [...vistos.values()];
-  }
+  if (!esFalso(agrupar)) xs = agruparPorAsunto(xs);
   const p = paginar(xs, { limite, pagina }, 20, 100);
   return { total: p.total, pagina: p.pagina, paginas: p.paginas, orden, nota: r.nota, cobertura: coberturaVotaciones(r), votaciones: p.elementos };
 }
@@ -130,7 +132,7 @@ const cuentasDe = (v) =>
   `${v.a_favor} a favor, ${v.en_contra} en contra, ${cuenta(v.abstenciones, "abstención", "abstenciones")}, ${cuenta(v.ausentes, "ausente", "ausentes")} (división ${v.division})`;
 const leyesDe = (v) => v.leyes.map((l) => `${l.nombre ?? l.documento} (\`${l.documento}\`${l.origen === "asunto" ? ", por el asunto" : ""})`).join("; ");
 
-function lineaVotacion(v, extra = "") {
+export function lineaVotacion(v, extra = "") {
   const leyes = leyesDe(v);
   const otras = v.otras_del_asunto ? ` (${v.otras_del_asunto === 1 ? "y otra votación" : `y ${v.otras_del_asunto} votaciones más`} de este asunto en esta cámara)` : "";
   return `- **${v.fecha ?? "s/f"} · ${v.camara}** · \`${v.id}\`${extra} · ${cuentasDe(v)}

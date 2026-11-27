@@ -11,12 +11,12 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
 - `worker/` — lo que no es un archivo de `public/`: lo que sí lo es (incluidos
   los datos: `/ley/{Documento}.md` y `.json`, `/ley/catalogo.json`,
   `/congreso/*.json`, `/bitacora/cambios.json`) se sirve directo, sin
-  invocar al Worker. `run_worker_first` solo tiene `/`, `/leyes` y
-  `/bitacora/*`, donde se elige HTML o Markdown por el Accept. Lee solo los
+  invocar al Worker. `run_worker_first` solo tiene `/`, `/leyes`,
+  `/bitacora/*` (donde se elige HTML o Markdown por el Accept) y `/tema`. Lee solo los
   archivos del propio despliegue (`env.ASSETS`, `datos.js`, con una memoria
   pequeña por isolate), nunca otro servicio.
   - `herramientas.js`: las herramientas, definidas una vez, cada una con su
-    esquema y un `run` que devuelve `datos` (JSON) y `md`: `buscar`,
+    esquema y un `run` que devuelve `datos` (JSON) y `md`: `buscar`, `tema`,
     `buscar_documentos`, `indice_documento`, `leer_articulo`,
     `historia_articulo`, `detalle_cambio` (la página en Markdown de un cambio
     de la bitácora, por omisión la última reforma), `cambios_recientes` (con
@@ -56,6 +56,13 @@ repos de datos en [github.com/OpenCodice](https://github.com/OpenCodice).
     (sin acentos ni mayúsculas, `texto.js`), agrupada por colección; las
     palabras comunes se ignoran y se dice. Fragmentos solo de las primeras
     leyes, para no leer decenas de trozos.
+  - `tema.js`: la vista por tema, `tema` para agentes y `/tema?q=…` para
+    personas (la página base `tema.html`, de `scripts/tema.mjs`, con el
+    resultado en su lugar; sin JavaScript). Es la búsqueda literal agrupada
+    con reglas fijas, sin leer más fichas que las de ejemplo: los asuntos por
+    la ley que nombran y por autor (de `f.json`), las votaciones por asunto y
+    cámara, y los decretos por las leyes que reforman. No interpreta ni
+    resume, y la respuesta dice su método y su cobertura.
   - `congreso.js`: filtra y ordena `congreso/votaciones.json` (orden por
     fecha, `division`, en contra o ausentes; agrupa por asunto y cámara, sin
     tocar las filas en memoria) y `congreso/legisladores.json` (en funciones

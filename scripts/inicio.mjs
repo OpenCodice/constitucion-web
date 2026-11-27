@@ -450,7 +450,7 @@ ${historial(datos.bitacora?.documentos.get("cpeum")?.vida, generada)}${quePublic
           La API, con las mismas herramientas que el MCP:
           <a href="/api/votaciones?orden=division&amp;en_lo_general=true"><code>/api/votaciones?orden=division</code></a>,
           <a href="/api/legisladores?orden=ausencia"><code>/api/legisladores?orden=ausencia</code></a>,
-          <a href="/api/buscar?texto=matrimonio%20igualitario"><code>/api/buscar?texto=…</code></a>.
+          <a href="/api/tema?texto=matrimonio%20igualitario"><code>/api/tema?texto=…</code></a>.
           Todas en <a href="/api"><code>/api</code></a> y descritas en <a href="/openapi.json"><code>/openapi.json</code></a>.
         </li>
         <li>

@@ -22,6 +22,7 @@ import {
   mdIndice,
 } from "./ley.js";
 import { buscar, mdBusqueda, TIPOS_BUSQUEDA } from "./busqueda.js";
+import { tema, mdTema } from "./tema.js";
 import {
   votaciones,
   mdVotaciones,
@@ -83,6 +84,24 @@ export const HERRAMIENTAS = [
       const tipos = typeof args.tipos === "string" ? args.tipos.split(",") : args.tipos;
       const r = await buscar(env, { ...args, tipos: doc && !tipos ? ["ley"] : tipos, documento: doc });
       return { datos: r, md: mdBusqueda(r) };
+    },
+  },
+  {
+    name: "tema",
+    title: "Vista de un tema",
+    description:
+      "Todo lo publicado sobre un tema en una sola respuesta: los artículos vigentes que lo mencionan, las iniciativas, proposiciones y dictámenes negativos con su desenlace, las votaciones (una por asunto y cámara), los decretos del DOF, la cuenta por ley y los legisladores que más asuntos presentaron. Es la misma búsqueda literal de buscar (todas las palabras, sin sinónimos), agrupada con reglas fijas que la respuesta explica en `metodo`; no interpreta ni resume. Empieza aquí para «qué hay sobre X»; para otro ángulo, repite con otras palabras. El detalle de cada parte: buscar, asuntos, votaciones, leer_articulo.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        texto: { type: "string", description: "Palabras del tema, todas deben aparecer: «matrimonio igualitario», «prisión preventiva», «salario mínimo»." },
+        limite: { ...limite(20, 5), description: "Cuántos ejemplos de cada parte (5 si se omite, hasta 20)." },
+      },
+      required: ["texto"],
+    },
+    async run(env, args) {
+      const r = await tema(env, args);
+      return { datos: r, md: mdTema(r) };
     },
   },
   {
